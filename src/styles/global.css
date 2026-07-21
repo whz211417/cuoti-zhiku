@@ -1,0 +1,31 @@
+:root {
+  color: #20201d;
+  background: #f6f4ee;
+  font-family: "Microsoft YaHei UI", "PingFang SC", system-ui, sans-serif;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+}
+
+* { box-sizing: border-box; }
+
+html, body, #root { min-width: 100%; min-height: 100%; margin: 0; }
+
+button, input, textarea { font: inherit; }
+
+:focus-visible { outline: 3px solid #3469c7; outline-offset: 3px; }
+
+.app-shell {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  background: radial-gradient(circle at 50% 0%, #fffdf8 0, #f6f4ee 52rem);
+}
+
+.welcome-page { max-width: 38rem; padding: 3rem; text-align: center; }
+.eyebrow { margin: 0 0 .75rem; color: #8b7046; font-size: .78rem; font-weight: 700; letter-spacing: .12em; }
+h1 { margin: 0; font-family: Georgia, "Songti SC", serif; font-size: clamp(3rem, 8vw, 5rem); font-weight: 500; letter-spacing: -.06em; }
+.welcome-copy { max-width: 29rem; margin: 1.25rem auto 0; color: #716f68; font-size: 1rem; line-height: 1.8; }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: 1ms !important; scroll-behavior: auto !important; transition-duration: 1ms !important; }
+}
