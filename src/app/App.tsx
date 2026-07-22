@@ -1,9 +1,11 @@
 import { useState } from 'react';
+import { CourseSidebar } from '../features/courses/CourseSidebar';
 import { IngestDropzone } from '../features/inbox/IngestDropzone';
 import { ProblemDocument } from '../features/problems/ProblemDocument';
 
 export function App() {
   const [selectedProblemId, setSelectedProblemId] = useState<string | null>(null);
+  const [selectedCourseId, setSelectedCourseId] = useState<string | null>(null);
   return (
     <main aria-label="错题智库" className="app-shell" role="application">
       <aside className="sidebar">
@@ -13,12 +15,7 @@ export function App() {
           <a className="nav-item" href="#review"><span>今日复习</span><em>0</em></a>
           <a className="nav-item" href="#archive"><span>全部档案</span></a>
         </nav>
-        <div className="sidebar-section">
-          <p className="sidebar-label">课程</p>
-          <button className="course-row" type="button"><i className="course-dot course-dot-econ" />宏观经济学</button>
-          <button className="course-row" type="button"><i className="course-dot course-dot-micro" />微观经济学</button>
-          <button className="add-course" type="button">＋ 新建课程</button>
-        </div>
+        <div className="sidebar-section"><CourseSidebar onSelectCourse={setSelectedCourseId} selectedCourseId={selectedCourseId} /></div>
         <p className="local-note">仅存储在这台电脑上</p>
       </aside>
       <section className="workbench" id="inbox">
@@ -39,7 +36,7 @@ export function App() {
           </div>
         ) : (
           <div className="inbox-stage">
-            <IngestDropzone onOpenProblem={setSelectedProblemId} />
+            <IngestDropzone courseId={selectedCourseId} onOpenProblem={setSelectedProblemId} />
             <section className="reading-note" aria-label="整理提示">
               <p className="eyebrow">一个安心的流程</p>
               <h2>先收题，后整理。</h2>

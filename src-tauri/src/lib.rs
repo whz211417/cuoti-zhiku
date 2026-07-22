@@ -25,6 +25,8 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             commands::health::get_library_health,
+            commands::courses::get_courses,
+            commands::courses::create_course,
             commands::inbox::get_inbox_items,
             commands::inbox::import_files,
             commands::problems::get_problem_document,

@@ -30,6 +30,15 @@ pub struct InboxItem {
     pub created_at: String,
 }
 
+#[derive(Debug, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct Course {
+    pub id: String,
+    pub name: String,
+    pub term: String,
+    pub color: String,
+}
+
 #[derive(Debug)]
 pub enum DatabaseError {
     Io(std::io::Error),
@@ -110,6 +119,35 @@ impl Database {
             foreign_keys_enabled: self.foreign_keys_enabled()?,
             journal_mode: self.journal_mode()?,
         })
+    }
+
+    pub fn create_course(&self, name: &str, term: &str, color: &str) -> DatabaseResult<Course> {
+        let course = Course {
+            id: record_id("course"),
+            name: name.trim().to_owned(),
+            term: term.trim().to_owned(),
+            color: color.to_owned(),
+        };
+        if course.name.is_empty() {
+            return Err(DatabaseError::Conflict("课程名称不能为空。".to_owned()));
+        }
+        let created_at = timestamp();
+        self.connection()?.execute(
+            "INSERT INTO courses(id, name, term, color, created_at, updated_at) VALUES (?1, ?2, ?3, ?4, ?5, ?5)",
+            params![&course.id, &course.name, &course.term, &course.color, created_at],
+        )?;
+        Ok(course)
+    }
+
+    pub fn list_courses(&self) -> DatabaseResult<Vec<Course>> {
+        let connection = self.connection()?;
+        let mut statement = connection.prepare(
+            "SELECT id, name, term, color FROM courses WHERE archived_at IS NULL ORDER BY created_at ASC",
+        )?;
+        let rows = statement.query_map([], |row| {
+            Ok(Course { id: row.get(0)?, name: row.get(1)?, term: row.get(2)?, color: row.get(3)? })
+        })?;
+        rows.collect::<Result<Vec<_>, _>>().map_err(Into::into)
     }
 
     pub fn record_inbox_item(

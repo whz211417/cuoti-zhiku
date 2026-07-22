@@ -22,7 +22,7 @@ test('restores locally stored inbox items when the app opens', async () => {
     { id: 'inbox-stored', problemId: 'problem-stored', attachmentId: 'attachment-stored', filename: 'chapter-3.png', createdAt: '2' },
   ]);
 
-  render(<IngestDropzone />);
+  render(<IngestDropzone courseId={null} />);
 
   expect(await screen.findByText('chapter-3.png')).toBeVisible();
   expect(screen.getByText('已安全保存')).toBeVisible();
@@ -38,7 +38,7 @@ test('shows each successfully stored file in the inbox after selection', async (
     },
   ]);
 
-  render(<IngestDropzone />);
+  render(<IngestDropzone courseId={null} />);
   await userEvent.click(screen.getByRole('button', { name: '投进题目' }));
 
   expect(await screen.findByText('is-lm.pdf')).toBeVisible();

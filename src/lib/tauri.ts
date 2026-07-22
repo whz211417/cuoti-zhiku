@@ -16,6 +16,12 @@ export type InboxItem = {
   createdAt: string;
 };
 
+export type Course = { id: string; name: string; term: string; color: string };
+
+export const getCourses = () => invoke<Course[]>('get_courses');
+export const createCourse = (name: string, term: string, color: string) =>
+  invoke<Course>('create_course', { name, term, color });
+
 export type ImportFileResult = {
   sourcePath: string;
   item: InboxItem | null;

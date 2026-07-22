@@ -35,10 +35,11 @@ button, input, textarea { font: inherit; }
 .sidebar-section { margin-top: 30px; }
 .sidebar-label { margin: 0 10px 8px; color: #929793; font-size: 10px; font-weight: 700; letter-spacing: .13em; }
 .course-row, .add-course { display: flex; align-items: center; gap: 8px; padding: 8px 10px; font-size: 13px; }
-.course-row:hover, .add-course:hover { background: rgb(255 255 255 / .56); }
+.course-row:hover, .add-course:hover, .course-row.is-selected { background: rgb(255 255 255 / .56); }
 .course-dot { width: 8px; height: 8px; border-radius: 999px; }
 .course-dot-econ { background: #ce8876; }.course-dot-micro { background: #7895a5; }
 .add-course { margin-top: 5px; color: #78807f; }
+.course-create { display: flex; gap: 5px; padding: 6px 8px; }.course-create input { min-width: 0; width: 100%; border: 1px solid #d3d8d4; border-radius: 7px; padding: 5px 7px; background: #fffefa; font-size: 12px; }.course-create button { border: 0; border-radius: 7px; padding: 5px 7px; background: #27384c; color: #fffefa; font-size: 11px; }
 .local-note { margin: auto 10px 0; color: #919692; font-size: 11px; }
 .workbench { min-width: 0; padding: 34px clamp(28px, 5vw, 74px) 56px; }
 .toolbar { display: flex; justify-content: space-between; align-items: flex-start; max-width: 980px; margin: 0 auto 36px; }

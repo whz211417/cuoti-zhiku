@@ -2,7 +2,7 @@ import { open } from '@tauri-apps/plugin-dialog';
 import { useEffect, useState } from 'react';
 import { getInboxItems, importFiles, type ImportFileResult } from '../../lib/tauri';
 
-export function IngestDropzone({ onOpenProblem }: { onOpenProblem?: (problemId: string) => void }) {
+export function IngestDropzone({ courseId, onOpenProblem }: { courseId: string | null; onOpenProblem?: (problemId: string) => void }) {
   const [items, setItems] = useState<ImportFileResult[]>([]);
   const [isSelecting, setIsSelecting] = useState(false);
 
@@ -21,7 +21,7 @@ export function IngestDropzone({ onOpenProblem }: { onOpenProblem?: (problemId: 
       });
       const paths = Array.isArray(selection) ? selection : selection ? [selection] : [];
       if (paths.length === 0) return;
-      const results = await importFiles(paths);
+      const results = await importFiles(paths, courseId ?? undefined);
       setItems((current) => [...results, ...current]);
     } finally {
       setIsSelecting(false);
