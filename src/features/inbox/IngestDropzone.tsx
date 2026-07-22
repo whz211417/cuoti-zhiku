@@ -1,4 +1,5 @@
 import { open } from '@tauri-apps/plugin-dialog';
+import { FileText, Upload } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { getInboxItems, importFiles, type ImportFileResult } from '../../lib/tauri';
 
@@ -36,7 +37,7 @@ export function IngestDropzone({ courseId, onOpenProblem }: { courseId: string |
         <p>题图和 PDF 会先安全保存到本地，再慢慢补题干、答案和解析。</p>
       </div>
       <button className="primary-action" disabled={isSelecting} onClick={() => void selectFiles()} type="button">
-        {isSelecting ? '正在选择…' : '投进题目'}
+        <Upload aria-hidden="true" size={15} strokeWidth={2.3} />{isSelecting ? '正在选择…' : '投进题目'}
       </button>
       <div aria-live="polite" className="inbox-results">
         {items.length === 0 ? <p className="inbox-empty">还没有待整理的题目。</p> : null}
@@ -44,7 +45,7 @@ export function IngestDropzone({ courseId, onOpenProblem }: { courseId: string |
           <article className="inbox-result" key={`${result.sourcePath}-${result.item?.id ?? result.error}`}>
             {result.item ? (
               <button className="inbox-result-button" onClick={() => onOpenProblem?.(result.item!.problemId)} type="button">
-                <span className="file-mark" aria-hidden="true">⌁</span>
+                <span className="file-mark" aria-hidden="true"><FileText size={16} strokeWidth={1.8} /></span>
                 <span>
                   <strong>{result.item.filename}</strong>
                   <span className="import-success">已安全保存</span>
@@ -52,7 +53,7 @@ export function IngestDropzone({ courseId, onOpenProblem }: { courseId: string |
               </button>
             ) : (
               <>
-                <span className="file-mark" aria-hidden="true">⌁</span>
+                <span className="file-mark" aria-hidden="true"><FileText size={16} strokeWidth={1.8} /></span>
                 <div>
                   <strong>{result.sourcePath.split(/[\\/]/).at(-1)}</strong>
                   <p className="import-error">{result.error}</p>
