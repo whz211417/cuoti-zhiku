@@ -1,6 +1,7 @@
 #[cfg(not(test))]
 mod commands;
 mod db;
+mod services;
 
 #[cfg(not(test))]
 use tauri::Manager;
