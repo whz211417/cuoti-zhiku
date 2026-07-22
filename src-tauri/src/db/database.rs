@@ -1,11 +1,16 @@
 use std::{
     fmt,
     path::Path,
-    sync::{Mutex, MutexGuard},
+    sync::{atomic::{AtomicU64, Ordering}, Mutex, MutexGuard},
+    time::{SystemTime, UNIX_EPOCH},
 };
 
-use rusqlite::{Connection, Transaction};
+use rusqlite::{params, Connection, Transaction};
 use serde::Serialize;
+
+use crate::services::ingest::ImportedOriginal;
+
+static NEXT_RECORD_ID: AtomicU64 = AtomicU64::new(1);
 
 #[derive(Debug, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
@@ -13,6 +18,15 @@ pub struct LibraryHealth {
     pub schema_version: i64,
     pub foreign_keys_enabled: bool,
     pub journal_mode: String,
+}
+
+#[derive(Debug, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct InboxItem {
+    pub id: String,
+    pub attachment_id: String,
+    pub filename: String,
+    pub created_at: String,
 }
 
 #[derive(Debug)]
@@ -90,6 +104,41 @@ impl Database {
         })
     }
 
+    pub fn record_inbox_item(
+        &self,
+        filename: &str,
+        original: &ImportedOriginal,
+        course_id: Option<&str>,
+    ) -> DatabaseResult<InboxItem> {
+        let created_at = timestamp();
+        let attachment_id = format!("attachment-{}", original.sha256);
+        let course_id = course_id.unwrap_or("inbox-unassigned");
+        let problem_id = record_id("problem");
+        let inbox_id = record_id("inbox");
+
+        self.with_transaction(|transaction| {
+            if course_id == "inbox-unassigned" {
+                transaction.execute(
+                    "INSERT OR IGNORE INTO courses(id, name, term, color, created_at, updated_at) VALUES (?1, ?2, '', ?3, ?4, ?4)",
+                    params![course_id, "未分类", "#8B7046", created_at],
+                )?;
+            }
+            transaction.execute(
+                "INSERT OR IGNORE INTO attachments(id, sha256, relative_path, mime_type, byte_size, created_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+                params![attachment_id, original.sha256, original.relative_path.to_string_lossy(), original.mime_type, original.byte_size, created_at],
+            )?;
+            transaction.execute(
+                "INSERT INTO problems(id, course_id, status, title, created_at, updated_at) VALUES (?1, ?2, 'inbox', '', ?3, ?3)",
+                params![problem_id, course_id, created_at],
+            )?;
+            transaction.execute(
+                "INSERT INTO inbox_items(id, problem_id, attachment_id, filename, created_at) VALUES (?1, ?2, ?3, ?4, ?5)",
+                params![inbox_id, problem_id, attachment_id, filename, created_at],
+            )?;
+            Ok(InboxItem { id: inbox_id, attachment_id, filename: filename.to_owned(), created_at })
+        })
+    }
+
     pub fn with_transaction<T>(
         &self,
         work: impl FnOnce(&Transaction<'_>) -> DatabaseResult<T>,
@@ -104,4 +153,12 @@ impl Database {
     fn connection(&self) -> DatabaseResult<MutexGuard<'_, Connection>> {
         self.connection.lock().map_err(|_| DatabaseError::LockPoisoned)
     }
+}
+
+fn record_id(prefix: &str) -> String {
+    format!("{prefix}-{}-{}", timestamp(), NEXT_RECORD_ID.fetch_add(1, Ordering::Relaxed))
+}
+
+fn timestamp() -> String {
+    SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_millis().to_string()
 }

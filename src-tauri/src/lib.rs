@@ -9,6 +9,7 @@ use tauri::Manager;
 #[cfg(not(test))]
 pub struct AppState {
     database: db::database::Database,
+    originals_root: std::path::PathBuf,
 }
 
 #[cfg(not(test))]
@@ -18,10 +19,13 @@ pub fn run() {
         .setup(|app| {
             let library_root = app.path().app_local_data_dir()?;
             let database = db::database::Database::open(&library_root)?;
-            app.manage(AppState { database });
+            app.manage(AppState { database, originals_root: library_root.join("originals") });
             Ok(())
         })
-        .invoke_handler(tauri::generate_handler![commands::health::get_library_health])
+        .invoke_handler(tauri::generate_handler![
+            commands::health::get_library_health,
+            commands::inbox::import_files
+        ])
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_os::init())

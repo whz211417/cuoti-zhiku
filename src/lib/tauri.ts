@@ -7,3 +7,19 @@ export type LibraryHealth = {
 };
 
 export const getLibraryHealth = () => invoke<LibraryHealth>('get_library_health');
+
+export type InboxItem = {
+  id: string;
+  attachmentId: string;
+  filename: string;
+  createdAt: string;
+};
+
+export type ImportFileResult = {
+  sourcePath: string;
+  item: InboxItem | null;
+  error: string | null;
+};
+
+export const importFiles = (paths: string[], courseId?: string) =>
+  invoke<ImportFileResult[]>('import_files', { paths, courseId });

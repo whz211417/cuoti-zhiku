@@ -25,3 +25,20 @@ CREATE TABLE IF NOT EXISTS problems (
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS attachments (
+  id TEXT PRIMARY KEY NOT NULL,
+  sha256 TEXT NOT NULL UNIQUE,
+  relative_path TEXT NOT NULL,
+  mime_type TEXT NOT NULL,
+  byte_size INTEGER NOT NULL,
+  created_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS inbox_items (
+  id TEXT PRIMARY KEY NOT NULL,
+  problem_id TEXT NOT NULL UNIQUE REFERENCES problems(id) ON DELETE CASCADE,
+  attachment_id TEXT NOT NULL REFERENCES attachments(id),
+  filename TEXT NOT NULL,
+  created_at TEXT NOT NULL
+);
