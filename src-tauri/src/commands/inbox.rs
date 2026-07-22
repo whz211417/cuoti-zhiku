@@ -14,6 +14,13 @@ pub struct ImportFileResult {
 }
 
 #[tauri::command]
+pub fn get_inbox_items(
+    state: State<'_, AppState>,
+) -> Result<Vec<crate::db::database::InboxItem>, String> {
+    state.database.list_inbox_items().map_err(|error| error.to_string())
+}
+
+#[tauri::command]
 pub fn import_files(
     state: State<'_, AppState>,
     paths: Vec<PathBuf>,

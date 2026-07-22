@@ -21,5 +21,7 @@ export type ImportFileResult = {
   error: string | null;
 };
 
+export const getInboxItems = () => invoke<InboxItem[]>('get_inbox_items');
+
 export const importFiles = (paths: string[], courseId?: string) =>
   invoke<ImportFileResult[]>('import_files', { paths, courseId });

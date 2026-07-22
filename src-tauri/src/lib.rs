@@ -24,6 +24,7 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             commands::health::get_library_health,
+            commands::inbox::get_inbox_items,
             commands::inbox::import_files
         ])
         .plugin(tauri_plugin_dialog::init())

@@ -3,15 +3,30 @@ import userEvent from '@testing-library/user-event';
 import { beforeEach, expect, test, vi } from 'vitest';
 import { IngestDropzone } from './IngestDropzone';
 
-const { open, importFiles } = vi.hoisted(() => ({
+const { open, importFiles, getInboxItems } = vi.hoisted(() => ({
   open: vi.fn(),
   importFiles: vi.fn(),
+  getInboxItems: vi.fn(),
 }));
 
 vi.mock('@tauri-apps/plugin-dialog', () => ({ open }));
-vi.mock('../../lib/tauri', () => ({ importFiles }));
+vi.mock('../../lib/tauri', () => ({ getInboxItems, importFiles }));
 
-beforeEach(() => vi.clearAllMocks());
+beforeEach(() => {
+  vi.clearAllMocks();
+  getInboxItems.mockResolvedValue([]);
+});
+
+test('restores locally stored inbox items when the app opens', async () => {
+  getInboxItems.mockResolvedValue([
+    { id: 'inbox-stored', attachmentId: 'attachment-stored', filename: 'chapter-3.png', createdAt: '2' },
+  ]);
+
+  render(<IngestDropzone />);
+
+  expect(await screen.findByText('chapter-3.png')).toBeVisible();
+  expect(screen.getByText('已安全保存')).toBeVisible();
+});
 
 test('shows each successfully stored file in the inbox after selection', async () => {
   open.mockResolvedValue(['C:/notes/is-lm.pdf']);

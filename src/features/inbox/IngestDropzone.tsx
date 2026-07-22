@@ -1,10 +1,16 @@
 import { open } from '@tauri-apps/plugin-dialog';
-import { useState } from 'react';
-import { importFiles, type ImportFileResult } from '../../lib/tauri';
+import { useEffect, useState } from 'react';
+import { getInboxItems, importFiles, type ImportFileResult } from '../../lib/tauri';
 
 export function IngestDropzone() {
   const [items, setItems] = useState<ImportFileResult[]>([]);
   const [isSelecting, setIsSelecting] = useState(false);
+
+  useEffect(() => {
+    void getInboxItems()
+      .then((storedItems) => setItems(storedItems.map((item) => ({ sourcePath: item.filename, item, error: null }))))
+      .catch(() => undefined);
+  }, []);
 
   const selectFiles = async () => {
     setIsSelecting(true);

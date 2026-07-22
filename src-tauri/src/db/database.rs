@@ -139,6 +139,24 @@ impl Database {
         })
     }
 
+    pub fn list_inbox_items(&self) -> DatabaseResult<Vec<InboxItem>> {
+        let connection = self.connection()?;
+        let mut statement = connection.prepare(
+            "SELECT id, attachment_id, filename, created_at
+             FROM inbox_items
+             ORDER BY created_at DESC, id DESC",
+        )?;
+        let rows = statement.query_map([], |row| {
+            Ok(InboxItem {
+                id: row.get(0)?,
+                attachment_id: row.get(1)?,
+                filename: row.get(2)?,
+                created_at: row.get(3)?,
+            })
+        })?;
+        rows.collect::<Result<Vec<_>, _>>().map_err(Into::into)
+    }
+
     pub fn with_transaction<T>(
         &self,
         work: impl FnOnce(&Transaction<'_>) -> DatabaseResult<T>,

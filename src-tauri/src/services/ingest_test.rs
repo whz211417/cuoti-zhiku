@@ -34,4 +34,9 @@ fn creates_distinct_inbox_records_that_share_a_duplicate_original() {
     assert_ne!(first.id, second.id);
     assert_eq!(first.attachment_id, second.attachment_id);
     assert_eq!(first.filename, "is-lm.pdf");
+
+    let inbox = database.list_inbox_items().expect("persisted inbox list");
+    assert_eq!(inbox.len(), 2);
+    assert_eq!(inbox[0].id, second.id);
+    assert_eq!(inbox[1].id, first.id);
 }
