@@ -1,8 +1,8 @@
 import { useGSAP } from '@gsap/react';
 import { gsap } from 'gsap';
-import LiquidGlass from 'liquid-glass-react';
 import { Archive, BookOpenCheck, ChevronLeft, Inbox, Search, Settings, ShieldCheck, X } from 'lucide-react';
-import { type ReactNode, useRef, useState } from 'react';
+import { useRef, useState } from 'react';
+import { InspectorSurface } from '../components/material/InspectorSurface';
 import { CourseSidebar } from '../features/courses/CourseSidebar';
 import { IngestDropzone } from '../features/inbox/IngestDropzone';
 import { ProblemDocument } from '../features/problems/ProblemDocument';
@@ -15,18 +15,6 @@ const workspaceTitles: Record<Workspace, { eyebrow: string; title: string }> = {
   review: { eyebrow: '专注复习', title: '今日复习' },
   archive: { eyebrow: '个人档案', title: '全部档案' },
 };
-
-function InspectorSurface({ children }: { children: ReactNode }) {
-  const { reduceTransparency } = getMotionPreferences();
-
-  if (reduceTransparency) return <div className="inspector-surface is-solid">{children}</div>;
-
-  return (
-    <LiquidGlass aberrationIntensity={0} blurAmount={0.055} className="inspector-glass" cornerRadius={20} displacementScale={18} elasticity={0.09} mode="standard" overLight saturation={108}>
-      <div className="inspector-surface">{children}</div>
-    </LiquidGlass>
-  );
-}
 
 export function App() {
   const [selectedProblemId, setSelectedProblemId] = useState<string | null>(null);
