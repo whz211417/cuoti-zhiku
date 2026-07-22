@@ -16,6 +16,7 @@
   "bundle": {
     "active": true,
     "targets": ["nsis"],
-    "windows": { "nsis": { "installerMode": "currentUser" } }
+    "icon": ["icons/icon.ico"],
+    "windows": { "nsis": { "installMode": "currentUser" } }
   }
 }

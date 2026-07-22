@@ -7,7 +7,7 @@ edition = "2021"
 
 [lib]
 name = "cuoti_zhiku_lib"
-crate-type = ["staticlib", "cdylib", "rlib"]
+crate-type = ["rlib"]
 
 [build-dependencies]
 tauri-build = { version = "2.2.0", features = [] }

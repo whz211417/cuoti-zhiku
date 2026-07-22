@@ -7,6 +7,7 @@
     "dev": "vite",
     "test": "vitest run",
     "test:rust": "set RUSTUP_HOME=C:\\tmp\\rustup-home&& set CARGO_HOME=C:\\tmp\\cargo-home&& C:\\tmp\\cargo-home\\bin\\cargo.exe test --manifest-path src-tauri/Cargo.toml",
+    "test:e2e": "playwright test",
     "lint": "eslint . --max-warnings=0",
     "typecheck": "tsc --noEmit",
     "build": "tsc -b && vite build",
@@ -14,13 +15,13 @@
     "tauri:build": "tauri build"
   },
   "dependencies": {
+    "@tanstack/react-query": "^5.66.0",
+    "@tanstack/react-router": "^1.120.0",
     "@tauri-apps/api": "^2.8.0",
     "@tauri-apps/plugin-dialog": "^2.4.0",
     "@tauri-apps/plugin-fs": "^2.4.0",
     "@tauri-apps/plugin-os": "^2.2.1",
     "@tauri-apps/plugin-store": "^2.3.0",
-    "@tanstack/react-query": "^5.66.0",
-    "@tanstack/react-router": "^1.120.0",
     "clsx": "^2.1.1",
     "lucide-react": "^0.468.0",
     "react": "^19.0.0",
@@ -30,6 +31,7 @@
   "devDependencies": {
     "@eslint/js": "^9.19.0",
     "@playwright/test": "^1.51.0",
+    "@tauri-apps/cli": "2.8.0",
     "@testing-library/jest-dom": "^6.6.3",
     "@testing-library/react": "^16.2.0",
     "@testing-library/user-event": "^14.6.1",
