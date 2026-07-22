@@ -22,6 +22,7 @@ serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 rusqlite = { version = "0.32.1", features = ["bundled"] }
 sha2 = "0.10.9"
+chrono = "0.4.39"
 
 [dev-dependencies]
 tempfile = "3.15.0"
