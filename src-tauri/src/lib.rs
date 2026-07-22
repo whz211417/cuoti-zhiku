@@ -1,6 +1,7 @@
 #[cfg(not(test))]
 mod commands;
 mod db;
+mod domain;
 mod services;
 
 #[cfg(not(test))]
@@ -25,7 +26,9 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             commands::health::get_library_health,
             commands::inbox::get_inbox_items,
-            commands::inbox::import_files
+            commands::inbox::import_files,
+            commands::problems::get_problem_document,
+            commands::problems::save_problem_field
         ])
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())

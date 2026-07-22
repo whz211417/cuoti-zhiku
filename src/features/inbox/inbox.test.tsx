@@ -19,7 +19,7 @@ beforeEach(() => {
 
 test('restores locally stored inbox items when the app opens', async () => {
   getInboxItems.mockResolvedValue([
-    { id: 'inbox-stored', attachmentId: 'attachment-stored', filename: 'chapter-3.png', createdAt: '2' },
+    { id: 'inbox-stored', problemId: 'problem-stored', attachmentId: 'attachment-stored', filename: 'chapter-3.png', createdAt: '2' },
   ]);
 
   render(<IngestDropzone />);
@@ -33,7 +33,7 @@ test('shows each successfully stored file in the inbox after selection', async (
   importFiles.mockResolvedValue([
     {
       sourcePath: 'C:/notes/is-lm.pdf',
-      item: { id: 'inbox-1', attachmentId: 'attachment-1', filename: 'is-lm.pdf', createdAt: '1' },
+      item: { id: 'inbox-1', problemId: 'problem-1', attachmentId: 'attachment-1', filename: 'is-lm.pdf', createdAt: '1' },
       error: null,
     },
   ]);

@@ -8,7 +8,7 @@ use std::{
 use rusqlite::{params, Connection, Transaction};
 use serde::Serialize;
 
-use crate::services::ingest::ImportedOriginal;
+use crate::{domain::problems::{ProblemDocument, ProblemField, ProblemFieldKind, SavedProblemField}, services::ingest::ImportedOriginal};
 
 static NEXT_RECORD_ID: AtomicU64 = AtomicU64::new(1);
 
@@ -24,6 +24,7 @@ pub struct LibraryHealth {
 #[serde(rename_all = "camelCase")]
 pub struct InboxItem {
     pub id: String,
+    pub problem_id: String,
     pub attachment_id: String,
     pub filename: String,
     pub created_at: String,
@@ -34,6 +35,7 @@ pub enum DatabaseError {
     Io(std::io::Error),
     Sql(rusqlite::Error),
     LockPoisoned,
+    Conflict(String),
 }
 
 impl fmt::Display for DatabaseError {
@@ -42,6 +44,7 @@ impl fmt::Display for DatabaseError {
             Self::Io(error) => write!(formatter, "无法访问本地资料库：{error}"),
             Self::Sql(error) => write!(formatter, "本地资料库操作失败：{error}"),
             Self::LockPoisoned => write!(formatter, "本地资料库正在恢复，请稍后重试"),
+            Self::Conflict(message) => formatter.write_str(message),
         }
     }
 }
@@ -74,6 +77,11 @@ impl Database {
             "PRAGMA foreign_keys = ON; PRAGMA journal_mode = WAL; PRAGMA busy_timeout = 5000;",
         )?;
         connection.execute_batch(include_str!("../../migrations/0001_initial.sql"))?;
+        let schema_version = connection.query_row("SELECT version FROM schema_meta LIMIT 1", [], |row| row.get::<_, i64>(0))?;
+        if schema_version < 2 {
+            connection.execute_batch(include_str!("../../migrations/0002_problem_fields.sql"))?;
+            connection.execute("UPDATE schema_meta SET version = 2", [])?;
+        }
 
         Ok(Self {
             connection: Mutex::new(connection),
@@ -135,26 +143,91 @@ impl Database {
                 "INSERT INTO inbox_items(id, problem_id, attachment_id, filename, created_at) VALUES (?1, ?2, ?3, ?4, ?5)",
                 params![inbox_id, problem_id, attachment_id, filename, created_at],
             )?;
-            Ok(InboxItem { id: inbox_id, attachment_id, filename: filename.to_owned(), created_at })
+            Ok(InboxItem { id: inbox_id, problem_id, attachment_id, filename: filename.to_owned(), created_at })
         })
     }
 
     pub fn list_inbox_items(&self) -> DatabaseResult<Vec<InboxItem>> {
         let connection = self.connection()?;
         let mut statement = connection.prepare(
-            "SELECT id, attachment_id, filename, created_at
+            "SELECT id, problem_id, attachment_id, filename, created_at
              FROM inbox_items
              ORDER BY created_at DESC, id DESC",
         )?;
         let rows = statement.query_map([], |row| {
             Ok(InboxItem {
                 id: row.get(0)?,
-                attachment_id: row.get(1)?,
-                filename: row.get(2)?,
-                created_at: row.get(3)?,
+                problem_id: row.get(1)?,
+                attachment_id: row.get(2)?,
+                filename: row.get(3)?,
+                created_at: row.get(4)?,
             })
         })?;
         rows.collect::<Result<Vec<_>, _>>().map_err(Into::into)
+    }
+
+    #[cfg(test)]
+    pub fn problem_updated_at(&self, problem_id: &str) -> DatabaseResult<String> {
+        self.connection()?
+            .query_row("SELECT updated_at FROM problems WHERE id = ?1", [problem_id], |row| row.get(0))
+            .map_err(Into::into)
+    }
+
+    pub fn save_problem_field(
+        &self,
+        problem_id: &str,
+        kind: ProblemFieldKind,
+        value: &str,
+        expected_updated_at: &str,
+    ) -> DatabaseResult<SavedProblemField> {
+        let updated_at = record_id("version");
+        self.with_transaction(|transaction| {
+            let current: String = transaction.query_row(
+                "SELECT updated_at FROM problems WHERE id = ?1",
+                [problem_id],
+                |row| row.get(0),
+            )?;
+            if current != expected_updated_at {
+                return Err(DatabaseError::Conflict("题目已在另一处更新，请刷新后再保存。".to_owned()));
+            }
+            transaction.execute(
+                "INSERT INTO problem_fields(problem_id, kind, value, updated_at) VALUES (?1, ?2, ?3, ?4)
+                 ON CONFLICT(problem_id, kind) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at",
+                params![problem_id, kind.as_str(), value, updated_at],
+            )?;
+            transaction.execute(
+                "INSERT INTO field_revisions(id, problem_id, kind, value, source, created_at) VALUES (?1, ?2, ?3, ?4, 'user', ?5)",
+                params![record_id("revision"), problem_id, kind.as_str(), value, timestamp()],
+            )?;
+            transaction.execute("UPDATE problems SET updated_at = ?2 WHERE id = ?1", params![problem_id, updated_at])?;
+            Ok(SavedProblemField {
+                problem_id: problem_id.to_owned(),
+                kind: kind.as_str().to_owned(),
+                value: value.to_owned(),
+                updated_at,
+            })
+        })
+    }
+
+    pub fn get_problem_document(&self, problem_id: &str) -> DatabaseResult<ProblemDocument> {
+        let connection = self.connection()?;
+        let (id, title, status, updated_at) = connection.query_row(
+            "SELECT id, title, status, updated_at FROM problems WHERE id = ?1",
+            [problem_id],
+            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
+        )?;
+        let mut statement = connection.prepare(
+            "SELECT kind, value, updated_at FROM problem_fields WHERE problem_id = ?1
+             ORDER BY CASE kind
+               WHEN 'stem' THEN 1 WHEN 'own_answer' THEN 2 WHEN 'standard_answer' THEN 3
+               WHEN 'explanation' THEN 4 WHEN 'mistake_reason' THEN 5 WHEN 'notes' THEN 6 END",
+        )?;
+        let fields = statement
+            .query_map([problem_id], |row| {
+                Ok(ProblemField { kind: row.get(0)?, value: row.get(1)?, updated_at: row.get(2)? })
+            })?
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok(ProblemDocument { id, title, status, updated_at, fields })
     }
 
     pub fn with_transaction<T>(

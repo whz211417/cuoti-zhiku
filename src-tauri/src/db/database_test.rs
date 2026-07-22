@@ -7,7 +7,7 @@ fn opens_a_wal_database_with_foreign_keys_enabled() {
 
     assert!(database.foreign_keys_enabled().expect("foreign key status"));
     assert_eq!(database.journal_mode().expect("journal mode"), "wal");
-    assert_eq!(database.schema_version().expect("schema version"), 1);
+    assert_eq!(database.schema_version().expect("schema version"), 2);
 }
 
 #[test]
@@ -17,7 +17,7 @@ fn reports_database_health_without_exposing_its_connection() {
 
     let health = database.health().expect("library health");
 
-    assert_eq!(health.schema_version, 1);
+    assert_eq!(health.schema_version, 2);
     assert!(health.foreign_keys_enabled);
     assert_eq!(health.journal_mode, "wal");
 }

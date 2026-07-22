@@ -2,7 +2,7 @@ import { open } from '@tauri-apps/plugin-dialog';
 import { useEffect, useState } from 'react';
 import { getInboxItems, importFiles, type ImportFileResult } from '../../lib/tauri';
 
-export function IngestDropzone() {
+export function IngestDropzone({ onOpenProblem }: { onOpenProblem?: (problemId: string) => void }) {
   const [items, setItems] = useState<ImportFileResult[]>([]);
   const [isSelecting, setIsSelecting] = useState(false);
 
@@ -42,11 +42,23 @@ export function IngestDropzone() {
         {items.length === 0 ? <p className="inbox-empty">还没有待整理的题目。</p> : null}
         {items.map((result) => (
           <article className="inbox-result" key={`${result.sourcePath}-${result.item?.id ?? result.error}`}>
-            <span className="file-mark" aria-hidden="true">⌁</span>
-            <div>
-              <strong>{result.item?.filename ?? result.sourcePath.split(/[\\/]/).at(-1)}</strong>
-              <p className={result.error ? 'import-error' : 'import-success'}>{result.error ?? '已安全保存'}</p>
-            </div>
+            {result.item ? (
+              <button className="inbox-result-button" onClick={() => onOpenProblem?.(result.item!.problemId)} type="button">
+                <span className="file-mark" aria-hidden="true">⌁</span>
+                <span>
+                  <strong>{result.item.filename}</strong>
+                  <span className="import-success">已安全保存</span>
+                </span>
+              </button>
+            ) : (
+              <>
+                <span className="file-mark" aria-hidden="true">⌁</span>
+                <div>
+                  <strong>{result.sourcePath.split(/[\\/]/).at(-1)}</strong>
+                  <p className="import-error">{result.error}</p>
+                </div>
+              </>
+            )}
           </article>
         ))}
       </div>
