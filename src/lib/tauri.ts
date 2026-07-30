@@ -42,7 +42,52 @@ export type ImportFileResult = {
   error: string | null;
 };
 
+export type CountedSignal = { label: string; count: number };
+export type ActivityDay = { date: string; count: number };
+export type CourseSummary = {
+  id: string;
+  name: string;
+  color: string;
+  problemCount: number;
+  pendingCount: number;
+  dueCount: number;
+  materialCount: number;
+  updatedAt: string;
+};
+export type RecentProblem = {
+  id: string;
+  courseId: string;
+  courseName: string;
+  title: string;
+  fallbackFilename: string;
+  status: string;
+  updatedAt: string;
+};
+export type DashboardOverview = {
+  dueReviewCount: number;
+  pendingInboxCount: number;
+  courseCount: number;
+  materialCount: number;
+  courseSummaries: CourseSummary[];
+  recentProblems: RecentProblem[];
+  topMistakeReasons: CountedSignal[];
+  topKnowledgeTopics: CountedSignal[];
+  activityLastSevenDays: ActivityDay[];
+};
+export type LibrarySearchResult = {
+  kind: 'problem' | 'course' | 'material';
+  id: string;
+  courseId: string;
+  title: string;
+  snippet: string;
+  updatedAt: string;
+};
+
 export const getInboxItems = () => invoke<InboxItem[]>('get_inbox_items');
+export const getDashboardOverview = (today: string) =>
+  invoke<DashboardOverview>('get_dashboard_overview', { today });
+export const searchLibrary = (query: string, limit = 12) =>
+  invoke<LibrarySearchResult[]>('search_library', { query, limit });
 
 export type ProblemField = {
   kind: string;

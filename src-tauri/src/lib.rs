@@ -38,6 +38,8 @@ pub fn run() {
             commands::health::get_library_health,
             commands::courses::get_courses,
             commands::courses::create_course,
+            commands::dashboard::get_dashboard_overview,
+            commands::dashboard::search_library,
             commands::inbox::get_inbox_items,
             commands::inbox::import_files,
             commands::materials::import_course_material_file,

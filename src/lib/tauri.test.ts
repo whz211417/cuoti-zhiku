@@ -1,6 +1,6 @@
 import { invoke } from '@tauri-apps/api/core';
 import { beforeEach, expect, test, vi } from 'vitest';
-import { getLibraryHealth, importFiles } from './tauri';
+import { getDashboardOverview, getLibraryHealth, importFiles, searchLibrary } from './tauri';
 
 vi.mock('@tauri-apps/api/core', () => ({ invoke: vi.fn() }));
 
@@ -25,4 +25,22 @@ test('sends a batch of selected paths to the native inbox command', async () => 
     paths: ['C:/notes/is-lm.pdf'],
     courseId: undefined,
   });
+});
+
+test('requests the local dashboard and bounded search', async () => {
+  vi.mocked(invoke).mockResolvedValue({});
+
+  await getDashboardOverview('2026-07-30');
+  expect(invoke).toHaveBeenCalledWith('get_dashboard_overview', { today: '2026-07-30' });
+
+  await searchLibrary('IS-LM', 12);
+  expect(invoke).toHaveBeenCalledWith('search_library', { query: 'IS-LM', limit: 12 });
+});
+
+test('uses the bounded default search limit', async () => {
+  vi.mocked(invoke).mockResolvedValue([]);
+
+  await searchLibrary('IS-LM');
+
+  expect(invoke).toHaveBeenCalledWith('search_library', { query: 'IS-LM', limit: 12 });
 });
