@@ -1,6 +1,9 @@
 use tauri::State;
 
-use crate::{domain::dashboard::{DashboardOverview, LibrarySearchResult}, AppState};
+use crate::{
+    domain::dashboard::{DashboardOverview, LibrarySearchResult},
+    AppState,
+};
 
 #[tauri::command]
 pub fn get_dashboard_overview(
