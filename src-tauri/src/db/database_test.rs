@@ -1,6 +1,302 @@
-use super::database::Database;
+use super::database::{Database, DatabaseError};
 use crate::services::ingest::ImportedOriginal;
-use rusqlite::Connection;
+use rusqlite::{params, Connection};
+
+fn dashboard_database() -> (tempfile::TempDir, Database) {
+    let root = tempfile::tempdir().expect("temporary dashboard library");
+    let database = Database::open(root.path()).expect("open dashboard library");
+    (root, database)
+}
+
+fn dashboard_connection(root: &tempfile::TempDir) -> Connection {
+    Connection::open(root.path().join("library.sqlite3")).expect("open fixture connection")
+}
+
+fn insert_dashboard_course(connection: &Connection, id: &str, name: &str, created_at: &str) {
+    connection
+        .execute(
+            "INSERT INTO courses(id, name, term, color, created_at, updated_at)
+             VALUES (?1, ?2, '', '#CE8876', ?3, ?3)",
+            params![id, name, created_at],
+        )
+        .expect("insert dashboard course");
+}
+
+fn insert_dashboard_problem(
+    connection: &Connection,
+    id: &str,
+    course_id: &str,
+    status: &str,
+    title: &str,
+    next_review_at: Option<&str>,
+    updated_at: &str,
+    last_reviewed_at: Option<&str>,
+) {
+    connection
+        .execute(
+            "INSERT INTO problems(id, course_id, status, title, next_review_at, created_at, updated_at, last_reviewed_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?6, ?7)",
+            params![id, course_id, status, title, next_review_at, updated_at, last_reviewed_at],
+        )
+        .expect("insert dashboard problem");
+}
+
+fn insert_dashboard_field(connection: &Connection, problem_id: &str, kind: &str, value: &str) {
+    connection
+        .execute(
+            "INSERT INTO problem_fields(problem_id, kind, value, updated_at) VALUES (?1, ?2, ?3, '2026-07-30')",
+            params![problem_id, kind, value],
+        )
+        .expect("insert dashboard field");
+}
+
+#[test]
+fn dashboard_overview_returns_zero_counts_for_an_empty_library() {
+    let (_root, database) = dashboard_database();
+
+    let overview = database
+        .dashboard_overview("2026-07-30")
+        .expect("empty dashboard overview");
+
+    assert_eq!(overview.due_review_count, 0);
+    assert_eq!(overview.pending_inbox_count, 0);
+    assert!(overview.course_summaries.is_empty());
+    assert!(overview.recent_problems.is_empty());
+    assert!(overview.top_mistake_reasons.is_empty());
+    assert!(overview.top_knowledge_topics.is_empty());
+    assert_eq!(overview.activity_last_seven_days.len(), 7);
+    assert!(overview
+        .activity_last_seven_days
+        .iter()
+        .all(|day| day.count == 0));
+}
+
+#[test]
+fn dashboard_overview_aggregates_courses_materials_inbox_and_reviewed_problems() {
+    let (root, database) = dashboard_database();
+    let connection = dashboard_connection(&root);
+    insert_dashboard_course(&connection, "macro", "宏观经济学", "2026-07-01");
+    insert_dashboard_course(&connection, "micro", "微观经济学", "2026-07-02");
+    insert_dashboard_problem(
+        &connection,
+        "reviewed",
+        "macro",
+        "active",
+        "IS-LM 分析",
+        Some("2026-07-30"),
+        "2026-07-30T09:00:00",
+        Some("2026-07-30"),
+    );
+    insert_dashboard_problem(
+        &connection,
+        "inbox-macro",
+        "macro",
+        "inbox",
+        "待整理宏观题",
+        None,
+        "2026-07-29T09:00:00",
+        None,
+    );
+    insert_dashboard_problem(
+        &connection,
+        "inbox-micro",
+        "micro",
+        "inbox",
+        "待整理微观题",
+        Some("2026-07-31"),
+        "2026-07-28T09:00:00",
+        None,
+    );
+    connection
+        .execute(
+            "INSERT INTO course_materials(id, course_id, filename, content, created_at)
+             VALUES ('material-1', 'macro', 'chapter-1.pdf', 'IS-LM', '2026-07-30')",
+            [],
+        )
+        .expect("insert material");
+    for (id, problem_id, attachment_id, filename) in [
+        ("inbox-1", "inbox-macro", "attachment-1", "macro.png"),
+        ("inbox-2", "inbox-micro", "attachment-2", "micro.png"),
+    ] {
+        connection
+            .execute(
+                "INSERT INTO attachments(id, sha256, relative_path, mime_type, byte_size, created_at)
+                 VALUES (?1, ?2, ?3, 'image/png', 1, '2026-07-30')",
+                params![attachment_id, format!("{attachment_id}-sha"), format!("{attachment_id}.png")],
+            )
+            .expect("insert attachment");
+        connection
+            .execute(
+                "INSERT INTO inbox_items(id, problem_id, attachment_id, filename, created_at)
+                 VALUES (?1, ?2, ?3, ?4, '2026-07-30')",
+                params![id, problem_id, attachment_id, filename],
+            )
+            .expect("insert inbox item");
+    }
+    insert_dashboard_field(
+        &connection,
+        "reviewed",
+        "mistake_reason",
+        "蹇界暐杈归檯鏉′欢",
+    );
+    drop(connection);
+
+    let overview = database
+        .dashboard_overview("2026-07-30")
+        .expect("populated dashboard overview");
+
+    assert_eq!(overview.course_count, 2);
+    assert_eq!(overview.material_count, 1);
+    assert_eq!(overview.due_review_count, 1);
+    assert_eq!(overview.pending_inbox_count, 2);
+    assert_eq!(overview.course_summaries.len(), 2);
+    assert_eq!(overview.course_summaries[0].id, "macro");
+    assert_eq!(overview.course_summaries[0].problem_count, 2);
+    assert_eq!(overview.course_summaries[0].pending_count, 1);
+    assert_eq!(overview.course_summaries[0].due_count, 1);
+    assert_eq!(overview.course_summaries[0].material_count, 1);
+    assert_eq!(overview.course_summaries[1].id, "micro");
+    assert_eq!(overview.course_summaries[1].problem_count, 1);
+    assert_eq!(overview.course_summaries[1].pending_count, 1);
+    assert_eq!(overview.course_summaries[1].due_count, 0);
+    assert_eq!(overview.recent_problems.len(), 3);
+    assert_eq!(overview.recent_problems[0].id, "reviewed");
+    assert_eq!(overview.top_mistake_reasons[0].label, "蹇界暐杈归檯鏉′欢");
+    assert_eq!(overview.top_mistake_reasons[0].count, 1);
+    assert_eq!(overview.activity_last_seven_days.len(), 7);
+}
+
+#[test]
+fn dashboard_overview_rejects_a_today_value_outside_the_iso_date_format() {
+    let (_root, database) = dashboard_database();
+
+    let result = database.dashboard_overview("2026/07/30");
+
+    assert!(matches!(
+        result,
+        Err(DatabaseError::Conflict(message)) if message == "today must use YYYY-MM-DD"
+    ));
+}
+
+#[test]
+fn dashboard_overview_returns_exactly_seven_consecutive_activity_dates_ending_today() {
+    let (root, database) = dashboard_database();
+    let connection = dashboard_connection(&root);
+    insert_dashboard_course(&connection, "activity", "活动课程", "2026-07-01");
+    for (id, updated_at, last_reviewed_at) in [
+        ("day-24", "2026-07-24T08:00:00", None),
+        ("day-25", "2026-07-25T08:00:00", None),
+        ("day-26", "2026-07-26T08:00:00", Some("2026-07-26")),
+        ("day-27", "2026-07-27T08:00:00", None),
+        ("day-28", "2026-07-28T08:00:00", None),
+        ("day-29", "2026-07-29T08:00:00", None),
+        ("day-30", "2026-07-30T08:00:00", Some("2026-07-30")),
+    ] {
+        insert_dashboard_problem(
+            &connection,
+            id,
+            "activity",
+            "active",
+            id,
+            None,
+            updated_at,
+            last_reviewed_at,
+        );
+    }
+    drop(connection);
+
+    let activity = database
+        .dashboard_overview("2026-07-30")
+        .expect("activity dashboard overview")
+        .activity_last_seven_days;
+
+    assert_eq!(
+        activity
+            .iter()
+            .map(|day| day.date.as_str())
+            .collect::<Vec<_>>(),
+        vec![
+            "2026-07-24",
+            "2026-07-25",
+            "2026-07-26",
+            "2026-07-27",
+            "2026-07-28",
+            "2026-07-29",
+            "2026-07-30",
+        ]
+    );
+    assert_eq!(
+        activity.iter().map(|day| day.count).collect::<Vec<_>>(),
+        vec![1; 7]
+    );
+}
+
+#[test]
+fn dashboard_overview_deduplicates_and_splits_knowledge_topics_per_problem() {
+    let (root, database) = dashboard_database();
+    let connection = dashboard_connection(&root);
+    insert_dashboard_course(&connection, "topics", "知识点课程", "2026-07-01");
+    insert_dashboard_problem(
+        &connection,
+        "topic-problem",
+        "topics",
+        "active",
+        "知识点题目",
+        None,
+        "2026-07-30T08:00:00",
+        None,
+    );
+    insert_dashboard_field(
+        &connection,
+        "topic-problem",
+        "notes",
+        "鐭ヨ瘑鐐癸細IS-LM 妯″瀷銆佽储鏀挎斂绛朻；IS-LM 妯″瀷\n 璐㈡斂鏀跨瓥",
+    );
+    drop(connection);
+
+    let topics = database
+        .dashboard_overview("2026-07-30")
+        .expect("topic dashboard overview")
+        .top_knowledge_topics;
+
+    assert_eq!(topics.len(), 3);
+    assert_eq!(topics[0].label, "IS-LM 妯″瀷");
+    assert_eq!(topics[0].count, 1);
+    assert_eq!(topics[1].label, "储鏀挎斂绛朻");
+    assert_eq!(topics[1].count, 1);
+    assert_eq!(topics[2].label, "璐㈡斂鏀跨瓥");
+    assert_eq!(topics[2].count, 1);
+}
+
+#[test]
+fn dashboard_overview_trims_and_counts_mistake_reasons_once_per_problem() {
+    let (root, database) = dashboard_database();
+    let connection = dashboard_connection(&root);
+    insert_dashboard_course(&connection, "reasons", "错因课程", "2026-07-01");
+    for id in ["reason-a", "reason-b"] {
+        insert_dashboard_problem(
+            &connection,
+            id,
+            "reasons",
+            "active",
+            id,
+            None,
+            "2026-07-30T08:00:00",
+            None,
+        );
+        insert_dashboard_field(&connection, id, "mistake_reason", "  蹇界暐杈归檯鏉′欢  ");
+    }
+    drop(connection);
+
+    let reasons = database
+        .dashboard_overview("2026-07-30")
+        .expect("reason dashboard overview")
+        .top_mistake_reasons;
+
+    assert_eq!(reasons.len(), 1);
+    assert_eq!(reasons[0].label, "蹇界暐杈归檯鏉′欢");
+    assert_eq!(reasons[0].count, 2);
+}
 
 #[test]
 fn opens_a_wal_database_with_foreign_keys_enabled() {

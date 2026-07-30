@@ -1,4 +1,5 @@
 use std::{
+    collections::{HashMap, HashSet},
     fmt,
     path::Path,
     sync::{
@@ -8,11 +9,13 @@ use std::{
     time::{SystemTime, UNIX_EPOCH},
 };
 
+use chrono::{Duration, NaiveDate};
 use rusqlite::{params, Connection, Transaction};
 use serde::Serialize;
 
 use crate::{
     domain::{
+        dashboard::{ActivityDay, CountedSignal, CourseSummary, DashboardOverview, RecentProblem},
         problems::{ProblemDocument, ProblemField, ProblemFieldKind, SavedProblemField},
         review::{schedule_next, ReviewGrade, ReviewSchedule},
     },
@@ -182,6 +185,39 @@ impl Database {
             schema_version: self.schema_version()?,
             foreign_keys_enabled: self.foreign_keys_enabled()?,
             journal_mode: self.journal_mode()?,
+        })
+    }
+
+    pub fn dashboard_overview(&self, today: &str) -> DatabaseResult<DashboardOverview> {
+        NaiveDate::parse_from_str(today, "%Y-%m-%d")
+            .map_err(|_| DatabaseError::Conflict("today must use YYYY-MM-DD".into()))?;
+        let connection = self.connection()?;
+
+        Ok(DashboardOverview {
+            due_review_count: query_scalar(
+                &connection,
+                "SELECT COUNT(*) FROM problems
+                 WHERE status IN ('inbox', 'active')
+                   AND next_review_at IS NOT NULL
+                   AND next_review_at <= ?1",
+                [today],
+            )?,
+            pending_inbox_count: query_scalar(
+                &connection,
+                "SELECT COUNT(*) FROM problems WHERE status = 'inbox'",
+                [],
+            )?,
+            course_count: query_scalar(
+                &connection,
+                "SELECT COUNT(*) FROM courses WHERE archived_at IS NULL",
+                [],
+            )?,
+            material_count: query_scalar(&connection, "SELECT COUNT(*) FROM course_materials", [])?,
+            course_summaries: query_course_summaries(&connection, today)?,
+            recent_problems: query_recent_problems(&connection)?,
+            top_mistake_reasons: query_counted_fields(&connection, "mistake_reason", false)?,
+            top_knowledge_topics: query_counted_fields(&connection, "notes", true)?,
+            activity_last_seven_days: query_activity_days(&connection, today)?,
         })
     }
 
@@ -652,4 +688,169 @@ fn split_material_chunks(content: &str, maximum_characters: usize) -> Vec<String
         .chunks(maximum_characters)
         .map(|chunk| chunk.iter().collect::<String>())
         .collect()
+}
+
+fn query_scalar<P: rusqlite::Params>(
+    connection: &Connection,
+    sql: &str,
+    params: P,
+) -> DatabaseResult<u32> {
+    let count = connection.query_row(sql, params, |row| row.get::<_, i64>(0))?;
+    Ok(u32::try_from(count).unwrap_or(u32::MAX))
+}
+
+fn query_course_summaries(
+    connection: &Connection,
+    today: &str,
+) -> DatabaseResult<Vec<CourseSummary>> {
+    let mut statement = connection.prepare(
+        "SELECT c.id,
+                c.name,
+                c.color,
+                (SELECT COUNT(*) FROM problems p WHERE p.course_id = c.id),
+                (SELECT COUNT(*) FROM problems p WHERE p.course_id = c.id AND p.status = 'inbox'),
+                (SELECT COUNT(*) FROM problems p
+                 WHERE p.course_id = c.id
+                   AND p.status IN ('inbox', 'active')
+                   AND p.next_review_at IS NOT NULL
+                   AND p.next_review_at <= ?1),
+                (SELECT COUNT(*) FROM course_materials m WHERE m.course_id = c.id),
+                COALESCE((SELECT MAX(p.updated_at) FROM problems p WHERE p.course_id = c.id), c.updated_at)
+         FROM courses c
+         WHERE c.archived_at IS NULL
+         ORDER BY (SELECT MAX(p.updated_at) FROM problems p WHERE p.course_id = c.id) DESC,
+                  c.created_at DESC",
+    )?;
+    let rows = statement.query_map([today], |row| {
+        Ok(CourseSummary {
+            id: row.get(0)?,
+            name: row.get(1)?,
+            color: row.get(2)?,
+            problem_count: row.get::<_, u32>(3)?,
+            pending_count: row.get::<_, u32>(4)?,
+            due_count: row.get::<_, u32>(5)?,
+            material_count: row.get::<_, u32>(6)?,
+            updated_at: row.get(7)?,
+        })
+    })?;
+    rows.collect::<Result<Vec<_>, _>>().map_err(Into::into)
+}
+
+fn query_recent_problems(connection: &Connection) -> DatabaseResult<Vec<RecentProblem>> {
+    let mut statement = connection.prepare(
+        "SELECT p.id,
+                p.course_id,
+                c.name,
+                p.title,
+                COALESCE(i.filename, ''),
+                p.status,
+                p.updated_at
+         FROM problems p
+         JOIN courses c ON c.id = p.course_id
+         LEFT JOIN inbox_items i ON i.problem_id = p.id
+         ORDER BY p.updated_at DESC
+         LIMIT 5",
+    )?;
+    let rows = statement.query_map([], |row| {
+        Ok(RecentProblem {
+            id: row.get(0)?,
+            course_id: row.get(1)?,
+            course_name: row.get(2)?,
+            title: row.get(3)?,
+            fallback_filename: row.get(4)?,
+            status: row.get(5)?,
+            updated_at: row.get(6)?,
+        })
+    })?;
+    rows.collect::<Result<Vec<_>, _>>().map_err(Into::into)
+}
+
+fn query_counted_fields(
+    connection: &Connection,
+    kind: &str,
+    split_topics: bool,
+) -> DatabaseResult<Vec<CountedSignal>> {
+    let mut statement =
+        connection.prepare("SELECT problem_id, value FROM problem_fields WHERE kind = ?1")?;
+    let mut rows = statement.query([kind])?;
+    let mut counts = HashMap::<String, u32>::new();
+    let mut values_by_problem = HashMap::<String, HashSet<String>>::new();
+
+    while let Some(row) = rows.next()? {
+        let problem_id: String = row.get(0)?;
+        let value: String = row.get(1)?;
+        let values = if split_topics {
+            split_knowledge_topics(&value)
+        } else {
+            vec![value.trim().to_owned()]
+        };
+        let seen_for_problem = values_by_problem.entry(problem_id).or_default();
+        for value in values {
+            if !value.is_empty() && seen_for_problem.insert(value.clone()) {
+                *counts.entry(value).or_default() += 1;
+            }
+        }
+    }
+
+    let mut signals = counts
+        .into_iter()
+        .map(|(label, count)| CountedSignal { label, count })
+        .collect::<Vec<_>>();
+    signals.sort_by(|left, right| {
+        right
+            .count
+            .cmp(&left.count)
+            .then_with(|| left.label.cmp(&right.label))
+    });
+    signals.truncate(6);
+    Ok(signals)
+}
+
+fn split_knowledge_topics(value: &str) -> Vec<String> {
+    let value = value.trim();
+    let value = value
+        .strip_prefix("鐭ヨ瘑鐐癸細")
+        .or_else(|| value.strip_prefix("鐭ヨ瘑鐐筦"))
+        .or_else(|| value.strip_prefix("知识点："))
+        .unwrap_or(value)
+        .trim();
+    value
+        .replace("銆佽", ";")
+        .split(|character| {
+            matches!(
+                character,
+                '，' | '。' | '；' | ';' | ',' | '?' | '\n' | '、' | '—' | '銆'
+            )
+        })
+        .map(str::trim)
+        .filter(|topic| !topic.is_empty())
+        .map(ToOwned::to_owned)
+        .collect()
+}
+
+fn query_activity_days(connection: &Connection, today: &str) -> DatabaseResult<Vec<ActivityDay>> {
+    let today = NaiveDate::parse_from_str(today, "%Y-%m-%d")
+        .map_err(|_| DatabaseError::Conflict("today must use YYYY-MM-DD".into()))?;
+    let mut activity = Vec::with_capacity(7);
+    for offset in (0..7).rev() {
+        let date = (today - Duration::days(offset))
+            .format("%Y-%m-%d")
+            .to_string();
+        let count = query_scalar(
+            connection,
+            "SELECT COUNT(*) FROM (
+                 SELECT id FROM problems
+                 WHERE CASE
+                     WHEN updated_at NOT LIKE '%-%' AND CAST(updated_at AS INTEGER) > 100000000000
+                         THEN date(CAST(updated_at AS INTEGER) / 1000, 'unixepoch')
+                     ELSE substr(updated_at, 1, 10)
+                 END = ?1
+                 UNION
+                 SELECT id FROM problems WHERE last_reviewed_at = ?1
+             )",
+            [&date],
+        )?;
+        activity.push(ActivityDay { date, count });
+    }
+    Ok(activity)
 }

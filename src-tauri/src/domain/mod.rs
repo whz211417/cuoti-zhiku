@@ -1,3 +1,4 @@
+pub mod dashboard;
 pub mod problems;
 pub mod review;
 
