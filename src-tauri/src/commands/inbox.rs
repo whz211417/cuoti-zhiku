@@ -17,7 +17,10 @@ pub struct ImportFileResult {
 pub fn get_inbox_items(
     state: State<'_, AppState>,
 ) -> Result<Vec<crate::db::database::InboxItem>, String> {
-    state.database.list_inbox_items().map_err(|error| error.to_string())
+    state
+        .database
+        .list_inbox_items()
+        .map_err(|error| error.to_string())
 }
 
 #[tauri::command]
@@ -35,12 +38,26 @@ pub fn import_files(
                 .and_then(|original| {
                     state
                         .database
-                        .record_inbox_item(path.file_name().and_then(|value| value.to_str()).unwrap_or("未命名文件"), &original, course_id.as_deref())
+                        .record_inbox_item(
+                            path.file_name()
+                                .and_then(|value| value.to_str())
+                                .unwrap_or("未命名文件"),
+                            &original,
+                            course_id.as_deref(),
+                        )
                         .map_err(|error| error.to_string())
                 });
             match result {
-                Ok(item) => ImportFileResult { source_path, item: Some(item), error: None },
-                Err(error) => ImportFileResult { source_path, item: None, error: Some(error) },
+                Ok(item) => ImportFileResult {
+                    source_path,
+                    item: Some(item),
+                    error: None,
+                },
+                Err(error) => ImportFileResult {
+                    source_path,
+                    item: None,
+                    error: Some(error),
+                },
             }
         })
         .collect()

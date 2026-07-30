@@ -1,5 +1,7 @@
+import { Sparkles, X } from 'lucide-react';
 import { useEffect, useState } from 'react';
-import { getProblemDocument, saveProblemField, type ProblemDocument as ProblemDocumentModel } from '../../lib/tauri';
+import { InspectorSurface } from '../../components/material/InspectorSurface';
+import { getProblemDocument, hasAiApiKey, runProblemAnalysis, saveProblemField, type AiFieldSuggestion, type ProblemDocument as ProblemDocumentModel } from '../../lib/tauri';
 
 const fieldOrder = [
   ['stem', '题干'],
@@ -10,12 +12,18 @@ const fieldOrder = [
   ['notes', '补充笔记'],
 ] as const;
 
+const labels = new Map(fieldOrder);
+
 export function ProblemDocument({ problemId }: { problemId: string }) {
   const [document, setDocument] = useState<ProblemDocumentModel | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [editingKind, setEditingKind] = useState<string | null>(null);
   const [draft, setDraft] = useState('');
   const [isSaving, setIsSaving] = useState(false);
+  const [aiStage, setAiStage] = useState<'closed' | 'consent' | 'loading' | 'suggestions'>('closed');
+  const [aiMode, setAiMode] = useState<'flash' | 'deep'>('flash');
+  const [aiSuggestions, setAiSuggestions] = useState<AiFieldSuggestion[]>([]);
+  const [aiError, setAiError] = useState<string | null>(null);
 
   useEffect(() => {
     setDocument(null);
@@ -49,11 +57,67 @@ export function ProblemDocument({ problemId }: { problemId: string }) {
       setIsSaving(false);
     }
   };
+
+  const openAiReview = async () => {
+    setAiError(null);
+    if (!await hasAiApiKey()) {
+      setAiError('请先在设置中保存阿里云百炼 API Key。');
+      return;
+    }
+    setAiStage('consent');
+  };
+
+  const runAi = async () => {
+    setAiStage('loading');
+    setAiError(null);
+    try {
+      const suggestions = await runProblemAnalysis(document.id, aiMode);
+      setAiSuggestions(suggestions);
+      setAiStage('suggestions');
+    } catch (cause) {
+      setAiError(typeof cause === 'string' ? cause : 'AI 请求没有完成，请检查网络与账户后重试。');
+      setAiStage('consent');
+    }
+  };
+
+  const updateSuggestion = (index: number, value: string) => {
+    setAiSuggestions((current) => current.map((suggestion, currentIndex) => (
+      currentIndex === index ? { ...suggestion, value } : suggestion
+    )));
+  };
+
+  const rejectSuggestion = (index: number) => {
+    setAiSuggestions((current) => current.filter((_, currentIndex) => currentIndex !== index));
+  };
+
+  const acceptSuggestion = async (index: number) => {
+    const suggestion = aiSuggestions[index];
+    if (!suggestion) return;
+    setIsSaving(true);
+    setAiError(null);
+    try {
+      const saved = await saveProblemField(document.id, suggestion.kind, suggestion.value, document.updatedAt);
+      setDocument((current) => current ? {
+        ...current,
+        updatedAt: saved.updatedAt,
+        fields: [...current.fields.filter((field) => field.kind !== saved.kind), saved],
+      } : current);
+      rejectSuggestion(index);
+    } catch {
+      setAiError('采纳没有保存，题目可能已更新；请关闭审核器后重新打开。');
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
   return (
     <article className="problem-document" aria-label="题目档案">
       <header className="document-header">
-        <p className="eyebrow">待整理题目</p>
-        <h2>{fields.get('stem')?.value || '一份待补充的题目'}</h2>
+        <div className="document-header-row">
+          <div><p className="eyebrow">待整理题目</p><h2>{fields.get('stem')?.value || '一份待补充的题目'}</h2></div>
+          <button aria-label="AI 辅助整理" className="document-ai-action" onClick={() => void openAiReview()} type="button"><Sparkles aria-hidden="true" size={15} />AI 辅助整理</button>
+        </div>
+        {aiError && aiStage === 'closed' ? <p className="document-ai-notice" role="status">{aiError}</p> : null}
       </header>
       <div className="document-pages">
         {fieldOrder.map(([kind, label]) => {
@@ -79,6 +143,52 @@ export function ProblemDocument({ problemId }: { problemId: string }) {
           );
         })}
       </div>
+      {aiStage !== 'closed' ? (
+        <div className="inspector-backdrop">
+          <InspectorSurface>
+            <section aria-label="AI 建议审核" aria-modal="true" className="ai-review-inspector" role="dialog">
+              <header className="preferences-header">
+                <div><p className="eyebrow">通义千问 · 可选增强</p><h2>逐字段审核建议</h2></div>
+                <button aria-label="关闭 AI 审核" className="inspector-close" onClick={() => setAiStage('closed')} type="button"><X aria-hidden="true" size={17} /></button>
+              </header>
+              {aiStage === 'consent' || aiStage === 'loading' ? (
+                <div className="ai-consent">
+                  <p>本次发送这道题已经填写的字段；<strong>若原件为题图，本次会一并发送</strong>。不发送整门课程资料，也不自动写回任何答案。</p>
+                  <fieldset className="ai-mode-picker" disabled={aiStage === 'loading'}>
+                    <legend>分析模式</legend>
+                    <label className={aiMode === 'flash' ? 'is-selected' : ''}>
+                      <input aria-label="快速整理" checked={aiMode === 'flash'} name="ai-mode" onChange={() => setAiMode('flash')} type="radio" />
+                      <span><strong>快速整理</strong><small>qwen3-vl-flash · 日常题目</small></span>
+                    </label>
+                    <label className={aiMode === 'deep' ? 'is-selected' : ''}>
+                      <input aria-label="深度分析" checked={aiMode === 'deep'} name="ai-mode" onChange={() => setAiMode('deep')} type="radio" />
+                      <span><strong>深度分析</strong><small>qwen3-vl-plus · 复杂推导</small></span>
+                    </label>
+                  </fieldset>
+                  <ul><li>题目原件：图片随本次请求发送；PDF 不直接发送</li><li>教材片段：本次不发送</li><li>返回结果：逐字段审核</li></ul>
+                  {aiError ? <p className="ai-error" role="status">{aiError}</p> : null}
+                  <button className="primary-action" disabled={aiStage === 'loading'} onClick={() => void runAi()} type="button">{aiStage === 'loading' ? '正在生成建议…' : '确认发送给通义千问'}</button>
+                </div>
+              ) : (
+                <div className="ai-suggestions">
+                  {aiSuggestions.length === 0 ? <p className="ai-empty">没有可采纳的字段建议。</p> : null}
+                  {aiSuggestions.map((suggestion, index) => {
+                    const label = labels.get(suggestion.kind as typeof fieldOrder[number][0]) ?? suggestion.kind;
+                    return (
+                      <section className="ai-suggestion" key={`${suggestion.kind}-${index}`}>
+                        <p>{label}</p>
+                        <textarea aria-label={`编辑 AI ${label}建议`} onChange={(event) => updateSuggestion(index, event.target.value)} value={suggestion.value} />
+                        <div><button onClick={() => rejectSuggestion(index)} type="button">拒绝</button><button disabled={isSaving} onClick={() => void acceptSuggestion(index)} type="button">{`采纳${label}`}</button></div>
+                      </section>
+                    );
+                  })}
+                  {aiError ? <p className="ai-error" role="status">{aiError}</p> : null}
+                </div>
+              )}
+            </section>
+          </InspectorSurface>
+        </div>
+      ) : null}
     </article>
   );
 }

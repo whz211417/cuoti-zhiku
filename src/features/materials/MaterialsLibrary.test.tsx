@@ -1,0 +1,55 @@
+import { render, screen } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
+import { expect, test, vi } from 'vitest';
+import { MaterialsLibrary } from './MaterialsLibrary';
+
+const { importCourseMaterialFile, open, saveCourseMaterial, searchCourseMaterial } = vi.hoisted(() => ({
+  importCourseMaterialFile: vi.fn(),
+  open: vi.fn(),
+  saveCourseMaterial: vi.fn(),
+  searchCourseMaterial: vi.fn(),
+}));
+vi.mock('@tauri-apps/plugin-dialog', () => ({ open }));
+vi.mock('../../lib/tauri', () => ({ importCourseMaterialFile, saveCourseMaterial, searchCourseMaterial }));
+
+test('stores pasted course material locally before making it searchable', async () => {
+  const user = userEvent.setup();
+  saveCourseMaterial.mockResolvedValue({ id: 'material-1', courseId: 'macro', filename: 'IS-LM 讲义.md' });
+  render(<MaterialsLibrary courseId="macro" />);
+
+  await user.type(screen.getByLabelText('材料名称'), 'IS-LM 讲义.md');
+  await user.type(screen.getByLabelText('材料正文'), '货币供给增加会使 LM 曲线向右移动。');
+  await user.click(screen.getByRole('button', { name: '保存为本地依据' }));
+
+  expect(saveCourseMaterial).toHaveBeenCalledWith('macro', 'IS-LM 讲义.md', '货币供给增加会使 LM 曲线向右移动。');
+  expect(await screen.findByText('已保存到本课程资料库。')).toBeVisible();
+});
+
+test('shows only locally matched snippets for the selected course', async () => {
+  const user = userEvent.setup();
+  searchCourseMaterial.mockResolvedValue([{ materialId: 'material-1', filename: 'IS-LM 讲义.md', excerpt: '货币供给增加会使 LM 曲线向右移动。' }]);
+  render(<MaterialsLibrary courseId="macro" />);
+
+  await user.type(screen.getByLabelText('检索课程资料'), 'LM 曲线');
+  await user.click(screen.getByRole('button', { name: '检索' }));
+
+  expect(searchCourseMaterial).toHaveBeenCalledWith('macro', 'LM 曲线');
+  expect(await screen.findByText('货币供给增加会使 LM 曲线向右移动。')).toBeVisible();
+});
+
+test('imports a selected PDF into the active course without pasting its text', async () => {
+  const user = userEvent.setup();
+  open.mockResolvedValue('C:/教材/宏观经济学第六章.pdf');
+  importCourseMaterialFile.mockResolvedValue({
+    id: 'material-pdf',
+    courseId: 'macro',
+    filename: '宏观经济学第六章.pdf',
+  });
+  render(<MaterialsLibrary courseId="macro" />);
+
+  await user.click(screen.getByRole('button', { name: '导入 PDF 或讲义' }));
+
+  expect(open).toHaveBeenCalledWith(expect.objectContaining({ multiple: false }));
+  expect(importCourseMaterialFile).toHaveBeenCalledWith('macro', 'C:/教材/宏观经济学第六章.pdf');
+  expect(await screen.findByText('已从文件提取文字并保存到本课程。')).toBeVisible();
+});

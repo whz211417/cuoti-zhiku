@@ -11,4 +11,5 @@ test('uses a solid surface when transparency is reduced', () => {
   render(<InspectorSurface><p>内容</p></InspectorSurface>);
 
   expect(screen.getByText('内容').parentElement).toHaveClass('is-solid');
+  expect(screen.getByText('内容').closest('.inspector-positioner')).toBeInTheDocument();
 });

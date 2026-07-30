@@ -7,6 +7,11 @@ export type LibraryHealth = {
 };
 
 export const getLibraryHealth = () => invoke<LibraryHealth>('get_library_health');
+export const createLibraryBackup = (destination: string) => invoke<void>('create_library_backup', { destination });
+export const restoreLibraryBackup = (source: string) => invoke<string>('restore_library_backup', { source });
+export const hasAiApiKey = () => invoke<boolean>('has_ai_api_key');
+export const saveAiApiKey = (apiKey: string) => invoke<void>('save_ai_api_key', { apiKey });
+export const clearAiApiKey = () => invoke<void>('clear_ai_api_key');
 
 export type InboxItem = {
   id: string;
@@ -21,6 +26,15 @@ export type Course = { id: string; name: string; term: string; color: string };
 export const getCourses = () => invoke<Course[]>('get_courses');
 export const createCourse = (name: string, term: string, color: string) =>
   invoke<Course>('create_course', { name, term, color });
+
+export type CourseMaterial = { id: string; courseId: string; filename: string };
+export type MaterialSnippet = { materialId: string; filename: string; excerpt: string };
+export const importCourseMaterialFile = (courseId: string, path: string) =>
+  invoke<CourseMaterial>('import_course_material_file', { courseId, path });
+export const saveCourseMaterial = (courseId: string, filename: string, content: string) =>
+  invoke<CourseMaterial>('save_course_material', { courseId, filename, content });
+export const searchCourseMaterial = (courseId: string, query: string) =>
+  invoke<MaterialSnippet[]>('search_course_material', { courseId, query });
 
 export type ImportFileResult = {
   sourcePath: string;
@@ -52,5 +66,18 @@ export const saveProblemField = (problemId: string, kind: string, value: string,
     problemId, kind, value, expectedUpdatedAt,
   });
 
+export type AiFieldSuggestion = { kind: string; value: string };
+export const runProblemAnalysis = (problemId: string, mode: 'flash' | 'deep') =>
+  invoke<AiFieldSuggestion[]>('run_problem_analysis', { problemId, mode });
+
 export const importFiles = (paths: string[], courseId?: string) =>
   invoke<ImportFileResult[]>('import_files', { paths, courseId });
+
+export type ReviewProblem = { id: string; stem: string; ownAnswer: string; standardAnswer: string; explanation: string };
+export const getDueReviewProblems = (today: string) => invoke<ReviewProblem[]>('get_due_review_problems', { today });
+export const completeReview = (problemId: string, grade: string, reviewedOn: string) =>
+  invoke<{ intervalDays: number; nextReviewOn: string }>('complete_review', { problemId, grade, reviewedOn });
+
+export type ProblemBook = { markdown: string; problemCount: number };
+export const exportProblemBook = (destination: string, includeAnswers: boolean) =>
+  invoke<ProblemBook>('export_problem_book', { destination, includeAnswers });
