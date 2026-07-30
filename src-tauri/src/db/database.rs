@@ -15,7 +15,10 @@ use serde::Serialize;
 
 use crate::{
     domain::{
-        dashboard::{ActivityDay, CountedSignal, CourseSummary, DashboardOverview, RecentProblem},
+        dashboard::{
+            ActivityDay, CountedSignal, CourseSummary, DashboardOverview, LibrarySearchResult,
+            RecentProblem,
+        },
         problems::{ProblemDocument, ProblemField, ProblemFieldKind, SavedProblemField},
         review::{schedule_next, ReviewGrade, ReviewSchedule},
     },
@@ -219,6 +222,82 @@ impl Database {
             top_knowledge_topics: query_counted_fields(&connection, "notes", true)?,
             activity_last_seven_days: query_activity_days(&connection, today)?,
         })
+    }
+
+    pub fn search_library(
+        &self,
+        query: &str,
+        limit: u32,
+    ) -> DatabaseResult<Vec<LibrarySearchResult>> {
+        let query = query.trim();
+        if query.is_empty() {
+            return Ok(Vec::new());
+        }
+
+        let limit = limit.clamp(1, 12);
+        let pattern = format!("%{}%", escape_like_pattern(query));
+        let connection = self.connection()?;
+        let mut statement = connection.prepare(
+            r#"SELECT 'problem', p.id, COALESCE(p.course_id, ''),
+                       COALESCE(NULLIF(stem.value, ''), NULLIF(p.title, ''), i.filename, '未命名题目'),
+                       COALESCE(NULLIF(explanation.value, ''), NULLIF(stem.value, ''), ''),
+                       p.updated_at
+                FROM problems p
+                LEFT JOIN (
+                    SELECT problem_id, MAX(value) AS value
+                    FROM problem_fields
+                    WHERE kind = 'stem'
+                    GROUP BY problem_id
+                ) stem ON stem.problem_id = p.id
+                LEFT JOIN (
+                    SELECT problem_id, MAX(value) AS value
+                    FROM problem_fields
+                    WHERE kind = 'explanation'
+                    GROUP BY problem_id
+                ) explanation ON explanation.problem_id = p.id
+                LEFT JOIN inbox_items i ON i.problem_id = p.id
+                WHERE p.status != 'trash'
+                  AND (p.title LIKE ?1 ESCAPE '\' OR EXISTS (
+                    SELECT 1 FROM problem_fields f
+                    WHERE f.problem_id = p.id AND f.value LIKE ?1 ESCAPE '\'
+                  ))
+                UNION ALL
+                SELECT 'course', c.id, c.id, c.name, c.term, c.updated_at
+                FROM courses c
+                WHERE c.archived_at IS NULL
+                  AND (c.name LIKE ?1 ESCAPE '\' OR c.term LIKE ?1 ESCAPE '\')
+                UNION ALL
+                SELECT 'material', m.id, m.course_id, m.filename, ch.content, m.created_at
+                FROM course_materials m
+                JOIN material_chunks ch ON ch.material_id = m.id
+                WHERE m.filename LIKE ?1 ESCAPE '\' OR ch.content LIKE ?1 ESCAPE '\'
+                ORDER BY updated_at DESC
+                LIMIT ?2"#,
+        )?;
+        let rows = statement.query_map(params![pattern, i64::from(limit)], |row| {
+            Ok(LibrarySearchResult {
+                kind: row.get(0)?,
+                id: row.get(1)?,
+                course_id: row.get(2)?,
+                title: row.get(3)?,
+                snippet: row.get(4)?,
+                updated_at: row.get(5)?,
+            })
+        })?;
+
+        let mut material_ids = HashSet::new();
+        let mut results = Vec::with_capacity(limit as usize);
+        for result in rows {
+            let result = result?;
+            if result.kind == "material" && !material_ids.insert(result.id.clone()) {
+                continue;
+            }
+            results.push(result);
+            if results.len() == limit as usize {
+                break;
+            }
+        }
+        Ok(results)
     }
 
     pub fn create_backup(&self, destination: &Path) -> DatabaseResult<()> {
@@ -688,6 +767,17 @@ fn split_material_chunks(content: &str, maximum_characters: usize) -> Vec<String
         .chunks(maximum_characters)
         .map(|chunk| chunk.iter().collect::<String>())
         .collect()
+}
+
+fn escape_like_pattern(query: &str) -> String {
+    let mut escaped = String::with_capacity(query.len());
+    for character in query.chars() {
+        if matches!(character, '\\' | '%' | '_') {
+            escaped.push('\\');
+        }
+        escaped.push(character);
+    }
+    escaped
 }
 
 fn query_scalar<P: rusqlite::Params>(

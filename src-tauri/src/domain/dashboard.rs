@@ -1,5 +1,16 @@
 use serde::Serialize;
 
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LibrarySearchResult {
+    pub kind: String,
+    pub id: String,
+    pub course_id: String,
+    pub title: String,
+    pub snippet: String,
+    pub updated_at: String,
+}
+
 #[derive(Serialize, Clone, Debug, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct CountedSignal {

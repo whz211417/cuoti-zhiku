@@ -50,6 +50,229 @@ fn insert_dashboard_field(connection: &Connection, problem_id: &str, kind: &str,
         .expect("insert dashboard field");
 }
 
+fn insert_library_course(connection: &Connection, id: &str, name: &str, updated_at: &str) {
+    connection
+        .execute(
+            "INSERT INTO courses(id, name, term, color, created_at, updated_at)
+             VALUES (?1, ?2, '', '#CE8876', ?3, ?3)",
+            params![id, name, updated_at],
+        )
+        .expect("insert library search course");
+}
+
+fn insert_library_material(
+    connection: &Connection,
+    id: &str,
+    course_id: &str,
+    filename: &str,
+    created_at: &str,
+    chunks: &[&str],
+) {
+    connection
+        .execute(
+            "INSERT INTO course_materials(id, course_id, filename, content, created_at)
+             VALUES (?1, ?2, ?3, ?4, ?5)",
+            params![id, course_id, filename, chunks.join(" "), created_at],
+        )
+        .expect("insert library search material");
+    for (ordinal, content) in chunks.iter().enumerate() {
+        connection
+            .execute(
+                "INSERT INTO material_chunks(id, material_id, ordinal, content)
+                 VALUES (?1, ?2, ?3, ?4)",
+                params![format!("{id}-chunk-{ordinal}"), id, ordinal as i64, content],
+            )
+            .expect("insert library search material chunk");
+    }
+}
+
+#[test]
+fn library_search_finds_problem_course_and_material_for_is_lm() {
+    let (root, database) = dashboard_database();
+    let connection = dashboard_connection(&root);
+    insert_library_course(
+        &connection,
+        "macro",
+        "IS-LM macroeconomics",
+        "2026-07-30T08:00:00",
+    );
+    insert_dashboard_problem(
+        &connection,
+        "is-lm-problem",
+        "macro",
+        "active",
+        "IS-LM equilibrium",
+        None,
+        "2026-07-30T09:00:00",
+        None,
+    );
+    insert_library_material(
+        &connection,
+        "is-lm-material",
+        "macro",
+        "is-lm-notes.md",
+        "2026-07-30T07:00:00",
+        &["The IS-LM model"],
+    );
+    drop(connection);
+
+    let results = database
+        .search_library("IS-LM", 12)
+        .expect("library search");
+
+    assert!(results.iter().any(|result| result.kind == "problem"));
+    assert!(results.iter().any(|result| result.kind == "course"));
+    assert!(results.iter().any(|result| result.kind == "material"));
+}
+
+#[test]
+fn library_search_never_exceeds_the_single_global_limit() {
+    let (root, database) = dashboard_database();
+    let connection = dashboard_connection(&root);
+    for index in 0..5 {
+        insert_library_course(
+            &connection,
+            &format!("limit-{index}"),
+            "Global limit course",
+            &format!("2026-07-30T0{index}:00:00"),
+        );
+    }
+    drop(connection);
+
+    let results = database
+        .search_library("Global limit", 2)
+        .expect("library search");
+
+    assert_eq!(results.len(), 2);
+}
+
+#[test]
+fn library_search_treats_percent_and_underscore_as_literal_characters() {
+    let (root, database) = dashboard_database();
+    let connection = dashboard_connection(&root);
+    insert_library_course(
+        &connection,
+        "literal-wildcards",
+        "Literal %_ marker",
+        "2026-07-30",
+    );
+    insert_library_course(
+        &connection,
+        "wildcard-lookalike",
+        "Literal ab marker",
+        "2026-07-29",
+    );
+    drop(connection);
+
+    let results = database.search_library("%_", 12).expect("library search");
+
+    assert_eq!(
+        results
+            .iter()
+            .map(|result| result.id.as_str())
+            .collect::<Vec<_>>(),
+        vec!["literal-wildcards"]
+    );
+}
+
+#[test]
+fn library_search_treats_backslash_as_an_escapeable_literal_character() {
+    let (root, database) = dashboard_database();
+    let connection = dashboard_connection(&root);
+    insert_library_course(&connection, "backslash", "Path \\ separator", "2026-07-30");
+    insert_library_course(&connection, "plain", "Path separator", "2026-07-29");
+    drop(connection);
+
+    let results = database.search_library("\\", 12).expect("library search");
+
+    assert_eq!(
+        results
+            .iter()
+            .map(|result| result.id.as_str())
+            .collect::<Vec<_>>(),
+        vec!["backslash"]
+    );
+}
+
+#[test]
+fn library_search_clamps_limit_to_the_inclusive_range_one_through_twelve() {
+    let (root, database) = dashboard_database();
+    let connection = dashboard_connection(&root);
+    for index in 0..13 {
+        insert_library_course(
+            &connection,
+            &format!("clamp-{index}"),
+            "Clamp result",
+            &format!("2026-07-{index:02}"),
+        );
+    }
+    drop(connection);
+
+    assert_eq!(
+        database
+            .search_library("Clamp result", 0)
+            .expect("zero limit clamped")
+            .len(),
+        1
+    );
+    assert_eq!(
+        database
+            .search_library("Clamp result", 99)
+            .expect("large limit clamped")
+            .len(),
+        12
+    );
+}
+
+#[test]
+fn library_search_collapses_duplicate_material_chunks_without_reordering_materials() {
+    let (root, database) = dashboard_database();
+    let connection = dashboard_connection(&root);
+    insert_library_course(&connection, "materials", "Material course", "2026-07-01");
+    insert_library_material(
+        &connection,
+        "material-new",
+        "materials",
+        "new.md",
+        "2026-07-30T09:00:00",
+        &["IS-LM first chunk", "IS-LM second chunk"],
+    );
+    insert_library_material(
+        &connection,
+        "material-old",
+        "materials",
+        "old.md",
+        "2026-07-29T09:00:00",
+        &["IS-LM old chunk"],
+    );
+    drop(connection);
+
+    let results = database
+        .search_library("IS-LM", 12)
+        .expect("library search");
+    let material_ids = results
+        .iter()
+        .filter(|result| result.kind == "material")
+        .map(|result| result.id.as_str())
+        .collect::<Vec<_>>();
+
+    assert_eq!(material_ids, vec!["material-new", "material-old"]);
+}
+
+#[test]
+fn library_search_returns_no_results_for_a_whitespace_only_query() {
+    let (root, database) = dashboard_database();
+    let connection = dashboard_connection(&root);
+    insert_library_course(&connection, "nonempty", "Searchable course", "2026-07-30");
+    drop(connection);
+
+    let results = database
+        .search_library(" \n\t ", 12)
+        .expect("library search");
+
+    assert!(results.is_empty());
+}
+
 #[test]
 fn dashboard_overview_returns_zero_counts_for_an_empty_library() {
     let (_root, database) = dashboard_database();
