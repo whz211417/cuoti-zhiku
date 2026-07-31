@@ -1,0 +1,7 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "main-window",
+  "description": "Grants the main local learning window the core and file-dialog capabilities used by the UI.",
+  "windows": ["main"],
+  "permissions": ["core:default", "dialog:default"]
+}

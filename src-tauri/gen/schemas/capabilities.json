@@ -1,1 +1,1 @@
-{}
+{"main-window":{"identifier":"main-window","description":"Grants the main local learning window the core and file-dialog capabilities used by the UI.","local":true,"windows":["main"],"permissions":["core:default","dialog:default"]}}
