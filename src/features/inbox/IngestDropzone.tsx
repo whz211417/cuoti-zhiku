@@ -1,9 +1,17 @@
-import { open } from '@tauri-apps/plugin-dialog';
 import { FileText, Upload } from 'lucide-react';
 import { useEffect, useState } from 'react';
-import { getInboxItems, importFiles, type ImportFileResult } from '../../lib/tauri';
+import { getInboxItems, type ImportFileResult } from '../../lib/tauri';
+import { selectProblemFiles } from './selectProblemFiles';
 
-export function IngestDropzone({ courseId, onOpenProblem }: { courseId: string | null; onOpenProblem?: (problemId: string) => void }) {
+export function IngestDropzone({
+  courseId,
+  onImported,
+  onOpenProblem,
+}: {
+  courseId: string | null;
+  onImported?: () => void;
+  onOpenProblem?: (problemId: string) => void;
+}) {
   const [items, setItems] = useState<ImportFileResult[]>([]);
   const [isSelecting, setIsSelecting] = useState(false);
 
@@ -16,14 +24,10 @@ export function IngestDropzone({ courseId, onOpenProblem }: { courseId: string |
   const selectFiles = async () => {
     setIsSelecting(true);
     try {
-      const selection = await open({
-        multiple: true,
-        filters: [{ name: '题目与资料', extensions: ['png', 'jpg', 'jpeg', 'webp', 'pdf'] }],
-      });
-      const paths = Array.isArray(selection) ? selection : selection ? [selection] : [];
-      if (paths.length === 0) return;
-      const results = await importFiles(paths, courseId ?? undefined);
+      const results = await selectProblemFiles(courseId);
+      if (results.length === 0) return;
       setItems((current) => [...results, ...current]);
+      if (results.some((result) => result.item)) onImported?.();
     } finally {
       setIsSelecting(false);
     }

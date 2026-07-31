@@ -1,24 +1,28 @@
 import { useGSAP } from '@gsap/react';
 import { gsap } from 'gsap';
-import { Archive, BookOpenCheck, ChevronLeft, Inbox, Search, Settings, ShieldCheck, X } from 'lucide-react';
+import { Archive, BookOpenCheck, ChevronLeft, Inbox, LayoutDashboard, Search, Settings, ShieldCheck, Upload, X } from 'lucide-react';
 import { type CSSProperties, useEffect, useRef, useState } from 'react';
 import { DynamicControlSurface } from '../components/material/DynamicControlSurface';
 import { InspectorSurface } from '../components/material/InspectorSurface';
 import { createBackup } from '../features/backup/createBackup';
 import { restoreBackup } from '../features/backup/restoreBackup';
 import { CourseSidebar } from '../features/courses/CourseSidebar';
+import { LearningDashboard } from '../features/dashboard/LearningDashboard';
 import { saveProblemBook, type BookKind } from '../features/export/exportBooks';
 import { IngestDropzone } from '../features/inbox/IngestDropzone';
+import { selectProblemFiles } from '../features/inbox/selectProblemFiles';
 import { MaterialsLibrary } from '../features/materials/MaterialsLibrary';
 import { ProblemDocument } from '../features/problems/ProblemDocument';
 import { ReviewReader } from '../features/review/ReviewReader';
+import { CommandPalette } from '../features/search/CommandPalette';
 import { AiSettings } from '../features/settings/AiSettings';
 import { getMotionPreferences } from '../lib/preferences';
 import { completeReview, getDueReviewProblems, type ReviewProblem } from '../lib/tauri';
 
-type Workspace = 'inbox' | 'review' | 'archive';
+type Workspace = 'overview' | 'inbox' | 'review' | 'archive';
 
 const workspaceTitles: Record<Workspace, { eyebrow: string; title: string }> = {
+  overview: { eyebrow: '学习节奏', title: '学习总览' },
   inbox: { eyebrow: '本地资料库', title: '收件箱' },
   review: { eyebrow: '专注复习', title: '今日复习' },
   archive: { eyebrow: '个人档案', title: '全部档案' },
@@ -27,8 +31,12 @@ const workspaceTitles: Record<Workspace, { eyebrow: string; title: string }> = {
 export function App() {
   const [selectedProblemId, setSelectedProblemId] = useState<string | null>(null);
   const [selectedCourseId, setSelectedCourseId] = useState<string | null>(null);
-  const [workspace, setWorkspace] = useState<Workspace>('inbox');
+  const [workspace, setWorkspace] = useState<Workspace>('overview');
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [isSearchOpen, setIsSearchOpen] = useState(false);
+  const [isIngesting, setIsIngesting] = useState(false);
+  const [materialInitialQuery, setMaterialInitialQuery] = useState('');
+  const [refreshToken, setRefreshToken] = useState(0);
   const [reviewQueue, setReviewQueue] = useState<ReviewProblem[]>([]);
   const [isReviewLoading, setIsReviewLoading] = useState(false);
   const [exportStatus, setExportStatus] = useState<string | null>(null);
@@ -37,7 +45,17 @@ export function App() {
   const [isRestoring, setIsRestoring] = useState(false);
   const contentRef = useRef<HTMLDivElement>(null);
   const activeTitle = selectedProblemId ? { eyebrow: '本地资料库', title: '题目档案' } : workspaceTitles[workspace];
-  const activeNavIndex = selectedProblemId ? null : workspace === 'inbox' ? 0 : workspace === 'review' ? 1 : 2;
+  const activeNavIndex = selectedProblemId
+    ? null
+    : workspace === 'overview'
+      ? 0
+      : workspace === 'inbox'
+        ? 1
+        : workspace === 'review'
+          ? 2
+          : 3;
+
+  const refreshOverview = () => setRefreshToken((token) => token + 1);
 
   useEffect(() => {
     if (workspace !== 'review') return;
@@ -46,11 +64,42 @@ export function App() {
     void getDueReviewProblems(today).then(setReviewQueue).catch(() => setReviewQueue([])).finally(() => setIsReviewLoading(false));
   }, [workspace]);
 
+  useEffect(() => {
+    const openSearch = (event: KeyboardEvent) => {
+      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'k') {
+        event.preventDefault();
+        setIsSearchOpen(true);
+      }
+    };
+    window.addEventListener('keydown', openSearch);
+    return () => window.removeEventListener('keydown', openSearch);
+  }, []);
+
   const gradeCurrentReview = async (grade: 'forgot' | 'hard' | 'familiar' | 'mastered') => {
     const current = reviewQueue[0];
     if (!current) return;
-    await completeReview(current.id, grade, new Date().toISOString().slice(0, 10));
-    setReviewQueue((currentQueue) => currentQueue.slice(1));
+    try {
+      await completeReview(current.id, grade, new Date().toISOString().slice(0, 10));
+      setReviewQueue((currentQueue) => currentQueue.slice(1));
+      refreshOverview();
+    } catch {
+      // Keep the current card in place so the learner can retry the local save.
+    }
+  };
+
+  const ingestProblemFiles = async () => {
+    setIsIngesting(true);
+    try {
+      const results = await selectProblemFiles(selectedCourseId);
+      if (!results.some((result) => result.item)) return;
+      refreshOverview();
+      setSelectedProblemId(null);
+      setWorkspace('inbox');
+    } catch {
+      // Native dialog and import errors remain local to the initiating action.
+    } finally {
+      setIsIngesting(false);
+    }
   };
 
   const exportBook = async (kind: BookKind) => {
@@ -99,13 +148,29 @@ export function App() {
   }, { dependencies: [workspace, selectedProblemId], revertOnUpdate: true, scope: contentRef });
 
   const openProblem = (problemId: string) => {
+    setMaterialInitialQuery('');
     setWorkspace('inbox');
     setSelectedProblemId(problemId);
   };
 
   const selectWorkspace = (nextWorkspace: Workspace) => {
+    setMaterialInitialQuery('');
     setSelectedProblemId(null);
     setWorkspace(nextWorkspace);
+  };
+
+  const openCourse = (courseId: string) => {
+    setSelectedCourseId(courseId);
+    setMaterialInitialQuery('');
+    setSelectedProblemId(null);
+    setWorkspace('archive');
+  };
+
+  const openMaterial = (courseId: string, query: string) => {
+    setSelectedCourseId(courseId);
+    setMaterialInitialQuery(query);
+    setSelectedProblemId(null);
+    setWorkspace('archive');
   };
 
   return (
@@ -122,6 +187,9 @@ export function App() {
           style={{ '--nav-index': activeNavIndex ?? 0 } as CSSProperties}
         >
           <span aria-hidden="true" className="nav-selection-lens" />
+          <button aria-current={workspace === 'overview' && !selectedProblemId ? 'page' : undefined} className={`nav-item ${workspace === 'overview' && !selectedProblemId ? 'is-active' : ''}`} onClick={() => selectWorkspace('overview')} type="button">
+            <span><LayoutDashboard aria-hidden="true" size={16} />学习总览</span>
+          </button>
           <button aria-current={workspace === 'inbox' && !selectedProblemId ? 'page' : undefined} className={`nav-item ${workspace === 'inbox' && !selectedProblemId ? 'is-active' : ''}`} onClick={() => selectWorkspace('inbox')} type="button">
             <span><Inbox aria-hidden="true" size={16} />收件箱</span><em>本地</em>
           </button>
@@ -133,7 +201,7 @@ export function App() {
           </button>
         </nav>
 
-        <div className="sidebar-section"><CourseSidebar onSelectCourse={setSelectedCourseId} selectedCourseId={selectedCourseId} /></div>
+        <div className="sidebar-section"><CourseSidebar onCourseCreated={refreshOverview} onSelectCourse={setSelectedCourseId} selectedCourseId={selectedCourseId} /></div>
         <p className="local-note"><ShieldCheck aria-hidden="true" size={13} />仅存储在这台电脑</p>
       </DynamicControlSurface>
 
@@ -144,7 +212,8 @@ export function App() {
             <h1>{activeTitle.title}</h1>
           </div>
           <div aria-label="工具" className="toolbar-actions">
-            <button aria-label="搜索题目" className="toolbar-button icon-button" type="button"><Search aria-hidden="true" size={17} /></button>
+            <button aria-label="投进题目" className="toolbar-button toolbar-ingest-action" disabled={isIngesting} onClick={() => void ingestProblemFiles()} type="button"><Upload aria-hidden="true" size={16} /><span>{isIngesting ? '正在导入…' : '投进题目'}</span></button>
+            <button aria-label="全局搜索" className="toolbar-button icon-button" onClick={() => setIsSearchOpen(true)} type="button"><Search aria-hidden="true" size={17} /></button>
             <button aria-label="设置" className="toolbar-button icon-button" onClick={() => setIsSettingsOpen(true)} type="button"><Settings aria-hidden="true" size={17} /></button>
           </div>
         </DynamicControlSurface>
@@ -153,11 +222,22 @@ export function App() {
           {selectedProblemId ? (
             <div className="document-stage">
               <button className="back-to-inbox" onClick={() => setSelectedProblemId(null)} type="button"><ChevronLeft aria-hidden="true" size={17} />返回收件箱</button>
-              <ProblemDocument problemId={selectedProblemId} />
+              <ProblemDocument onSaved={refreshOverview} problemId={selectedProblemId} />
+            </div>
+          ) : workspace === 'overview' ? (
+            <div className="dashboard-stage">
+              <LearningDashboard
+                onIngest={() => void ingestProblemFiles()}
+                onOpenCourse={openCourse}
+                onOpenInbox={() => selectWorkspace('inbox')}
+                onOpenProblem={openProblem}
+                onStartReview={() => selectWorkspace('review')}
+                refreshToken={refreshToken}
+              />
             </div>
           ) : workspace === 'inbox' ? (
             <div className="inbox-stage">
-              <IngestDropzone courseId={selectedCourseId} onOpenProblem={openProblem} />
+              <IngestDropzone courseId={selectedCourseId} onImported={refreshOverview} onOpenProblem={openProblem} />
               <section className="reading-note" aria-label="整理提示">
                 <p className="eyebrow">一个安心的流程</p>
                 <h2>先收题，后整理。</h2>
@@ -177,9 +257,18 @@ export function App() {
               <p>{isReviewLoading ? '正在从本地资料库读取到期题目。' : '完成题目整理后，它会以专注阅读页的方式出现在这里。'}</p>
             </section>
           ) : (
-            <MaterialsLibrary courseId={selectedCourseId} />
+            <MaterialsLibrary courseId={selectedCourseId} initialQuery={materialInitialQuery} onSaved={refreshOverview} />
           )}
         </div>
+
+        <CommandPalette
+          onClose={() => setIsSearchOpen(false)}
+          onOpenCourse={openCourse}
+          onOpenMaterial={openMaterial}
+          onOpenProblem={openProblem}
+          open={isSearchOpen}
+          recentProblems={[]}
+        />
 
         {isSettingsOpen ? (
           <div className="inspector-backdrop">

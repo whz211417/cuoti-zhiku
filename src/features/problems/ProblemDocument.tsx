@@ -14,7 +14,7 @@ const fieldOrder = [
 
 const labels = new Map(fieldOrder);
 
-export function ProblemDocument({ problemId }: { problemId: string }) {
+export function ProblemDocument({ onSaved, problemId }: { onSaved?: () => void; problemId: string }) {
   const [document, setDocument] = useState<ProblemDocumentModel | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [editingKind, setEditingKind] = useState<string | null>(null);
@@ -51,6 +51,7 @@ export function ProblemDocument({ problemId }: { problemId: string }) {
         fields: [...current.fields.filter((field) => field.kind !== saved.kind), saved],
       } : current);
       setEditingKind(null);
+      onSaved?.();
     } catch {
       setError('保存没有完成。题目可能已在另一处更新，请刷新后重试。');
     } finally {
@@ -103,6 +104,7 @@ export function ProblemDocument({ problemId }: { problemId: string }) {
         fields: [...current.fields.filter((field) => field.kind !== saved.kind), saved],
       } : current);
       rejectSuggestion(index);
+      onSaved?.();
     } catch {
       setAiError('采纳没有保存，题目可能已更新；请关闭审核器后重新打开。');
     } finally {

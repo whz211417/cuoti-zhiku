@@ -1,7 +1,15 @@
 import { FormEvent, useEffect, useState } from 'react';
 import { createCourse, getCourses, type Course } from '../../lib/tauri';
 
-export function CourseSidebar({ onSelectCourse, selectedCourseId }: { onSelectCourse: (courseId: string | null) => void; selectedCourseId: string | null }) {
+export function CourseSidebar({
+  onCourseCreated,
+  onSelectCourse,
+  selectedCourseId,
+}: {
+  onCourseCreated?: () => void;
+  onSelectCourse: (courseId: string | null) => void;
+  selectedCourseId: string | null;
+}) {
   const [courses, setCourses] = useState<Course[]>([]);
   const [isAdding, setIsAdding] = useState(false);
   const [name, setName] = useState('');
@@ -15,6 +23,7 @@ export function CourseSidebar({ onSelectCourse, selectedCourseId }: { onSelectCo
     setName('');
     setIsAdding(false);
     onSelectCourse(course.id);
+    onCourseCreated?.();
   };
 
   return (

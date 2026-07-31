@@ -34,15 +34,17 @@ test('renders a saved problem as a reading document', async () => {
 test('saves an added stem with the document version', async () => {
   getProblemDocument.mockResolvedValue({ id: 'problem-2', title: '', status: 'inbox', updatedAt: 'version-1', fields: [] });
   saveProblemField.mockResolvedValue({ problemId: 'problem-2', kind: 'stem', value: 'LM 曲线何时右移？', updatedAt: 'version-2' });
+  const onSaved = vi.fn();
   const user = userEvent.setup();
 
-  render(<ProblemDocument problemId="problem-2" />);
+  render(<ProblemDocument onSaved={onSaved} problemId="problem-2" />);
   await user.click(await screen.findByRole('button', { name: '补充题干' }));
   await user.type(screen.getByLabelText('编辑题干'), 'LM 曲线何时右移？');
   await user.click(screen.getByRole('button', { name: '保存题干' }));
 
   expect(saveProblemField).toHaveBeenCalledWith('problem-2', 'stem', 'LM 曲线何时右移？', 'version-1');
   expect(await screen.findByRole('heading', { name: 'LM 曲线何时右移？' })).toBeVisible();
+  expect(onSaved).toHaveBeenCalledOnce();
 });
 
 test('runs AI only after consent and accepts suggestions one field at a time', async () => {
@@ -64,8 +66,9 @@ test('runs AI only after consent and accepts suggestions one field at a time', a
     value: 'IS 曲线向右移动。',
     updatedAt: 'version-2',
   });
+  const onSaved = vi.fn();
   const user = userEvent.setup();
-  render(<ProblemDocument problemId="problem-ai" />);
+  render(<ProblemDocument onSaved={onSaved} problemId="problem-ai" />);
 
   await user.click(await screen.findByRole('button', { name: 'AI 辅助整理' }));
   expect(runProblemAnalysis).not.toHaveBeenCalled();
@@ -79,7 +82,23 @@ test('runs AI only after consent and accepts suggestions one field at a time', a
     'IS 曲线向右移动。',
     'version-1',
   );
+  expect(onSaved).toHaveBeenCalledOnce();
   expect(screen.getByText('政府购买增加会提高总需求。')).toBeVisible();
+});
+
+test('does not report a user field as saved when persistence fails', async () => {
+  getProblemDocument.mockResolvedValue({ id: 'problem-failed', title: '', status: 'inbox', updatedAt: 'version-1', fields: [] });
+  saveProblemField.mockRejectedValue(new Error('version conflict'));
+  const onSaved = vi.fn();
+  const user = userEvent.setup();
+
+  render(<ProblemDocument onSaved={onSaved} problemId="problem-failed" />);
+  await user.click(await screen.findByRole('button', { name: '补充题干' }));
+  await user.type(screen.getByLabelText('编辑题干'), '不会被保存');
+  await user.click(screen.getByRole('button', { name: '保存题干' }));
+
+  expect(await screen.findByRole('status')).toHaveTextContent('保存没有完成');
+  expect(onSaved).not.toHaveBeenCalled();
 });
 
 test('lets the learner explicitly choose deep analysis before sending', async () => {
