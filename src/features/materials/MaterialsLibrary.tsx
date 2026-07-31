@@ -1,9 +1,17 @@
 import { open } from '@tauri-apps/plugin-dialog';
 import { BookMarked, FileUp, LockKeyhole, Save, Search } from 'lucide-react';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { importCourseMaterialFile, saveCourseMaterial, searchCourseMaterial, type MaterialSnippet } from '../../lib/tauri';
 
-export function MaterialsLibrary({ courseId }: { courseId: string | null }) {
+export function MaterialsLibrary({
+  courseId,
+  initialQuery = '',
+  onSaved,
+}: {
+  courseId: string | null;
+  initialQuery?: string;
+  onSaved?: () => void;
+}) {
   const [filename, setFilename] = useState('');
   const [content, setContent] = useState('');
   const [status, setStatus] = useState<string | null>(null);
@@ -22,6 +30,7 @@ export function MaterialsLibrary({ courseId }: { courseId: string | null }) {
       setStatus('已保存到本课程资料库。');
       setFilename('');
       setContent('');
+      onSaved?.();
     } catch {
       setStatus('保存没有完成，请稍后重试。');
     } finally {
@@ -39,6 +48,17 @@ export function MaterialsLibrary({ courseId }: { courseId: string | null }) {
     }
   };
 
+  useEffect(() => {
+    const nextQuery = initialQuery.trim();
+    if (!courseId || !nextQuery) return;
+
+    setQuery(nextQuery);
+    setIsSearching(true);
+    void searchCourseMaterial(courseId, nextQuery)
+      .then(setSnippets)
+      .finally(() => setIsSearching(false));
+  }, [courseId, initialQuery]);
+
   const importFile = async () => {
     if (!courseId) return;
     const path = await open({
@@ -51,6 +71,7 @@ export function MaterialsLibrary({ courseId }: { courseId: string | null }) {
     try {
       await importCourseMaterialFile(courseId, path);
       setStatus('已从文件提取文字并保存到本课程。');
+      onSaved?.();
     } catch (error) {
       setStatus(typeof error === 'string' ? error : '文件导入没有完成，请检查格式后重试。');
     } finally {

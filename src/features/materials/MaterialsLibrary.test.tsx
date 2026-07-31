@@ -1,6 +1,6 @@
-import { render, screen } from '@testing-library/react';
+import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { expect, test, vi } from 'vitest';
+import { beforeEach, expect, test, vi } from 'vitest';
 import { MaterialsLibrary } from './MaterialsLibrary';
 
 const { importCourseMaterialFile, open, saveCourseMaterial, searchCourseMaterial } = vi.hoisted(() => ({
@@ -12,10 +12,13 @@ const { importCourseMaterialFile, open, saveCourseMaterial, searchCourseMaterial
 vi.mock('@tauri-apps/plugin-dialog', () => ({ open }));
 vi.mock('../../lib/tauri', () => ({ importCourseMaterialFile, saveCourseMaterial, searchCourseMaterial }));
 
+beforeEach(() => vi.clearAllMocks());
+
 test('stores pasted course material locally before making it searchable', async () => {
   const user = userEvent.setup();
+  const onSaved = vi.fn();
   saveCourseMaterial.mockResolvedValue({ id: 'material-1', courseId: 'macro', filename: 'IS-LM 讲义.md' });
-  render(<MaterialsLibrary courseId="macro" />);
+  render(<MaterialsLibrary courseId="macro" onSaved={onSaved} />);
 
   await user.type(screen.getByLabelText('材料名称'), 'IS-LM 讲义.md');
   await user.type(screen.getByLabelText('材料正文'), '货币供给增加会使 LM 曲线向右移动。');
@@ -23,6 +26,7 @@ test('stores pasted course material locally before making it searchable', async 
 
   expect(saveCourseMaterial).toHaveBeenCalledWith('macro', 'IS-LM 讲义.md', '货币供给增加会使 LM 曲线向右移动。');
   expect(await screen.findByText('已保存到本课程资料库。')).toBeVisible();
+  expect(onSaved).toHaveBeenCalledOnce();
 });
 
 test('shows only locally matched snippets for the selected course', async () => {
@@ -39,17 +43,50 @@ test('shows only locally matched snippets for the selected course', async () => 
 
 test('imports a selected PDF into the active course without pasting its text', async () => {
   const user = userEvent.setup();
+  const onSaved = vi.fn();
   open.mockResolvedValue('C:/教材/宏观经济学第六章.pdf');
   importCourseMaterialFile.mockResolvedValue({
     id: 'material-pdf',
     courseId: 'macro',
     filename: '宏观经济学第六章.pdf',
   });
-  render(<MaterialsLibrary courseId="macro" />);
+  render(<MaterialsLibrary courseId="macro" onSaved={onSaved} />);
 
   await user.click(screen.getByRole('button', { name: '导入 PDF 或讲义' }));
 
   expect(open).toHaveBeenCalledWith(expect.objectContaining({ multiple: false }));
   expect(importCourseMaterialFile).toHaveBeenCalledWith('macro', 'C:/教材/宏观经济学第六章.pdf');
   expect(await screen.findByText('已从文件提取文字并保存到本课程。')).toBeVisible();
+  expect(onSaved).toHaveBeenCalledOnce();
+});
+
+test('runs each non-empty initial query once after a course is selected', async () => {
+  searchCourseMaterial.mockResolvedValue([]);
+  const view = render(<MaterialsLibrary courseId={null} initialQuery="LM 曲线" />);
+
+  expect(searchCourseMaterial).not.toHaveBeenCalled();
+  view.rerender(<MaterialsLibrary courseId="macro" initialQuery="LM 曲线" />);
+  await waitFor(() => expect(searchCourseMaterial).toHaveBeenCalledWith('macro', 'LM 曲线'));
+  expect(screen.getByLabelText('检索课程资料')).toHaveValue('LM 曲线');
+  expect(searchCourseMaterial).toHaveBeenCalledTimes(1);
+
+  view.rerender(<MaterialsLibrary courseId="macro" initialQuery="LM 曲线" />);
+  expect(searchCourseMaterial).toHaveBeenCalledTimes(1);
+  view.rerender(<MaterialsLibrary courseId="macro" initialQuery="货币供给" />);
+  await waitFor(() => expect(searchCourseMaterial).toHaveBeenCalledTimes(2));
+  expect(searchCourseMaterial).toHaveBeenLastCalledWith('macro', '货币供给');
+});
+
+test('does not report a pasted material as saved when persistence fails', async () => {
+  const user = userEvent.setup();
+  const onSaved = vi.fn();
+  saveCourseMaterial.mockRejectedValue(new Error('disk full'));
+  render(<MaterialsLibrary courseId="macro" onSaved={onSaved} />);
+
+  await user.type(screen.getByLabelText('材料名称'), '失败讲义.md');
+  await user.type(screen.getByLabelText('材料正文'), '这段内容不会保存成功。');
+  await user.click(screen.getByRole('button', { name: '保存为本地依据' }));
+
+  expect(await screen.findByText('保存没有完成，请稍后重试。')).toBeVisible();
+  expect(onSaved).not.toHaveBeenCalled();
 });
