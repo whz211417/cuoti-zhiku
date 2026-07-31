@@ -1,6 +1,6 @@
 import { open } from '@tauri-apps/plugin-dialog';
 import { BookMarked, FileUp, LockKeyhole, Save, Search } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { importCourseMaterialFile, saveCourseMaterial, searchCourseMaterial, type MaterialSnippet } from '../../lib/tauri';
 
 export function MaterialsLibrary({
@@ -20,6 +20,7 @@ export function MaterialsLibrary({
   const [snippets, setSnippets] = useState<MaterialSnippet[]>([]);
   const [isSearching, setIsSearching] = useState(false);
   const [isImporting, setIsImporting] = useState(false);
+  const processedInitialQueryRef = useRef<string | null>(null);
 
   const save = async () => {
     if (!courseId || !filename.trim() || !content.trim()) return;
@@ -50,7 +51,13 @@ export function MaterialsLibrary({
 
   useEffect(() => {
     const nextQuery = initialQuery.trim();
-    if (!courseId || !nextQuery) return;
+    if (!courseId || !nextQuery) {
+      processedInitialQueryRef.current = null;
+      return;
+    }
+    const searchKey = JSON.stringify([courseId, nextQuery]);
+    if (processedInitialQueryRef.current === searchKey) return;
+    processedInitialQueryRef.current = searchKey;
 
     setQuery(nextQuery);
     setIsSearching(true);

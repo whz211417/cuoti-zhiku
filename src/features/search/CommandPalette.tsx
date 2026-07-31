@@ -116,12 +116,15 @@ export function CommandPalette({
     dismiss();
   };
 
-  const handleKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
+  const handleDialogKeyDown = (event: KeyboardEvent<HTMLElement>) => {
     if (event.key === 'Escape') {
       event.preventDefault();
+      event.stopPropagation();
       dismiss();
-      return;
     }
+  };
+
+  const handleSearchboxKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
     if (orderedResults.length === 0) return;
     if (event.key === 'ArrowDown') {
       event.preventDefault();
@@ -144,6 +147,7 @@ export function CommandPalette({
         aria-labelledby="library-search-title"
         aria-modal="true"
         className="command-palette"
+        onKeyDown={handleDialogKeyDown}
         role="dialog"
         style={{ background: 'var(--paper, #ffffff)' }}
       >
@@ -162,7 +166,7 @@ export function CommandPalette({
             aria-label="搜索本地资料库"
             autoFocus
             onChange={(event) => setQuery(event.target.value)}
-            onKeyDown={handleKeyDown}
+            onKeyDown={handleSearchboxKeyDown}
             placeholder="搜索题目、课程与资料"
             ref={inputRef}
             role="searchbox"
@@ -171,7 +175,7 @@ export function CommandPalette({
           />
         </div>
 
-        {trimmedQuery.length < 2 ? (
+        {trimmedQuery.length === 0 ? (
           <section aria-labelledby="recent-search-title">
             <h3 id="recent-search-title">最近题目</h3>
             {recentProblems.length > 0 ? (
@@ -200,6 +204,8 @@ export function CommandPalette({
             ) : <p>还没有最近题目。</p>}
           </section>
         ) : null}
+
+        {trimmedQuery.length === 1 ? <p className="command-palette-guidance">再输入一个字符开始搜索。</p> : null}
 
         {searchState === 'loading' ? <p aria-live="polite" role="status">正在搜索…</p> : null}
         {searchState === 'error' ? <p role="alert">搜索暂时无法完成。</p> : null}

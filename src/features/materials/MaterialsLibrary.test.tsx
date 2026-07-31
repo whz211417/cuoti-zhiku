@@ -1,5 +1,6 @@
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { StrictMode } from 'react';
 import { beforeEach, expect, test, vi } from 'vitest';
 import { MaterialsLibrary } from './MaterialsLibrary';
 
@@ -75,6 +76,23 @@ test('runs each non-empty initial query once after a course is selected', async 
   view.rerender(<MaterialsLibrary courseId="macro" initialQuery="货币供给" />);
   await waitFor(() => expect(searchCourseMaterial).toHaveBeenCalledTimes(2));
   expect(searchCourseMaterial).toHaveBeenLastCalledWith('macro', '货币供给');
+
+  view.rerender(<MaterialsLibrary courseId="micro" initialQuery="货币供给" />);
+  await waitFor(() => expect(searchCourseMaterial).toHaveBeenCalledTimes(3));
+  expect(searchCourseMaterial).toHaveBeenLastCalledWith('micro', '货币供给');
+});
+
+test('runs a selected course initial query exactly once in StrictMode', async () => {
+  searchCourseMaterial.mockResolvedValue([]);
+
+  render(
+    <StrictMode>
+      <MaterialsLibrary courseId="macro" initialQuery="LM 曲线" />
+    </StrictMode>,
+  );
+
+  await waitFor(() => expect(searchCourseMaterial).toHaveBeenCalledTimes(1));
+  expect(searchCourseMaterial).toHaveBeenCalledWith('macro', 'LM 曲线');
 });
 
 test('does not report a pasted material as saved when persistence fails', async () => {

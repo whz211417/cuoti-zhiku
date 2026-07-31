@@ -111,6 +111,15 @@ test('shows recent problems while the query is empty', async () => {
   expect(props.onOpenProblem).toHaveBeenCalledWith('recent-1');
 });
 
+test('hides recent problems and guides a one-character query', () => {
+  render(<CommandPalette {...props} open />);
+
+  fireEvent.change(screen.getByRole('searchbox'), { target: { value: '  I  ' } });
+
+  expect(screen.queryByRole('region', { name: '最近题目' })).not.toBeInTheDocument();
+  expect(screen.getByText('再输入一个字符开始搜索。')).toBeVisible();
+});
+
 test('wraps keyboard selection and Enter opens exactly one selected result', async () => {
   vi.useFakeTimers();
   searchLibrary.mockResolvedValue(results);
@@ -158,6 +167,31 @@ test('Escape closes, clears, and reopening starts clean', async () => {
   expect(screen.getByRole('searchbox')).toHaveValue('');
   expect(screen.getByRole('region', { name: '最近题目' })).toBeVisible();
   expect(searchLibrary).not.toHaveBeenCalled();
+});
+
+test('Escape closes once when focus has moved to the close button', async () => {
+  const user = userEvent.setup();
+  render(<CommandPalette {...props} open />);
+
+  await user.tab({ shift: true });
+  expect(screen.getByRole('button', { name: '关闭全局搜索' })).toHaveFocus();
+  await user.keyboard('{Escape}');
+
+  expect(props.onClose).toHaveBeenCalledOnce();
+});
+
+test('Escape closes once when a result button has focus', async () => {
+  vi.useFakeTimers();
+  searchLibrary.mockResolvedValue(results);
+  render(<CommandPalette {...props} open />);
+  fireEvent.change(screen.getByRole('searchbox'), { target: { value: 'IS' } });
+  await act(() => vi.advanceTimersByTimeAsync(180));
+  const result = screen.getByRole('button', { name: '打开题目：IS 曲线计算题' });
+
+  result.focus();
+  fireEvent.keyDown(result, { key: 'Escape' });
+
+  expect(props.onClose).toHaveBeenCalledOnce();
 });
 
 test('suppresses an older response that resolves after a newer search', async () => {
