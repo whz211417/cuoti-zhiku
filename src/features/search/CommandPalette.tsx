@@ -41,6 +41,7 @@ export function CommandPalette({
   const [results, setResults] = useState<LibrarySearchResult[]>([]);
   const [searchState, setSearchState] = useState<SearchState>('idle');
   const [selectedIndex, setSelectedIndex] = useState(0);
+  const dialogRef = useRef<HTMLElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const requestIdRef = useRef(0);
   const trimmedQuery = query.trim();
@@ -121,6 +122,26 @@ export function CommandPalette({
       event.preventDefault();
       event.stopPropagation();
       dismiss();
+      return;
+    }
+
+    if (event.key !== 'Tab' || !dialogRef.current) return;
+
+    const focusableElements = Array.from(
+      dialogRef.current.querySelectorAll<HTMLElement>(
+        'button:not(:disabled), input:not(:disabled), [href], [tabindex]:not([tabindex="-1"])',
+      ),
+    );
+    if (focusableElements.length === 0) return;
+
+    const firstElement = focusableElements[0];
+    const lastElement = focusableElements.at(-1);
+    if (event.shiftKey && document.activeElement === firstElement) {
+      event.preventDefault();
+      lastElement?.focus();
+    } else if (!event.shiftKey && document.activeElement === lastElement) {
+      event.preventDefault();
+      firstElement.focus();
     }
   };
 
@@ -148,6 +169,7 @@ export function CommandPalette({
         aria-modal="true"
         className="command-palette"
         onKeyDown={handleDialogKeyDown}
+        ref={dialogRef}
         role="dialog"
         style={{ background: 'var(--paper, #ffffff)' }}
       >

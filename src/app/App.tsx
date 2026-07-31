@@ -44,6 +44,7 @@ export function App() {
   const [isBackingUp, setIsBackingUp] = useState(false);
   const [isRestoring, setIsRestoring] = useState(false);
   const contentRef = useRef<HTMLDivElement>(null);
+  const searchTriggerRef = useRef<HTMLButtonElement>(null);
   const activeTitle = selectedProblemId ? { eyebrow: '本地资料库', title: '题目档案' } : workspaceTitles[workspace];
   const activeNavIndex = selectedProblemId
     ? null
@@ -56,6 +57,11 @@ export function App() {
           : 3;
 
   const refreshOverview = () => setRefreshToken((token) => token + 1);
+
+  const closeSearch = () => {
+    setIsSearchOpen(false);
+    searchTriggerRef.current?.focus();
+  };
 
   useEffect(() => {
     if (workspace !== 'review') return;
@@ -213,7 +219,7 @@ export function App() {
           </div>
           <div aria-label="工具" className="toolbar-actions">
             <button aria-label="投进题目" className="toolbar-button toolbar-ingest-action" disabled={isIngesting} onClick={() => void ingestProblemFiles()} type="button"><Upload aria-hidden="true" size={16} /><span>{isIngesting ? '正在导入…' : '投进题目'}</span></button>
-            <button aria-label="全局搜索" className="toolbar-button icon-button" onClick={() => setIsSearchOpen(true)} type="button"><Search aria-hidden="true" size={17} /></button>
+            <button aria-label="全局搜索" className="toolbar-button icon-button" onClick={() => setIsSearchOpen(true)} ref={searchTriggerRef} type="button"><Search aria-hidden="true" size={17} /></button>
             <button aria-label="设置" className="toolbar-button icon-button" onClick={() => setIsSettingsOpen(true)} type="button"><Settings aria-hidden="true" size={17} /></button>
           </div>
         </DynamicControlSurface>
@@ -262,7 +268,7 @@ export function App() {
         </div>
 
         <CommandPalette
-          onClose={() => setIsSearchOpen(false)}
+          onClose={closeSearch}
           onOpenCourse={openCourse}
           onOpenMaterial={openMaterial}
           onOpenProblem={openProblem}

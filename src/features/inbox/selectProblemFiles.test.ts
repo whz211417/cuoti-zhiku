@@ -82,3 +82,19 @@ test('does not report a completed ingest when every file fails', async () => {
   expect(await screen.findByText('disk full')).toBeVisible();
   expect(onImported).not.toHaveBeenCalled();
 });
+
+test('keeps prior results and reports a native selection failure accessibly', async () => {
+  const onImported = vi.fn();
+  vi.mocked(getInboxItems).mockResolvedValue([
+    { id: 'stored-1', problemId: 'problem-stored', attachmentId: 'attachment-stored', filename: 'stored.pdf', createdAt: '1' },
+  ]);
+  vi.mocked(open).mockRejectedValue(new Error('native dialog unavailable'));
+  render(createElement(IngestDropzone, { courseId: null, onImported }));
+
+  expect(await screen.findByText('stored.pdf')).toBeVisible();
+  await userEvent.click(screen.getByRole('button', { name: '投进题目' }));
+
+  expect(await screen.findByRole('alert')).toHaveTextContent('导入没有完成');
+  expect(screen.getByText('stored.pdf')).toBeVisible();
+  expect(onImported).not.toHaveBeenCalled();
+});

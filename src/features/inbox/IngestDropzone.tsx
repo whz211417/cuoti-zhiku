@@ -14,6 +14,7 @@ export function IngestDropzone({
 }) {
   const [items, setItems] = useState<ImportFileResult[]>([]);
   const [isSelecting, setIsSelecting] = useState(false);
+  const [selectionError, setSelectionError] = useState<string | null>(null);
 
   useEffect(() => {
     void getInboxItems()
@@ -23,11 +24,14 @@ export function IngestDropzone({
 
   const selectFiles = async () => {
     setIsSelecting(true);
+    setSelectionError(null);
     try {
       const results = await selectProblemFiles(courseId);
       if (results.length === 0) return;
       setItems((current) => [...results, ...current]);
       if (results.some((result) => result.item)) onImported?.();
+    } catch {
+      setSelectionError('导入没有完成。请稍后重试。之前的题目仍然安全保留。');
     } finally {
       setIsSelecting(false);
     }
@@ -43,6 +47,7 @@ export function IngestDropzone({
       <button className="primary-action" disabled={isSelecting} onClick={() => void selectFiles()} type="button">
         <Upload aria-hidden="true" size={15} strokeWidth={2.3} />{isSelecting ? '正在选择…' : '投进题目'}
       </button>
+      {selectionError ? <p className="import-error inbox-import-error" role="alert">{selectionError}</p> : null}
       <div aria-live="polite" className="inbox-results">
         {items.length === 0 ? <p className="inbox-empty">还没有待整理的题目。</p> : null}
         {items.map((result) => (

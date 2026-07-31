@@ -169,12 +169,17 @@ test('opens and cleans up global search from the toolbar and Ctrl+K', async () =
   const keydownListeners = addEventListener.mock.calls.filter(([type]) => type === 'keydown');
 
   expect(keydownListeners).toHaveLength(1);
-  await user.click(screen.getByRole('button', { name: '全局搜索' }));
+  const searchTrigger = screen.getByRole('button', { name: '全局搜索' });
+  await user.click(searchTrigger);
   expect(screen.getByRole('dialog', { name: '全局搜索' })).toBeVisible();
 
   await user.click(screen.getByRole('button', { name: '关闭全局搜索' }));
+  expect(searchTrigger).toHaveFocus();
   await user.keyboard('{Control>}k{/Control}');
   expect(screen.getByRole('dialog', { name: '全局搜索' })).toBeVisible();
+  await user.keyboard('{Escape}');
+  expect(screen.queryByRole('dialog', { name: '全局搜索' })).not.toBeInTheDocument();
+  expect(searchTrigger).toHaveFocus();
 
   view.unmount();
   expect(removeEventListener).toHaveBeenCalledWith('keydown', keydownListeners[0][1]);
@@ -190,7 +195,7 @@ test('search results open problems, courses and materials with the active query'
   await user.click(screen.getByRole('button', { name: '全局搜索' }));
   await user.type(screen.getByRole('searchbox', { name: '搜索本地资料库' }), 'problem');
   await user.click(await screen.findByRole('button', { name: /problem-result/ }));
-  expect(screen.getByText('problem:problem-search')).toBeVisible();
+  await waitFor(() => expect(screen.getByText('problem:problem-search')).toBeVisible());
   expect(screen.queryByRole('dialog', { name: '全局搜索' })).not.toBeInTheDocument();
 
   searchLibraryMock.mockResolvedValueOnce([{
@@ -199,7 +204,7 @@ test('search results open problems, courses and materials with the active query'
   await user.click(screen.getByRole('button', { name: '全局搜索' }));
   await user.type(screen.getByRole('searchbox', { name: '搜索本地资料库' }), 'course');
   await user.click(await screen.findByRole('button', { name: /course-result/ }));
-  expect(screen.getByText('materials:course-search:')).toBeVisible();
+  await waitFor(() => expect(screen.getByText('materials:course-search:')).toBeVisible());
 
   searchLibraryMock.mockResolvedValueOnce([{
     kind: 'material', id: 'material-search', courseId: 'course-material', title: 'material-result', snippet: 'LM', updatedAt: '3',
@@ -207,7 +212,7 @@ test('search results open problems, courses and materials with the active query'
   await user.click(screen.getByRole('button', { name: '全局搜索' }));
   await user.type(screen.getByRole('searchbox', { name: '搜索本地资料库' }), 'LM curve');
   await user.click(await screen.findByRole('button', { name: /material-result/ }));
-  expect(screen.getByText('materials:course-material:LM curve')).toBeVisible();
+  await waitFor(() => expect(screen.getByText('materials:course-material:LM curve')).toBeVisible());
 });
 
 test('increments one refresh token after every successful mutation', async () => {

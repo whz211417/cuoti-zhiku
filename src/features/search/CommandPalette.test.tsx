@@ -194,6 +194,20 @@ test('Escape closes once when a result button has focus', async () => {
   expect(props.onClose).toHaveBeenCalledOnce();
 });
 
+test('keeps Tab and Shift+Tab focus inside the dialog', async () => {
+  const user = userEvent.setup();
+  render(<CommandPalette {...props} open />);
+  const close = screen.getByRole('button', { name: '关闭全局搜索' });
+  const recent = screen.getByRole('button', { name: '打开最近题目：最近整理的 IS 曲线题' });
+
+  recent.focus();
+  await user.tab();
+  expect(close).toHaveFocus();
+
+  await user.tab({ shift: true });
+  expect(recent).toHaveFocus();
+});
+
 test('suppresses an older response that resolves after a newer search', async () => {
   vi.useFakeTimers();
   let resolveOlder!: (value: LibrarySearchResult[]) => void;
