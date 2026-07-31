@@ -52,6 +52,7 @@ pub struct ProblemDocument {
     pub title: String,
     pub status: String,
     pub updated_at: String,
+    pub version: String,
     pub fields: Vec<ProblemField>,
 }
 
@@ -62,4 +63,5 @@ pub struct SavedProblemField {
     pub kind: String,
     pub value: String,
     pub updated_at: String,
+    pub version: String,
 }

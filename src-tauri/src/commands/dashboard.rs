@@ -27,3 +27,13 @@ pub fn search_library(
         .search_library(&query, limit)
         .map_err(|error| error.to_string())
 }
+
+#[tauri::command]
+pub fn get_all_problems(
+    state: State<'_, AppState>,
+) -> Result<Vec<crate::domain::dashboard::RecentProblem>, String> {
+    state
+        .database
+        .list_all_problems()
+        .map_err(|error| error.to_string())
+}

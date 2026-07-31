@@ -40,6 +40,7 @@ pub fn run() {
             commands::courses::create_course,
             commands::dashboard::get_dashboard_overview,
             commands::dashboard::search_library,
+            commands::dashboard::get_all_problems,
             commands::inbox::get_inbox_items,
             commands::inbox::import_files,
             commands::materials::import_course_material_file,

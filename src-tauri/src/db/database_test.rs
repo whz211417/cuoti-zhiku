@@ -1,4 +1,4 @@
-use super::database::{Database, DatabaseError};
+use super::database::{apply_migration, Database, DatabaseError};
 use crate::services::ingest::ImportedOriginal;
 use rusqlite::{params, Connection};
 
@@ -258,6 +258,59 @@ fn library_search_collapses_duplicate_material_chunks_without_reordering_materia
         .collect::<Vec<_>>();
 
     assert_eq!(material_ids, vec!["material-new", "material-old"]);
+}
+
+#[test]
+fn library_search_groups_material_chunks_before_applying_the_global_limit() {
+    let (root, database) = dashboard_database();
+    let connection = dashboard_connection(&root);
+    insert_library_course(
+        &connection,
+        "search-course",
+        "Saturation topic course",
+        "2026-07-28T08:00:00Z",
+    );
+    insert_dashboard_problem(
+        &connection,
+        "search-problem",
+        "search-course",
+        "active",
+        "Saturation topic problem",
+        None,
+        "2026-07-29T08:00:00Z",
+        None,
+    );
+    let repeated = (0..20)
+        .map(|_| "Saturation topic repeated chunk")
+        .collect::<Vec<_>>();
+    insert_library_material(
+        &connection,
+        "dominant-material",
+        "search-course",
+        "dominant.md",
+        "2026-07-31T08:00:00Z",
+        &repeated,
+    );
+    insert_library_material(
+        &connection,
+        "other-material",
+        "search-course",
+        "other.md",
+        "2026-07-30T08:00:00Z",
+        &["Saturation topic from another material"],
+    );
+    drop(connection);
+
+    let results = database
+        .search_library("Saturation topic", 12)
+        .expect("saturated library search");
+
+    assert!(results
+        .iter()
+        .any(|result| result.id == "dominant-material"));
+    assert!(results.iter().any(|result| result.id == "other-material"));
+    assert!(results.iter().any(|result| result.id == "search-problem"));
+    assert!(results.iter().any(|result| result.id == "search-course"));
 }
 
 #[test]
@@ -523,13 +576,181 @@ fn dashboard_overview_trims_and_counts_mistake_reasons_once_per_problem() {
 }
 
 #[test]
+fn dashboard_overview_caps_each_learning_signal_group_at_five() {
+    let (root, database) = dashboard_database();
+    let connection = dashboard_connection(&root);
+    insert_dashboard_course(&connection, "signals", "Signal course", "2026-07-01");
+    for index in 0..6 {
+        let id = format!("signal-{index}");
+        insert_dashboard_problem(
+            &connection,
+            &id,
+            "signals",
+            "active",
+            &id,
+            None,
+            "2026-07-30T08:00:00Z",
+            None,
+        );
+        insert_dashboard_field(
+            &connection,
+            &id,
+            "mistake_reason",
+            &format!("Reason {index}"),
+        );
+    }
+    drop(connection);
+
+    let signals = database
+        .dashboard_overview("2026-07-30")
+        .expect("dashboard signals")
+        .top_mistake_reasons;
+
+    assert_eq!(signals.len(), 5);
+}
+
+#[test]
+fn dashboard_and_archive_exclude_trashed_problems() {
+    let (root, database) = dashboard_database();
+    let connection = dashboard_connection(&root);
+    insert_dashboard_course(&connection, "archive", "Archive course", "2026-07-01");
+    insert_dashboard_problem(
+        &connection,
+        "kept-problem",
+        "archive",
+        "active",
+        "Kept problem",
+        None,
+        "2026-07-30T08:00:00Z",
+        None,
+    );
+    insert_dashboard_problem(
+        &connection,
+        "trashed-problem",
+        "archive",
+        "trash",
+        "Trashed problem",
+        None,
+        "2026-07-31T08:00:00Z",
+        None,
+    );
+    drop(connection);
+
+    let overview = database
+        .dashboard_overview("2026-07-31")
+        .expect("dashboard without trash");
+    let archive = database.list_all_problems().expect("problem archive");
+
+    assert_eq!(overview.course_summaries[0].problem_count, 1);
+    assert_eq!(overview.recent_problems.len(), 1);
+    assert_eq!(overview.recent_problems[0].id, "kept-problem");
+    assert_eq!(archive.len(), 1);
+    assert_eq!(archive[0].id, "kept-problem");
+}
+
+fn seed_schema_version(root: &std::path::Path, version: i64) {
+    let connection = Connection::open(root.join("library.sqlite3")).expect("seed database");
+    connection
+        .execute_batch(include_str!("../../migrations/0001_initial.sql"))
+        .expect("schema version 1");
+    if version >= 2 {
+        connection
+            .execute_batch(include_str!("../../migrations/0002_problem_fields.sql"))
+            .expect("schema version 2 tables");
+        connection
+            .execute("UPDATE schema_meta SET version = 2", [])
+            .expect("schema version 2");
+    }
+    if version >= 3 {
+        connection
+            .execute_batch(include_str!("../../migrations/0003_review_state.sql"))
+            .expect("schema version 3 columns");
+        connection
+            .execute("UPDATE schema_meta SET version = 3", [])
+            .expect("schema version 3");
+    }
+}
+
+#[test]
+fn migrates_supported_legacy_versions_to_the_current_schema() {
+    for starting_version in [1, 2, 3] {
+        let root = tempfile::tempdir().expect("legacy library root");
+        seed_schema_version(root.path(), starting_version);
+
+        let database = Database::open(root.path()).expect("migrate legacy library");
+
+        assert_eq!(database.schema_version().expect("current schema"), 5);
+    }
+}
+
+#[test]
+fn resumes_a_partially_applied_legacy_migration() {
+    let root = tempfile::tempdir().expect("partial migration root");
+    seed_schema_version(root.path(), 1);
+    let connection =
+        Connection::open(root.path().join("library.sqlite3")).expect("partial database");
+    connection
+        .execute_batch(
+            "CREATE TABLE problem_fields (
+               problem_id TEXT NOT NULL REFERENCES problems(id) ON DELETE CASCADE,
+               kind TEXT NOT NULL,
+               value TEXT NOT NULL DEFAULT '',
+               updated_at TEXT NOT NULL,
+               PRIMARY KEY(problem_id, kind)
+             );",
+        )
+        .expect("interrupted migration artifact");
+    drop(connection);
+
+    let database = Database::open(root.path()).expect("resume migration");
+    let connection = dashboard_connection(&root);
+    let field_revisions_exists: i64 = connection
+        .query_row(
+            "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = 'field_revisions'",
+            [],
+            |row| row.get(0),
+        )
+        .expect("field revisions table");
+
+    assert_eq!(database.schema_version().expect("current schema"), 5);
+    assert_eq!(field_revisions_exists, 1);
+}
+
+#[test]
+fn rolls_back_schema_changes_and_version_when_a_migration_fails() {
+    let root = tempfile::tempdir().expect("failed migration root");
+    seed_schema_version(root.path(), 1);
+    let mut connection = Connection::open(root.path().join("library.sqlite3")).expect("database");
+
+    let result = apply_migration(
+        &mut connection,
+        "CREATE TABLE should_rollback(id INTEGER); INVALID SQL;",
+        2,
+    );
+    let table_exists: i64 = connection
+        .query_row(
+            "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = 'should_rollback'",
+            [],
+            |row| row.get(0),
+        )
+        .expect("rolled back table lookup");
+    let version: i64 = connection
+        .query_row("SELECT version FROM schema_meta", [], |row| row.get(0))
+        .expect("rolled back version");
+
+    assert!(result.is_err());
+    assert_eq!(table_exists, 0);
+    assert_eq!(version, 1);
+}
+
+#[test]
 fn opens_a_wal_database_with_foreign_keys_enabled() {
     let root = tempfile::tempdir().expect("temporary library root");
     let database = Database::open(root.path()).expect("open library database");
 
     assert!(database.foreign_keys_enabled().expect("foreign key status"));
     assert_eq!(database.journal_mode().expect("journal mode"), "wal");
-    assert_eq!(database.schema_version().expect("schema version"), 4);
+    assert_eq!(database.schema_version().expect("schema version"), 5);
 }
 
 #[test]
@@ -539,7 +760,7 @@ fn reports_database_health_without_exposing_its_connection() {
 
     let health = database.health().expect("library health");
 
-    assert_eq!(health.schema_version, 4);
+    assert_eq!(health.schema_version, 5);
     assert!(health.foreign_keys_enabled);
     assert_eq!(health.journal_mode, "wal");
 }

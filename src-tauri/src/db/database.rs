@@ -9,7 +9,7 @@ use std::{
     time::{SystemTime, UNIX_EPOCH},
 };
 
-use chrono::{Duration, NaiveDate};
+use chrono::{Duration, NaiveDate, SecondsFormat, Utc};
 use rusqlite::{params, Connection, Transaction};
 use serde::Serialize;
 
@@ -135,26 +135,56 @@ pub struct Database {
 impl Database {
     pub fn open(root: &Path) -> DatabaseResult<Self> {
         std::fs::create_dir_all(root)?;
-        let connection = Connection::open(root.join("library.sqlite3"))?;
+        let mut connection = Connection::open(root.join("library.sqlite3"))?;
         connection.execute_batch(
             "PRAGMA foreign_keys = ON; PRAGMA journal_mode = WAL; PRAGMA busy_timeout = 5000;",
         )?;
-        connection.execute_batch(include_str!("../../migrations/0001_initial.sql"))?;
-        let schema_version =
+        let has_schema_meta = connection.query_row(
+            "SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'schema_meta')",
+            [],
+            |row| row.get::<_, bool>(0),
+        )?;
+        if !has_schema_meta {
+            apply_migration(
+                &mut connection,
+                include_str!("../../migrations/0001_initial.sql"),
+                1,
+            )?;
+        }
+        let mut schema_version =
             connection.query_row("SELECT version FROM schema_meta LIMIT 1", [], |row| {
                 row.get::<_, i64>(0)
             })?;
         if schema_version < 2 {
-            connection.execute_batch(include_str!("../../migrations/0002_problem_fields.sql"))?;
-            connection.execute("UPDATE schema_meta SET version = 2", [])?;
+            apply_migration(
+                &mut connection,
+                include_str!("../../migrations/0002_problem_fields.sql"),
+                2,
+            )?;
+            schema_version = 2;
         }
         if schema_version < 3 {
-            connection.execute_batch(include_str!("../../migrations/0003_review_state.sql"))?;
-            connection.execute("UPDATE schema_meta SET version = 3", [])?;
+            apply_migration(
+                &mut connection,
+                include_str!("../../migrations/0003_review_state.sql"),
+                3,
+            )?;
+            schema_version = 3;
         }
         if schema_version < 4 {
-            connection.execute_batch(include_str!("../../migrations/0004_course_materials.sql"))?;
-            connection.execute("UPDATE schema_meta SET version = 4", [])?;
+            apply_migration(
+                &mut connection,
+                include_str!("../../migrations/0004_course_materials.sql"),
+                4,
+            )?;
+            schema_version = 4;
+        }
+        if schema_version < 5 {
+            apply_migration(
+                &mut connection,
+                include_str!("../../migrations/0005_problem_versions.sql"),
+                5,
+            )?;
         }
 
         Ok(Self {
@@ -238,7 +268,28 @@ impl Database {
         let pattern = format!("%{}%", escape_like_pattern(query));
         let connection = self.connection()?;
         let mut statement = connection.prepare(
-            r#"SELECT 'problem', p.id, COALESCE(p.course_id, ''),
+            r#"WITH material_matches AS (
+                  SELECT m.id,
+                         m.course_id,
+                         m.filename,
+                         COALESCE(
+                           (SELECT ch.content FROM material_chunks ch
+                            WHERE ch.material_id = m.id AND ch.content LIKE ?1 ESCAPE '\'
+                            ORDER BY ch.ordinal ASC LIMIT 1),
+                           (SELECT ch.content FROM material_chunks ch
+                            WHERE ch.material_id = m.id
+                            ORDER BY ch.ordinal ASC LIMIT 1),
+                           ''
+                         ) AS snippet,
+                         m.created_at AS updated_at
+                  FROM course_materials m
+                  WHERE m.filename LIKE ?1 ESCAPE '\'
+                     OR EXISTS (
+                       SELECT 1 FROM material_chunks ch
+                       WHERE ch.material_id = m.id AND ch.content LIKE ?1 ESCAPE '\'
+                     )
+                )
+                SELECT 'problem', p.id, COALESCE(p.course_id, ''),
                        COALESCE(NULLIF(stem.value, ''), NULLIF(p.title, ''), i.filename, '未命名题目'),
                        COALESCE(NULLIF(explanation.value, ''), NULLIF(stem.value, ''), ''),
                        p.updated_at
@@ -267,10 +318,8 @@ impl Database {
                 WHERE c.archived_at IS NULL
                   AND (c.name LIKE ?1 ESCAPE '\' OR c.term LIKE ?1 ESCAPE '\')
                 UNION ALL
-                SELECT 'material', m.id, m.course_id, m.filename, ch.content, m.created_at
-                FROM course_materials m
-                JOIN material_chunks ch ON ch.material_id = m.id
-                WHERE m.filename LIKE ?1 ESCAPE '\' OR ch.content LIKE ?1 ESCAPE '\'
+                SELECT 'material', id, course_id, filename, snippet, updated_at
+                FROM material_matches
                 ORDER BY updated_at DESC
                 LIMIT ?2"#,
         )?;
@@ -285,19 +334,7 @@ impl Database {
             })
         })?;
 
-        let mut material_ids = HashSet::new();
-        let mut results = Vec::with_capacity(limit as usize);
-        for result in rows {
-            let result = result?;
-            if result.kind == "material" && !material_ids.insert(result.id.clone()) {
-                continue;
-            }
-            results.push(result);
-            if results.len() == limit as usize {
-                break;
-            }
-        }
-        Ok(results)
+        rows.collect::<Result<Vec<_>, _>>().map_err(Into::into)
     }
 
     pub fn create_backup(&self, destination: &Path) -> DatabaseResult<()> {
@@ -329,7 +366,7 @@ impl Database {
                 row.get::<_, i64>(0)
             })
             .map_err(|_| DatabaseError::Conflict("选择的文件不是错题智库备份。".to_owned()))?;
-        if version != 4 {
+        if version != 5 {
             return Err(DatabaseError::Conflict(
                 "备份版本与当前应用不兼容。".to_owned(),
             ));
@@ -454,6 +491,11 @@ impl Database {
         let course_id = course_id.unwrap_or("inbox-unassigned");
         let problem_id = record_id("problem");
         let inbox_id = record_id("inbox");
+        let title = Path::new(filename)
+            .file_stem()
+            .and_then(|stem| stem.to_str())
+            .unwrap_or(filename)
+            .trim();
 
         self.with_transaction(|transaction| {
             if course_id == "inbox-unassigned" {
@@ -467,8 +509,8 @@ impl Database {
                 params![attachment_id, original.sha256, original.relative_path.to_string_lossy(), original.mime_type, original.byte_size, created_at],
             )?;
             transaction.execute(
-                "INSERT INTO problems(id, course_id, status, title, created_at, updated_at) VALUES (?1, ?2, 'inbox', '', ?3, ?3)",
-                params![problem_id, course_id, created_at],
+                "INSERT INTO problems(id, course_id, status, title, created_at, updated_at, version) VALUES (?1, ?2, 'inbox', ?3, ?4, ?4, ?5)",
+                params![problem_id, course_id, title, created_at, record_id("version")],
             )?;
             transaction.execute(
                 "INSERT INTO inbox_items(id, problem_id, attachment_id, filename, created_at) VALUES (?1, ?2, ?3, ?4, ?5)",
@@ -519,10 +561,10 @@ impl Database {
     }
 
     #[cfg(test)]
-    pub fn problem_updated_at(&self, problem_id: &str) -> DatabaseResult<String> {
+    pub fn problem_version(&self, problem_id: &str) -> DatabaseResult<String> {
         self.connection()?
             .query_row(
-                "SELECT updated_at FROM problems WHERE id = ?1",
+                "SELECT version FROM problems WHERE id = ?1",
                 [problem_id],
                 |row| row.get(0),
             )
@@ -534,16 +576,17 @@ impl Database {
         problem_id: &str,
         kind: ProblemFieldKind,
         value: &str,
-        expected_updated_at: &str,
+        expected_version: &str,
     ) -> DatabaseResult<SavedProblemField> {
-        let updated_at = record_id("version");
+        let updated_at = timestamp();
+        let version = record_id("version");
         self.with_transaction(|transaction| {
             let current: String = transaction.query_row(
-                "SELECT updated_at FROM problems WHERE id = ?1",
+                "SELECT version FROM problems WHERE id = ?1",
                 [problem_id],
                 |row| row.get(0),
             )?;
-            if current != expected_updated_at {
+            if current != expected_version {
                 return Err(DatabaseError::Conflict("题目已在另一处更新，请刷新后再保存。".to_owned()));
             }
             transaction.execute(
@@ -555,22 +598,34 @@ impl Database {
                 "INSERT INTO field_revisions(id, problem_id, kind, value, source, created_at) VALUES (?1, ?2, ?3, ?4, 'user', ?5)",
                 params![record_id("revision"), problem_id, kind.as_str(), value, timestamp()],
             )?;
-            transaction.execute("UPDATE problems SET updated_at = ?2 WHERE id = ?1", params![problem_id, updated_at])?;
+            transaction.execute(
+                "UPDATE problems SET updated_at = ?2, version = ?3 WHERE id = ?1",
+                params![problem_id, updated_at, version],
+            )?;
             Ok(SavedProblemField {
                 problem_id: problem_id.to_owned(),
                 kind: kind.as_str().to_owned(),
                 value: value.to_owned(),
                 updated_at,
+                version,
             })
         })
     }
 
     pub fn get_problem_document(&self, problem_id: &str) -> DatabaseResult<ProblemDocument> {
         let connection = self.connection()?;
-        let (id, title, status, updated_at) = connection.query_row(
-            "SELECT id, title, status, updated_at FROM problems WHERE id = ?1",
+        let (id, title, status, updated_at, version) = connection.query_row(
+            "SELECT id, title, status, updated_at, version FROM problems WHERE id = ?1",
             [problem_id],
-            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
+            |row| {
+                Ok((
+                    row.get(0)?,
+                    row.get(1)?,
+                    row.get(2)?,
+                    row.get(3)?,
+                    row.get(4)?,
+                ))
+            },
         )?;
         let mut statement = connection.prepare(
             "SELECT kind, value, updated_at FROM problem_fields WHERE problem_id = ?1
@@ -592,6 +647,7 @@ impl Database {
             title,
             status,
             updated_at,
+            version,
             fields,
         })
     }
@@ -605,9 +661,17 @@ impl Database {
         self.with_transaction(|transaction| {
             let interval: u32 = transaction.query_row("SELECT review_interval_days FROM problems WHERE id = ?1", [problem_id], |row| row.get(0))?;
             let schedule = schedule_next(interval, grade, reviewed_on).map_err(DatabaseError::Conflict)?;
-            transaction.execute("UPDATE problems SET review_interval_days = ?2, last_reviewed_at = ?3, next_review_at = ?4, status = 'active', updated_at = ?5 WHERE id = ?1", params![problem_id, schedule.interval_days, reviewed_on, schedule.next_review_on, record_id("version")])?;
+            transaction.execute(
+                "UPDATE problems SET review_interval_days = ?2, last_reviewed_at = ?3, next_review_at = ?4, status = 'active', updated_at = ?5, version = ?6 WHERE id = ?1",
+                params![problem_id, schedule.interval_days, reviewed_on, schedule.next_review_on, timestamp(), record_id("version")],
+            )?;
             Ok(schedule)
         })
+    }
+
+    pub fn list_all_problems(&self) -> DatabaseResult<Vec<RecentProblem>> {
+        let connection = self.connection()?;
+        query_problems(&connection, None)
     }
 
     pub fn list_due_review_problems(&self, today: &str) -> DatabaseResult<Vec<ReviewProblem>> {
@@ -738,20 +802,35 @@ impl Database {
     }
 }
 
+pub(crate) fn apply_migration(
+    connection: &mut Connection,
+    sql: &str,
+    target_version: i64,
+) -> DatabaseResult<()> {
+    let transaction = connection.transaction()?;
+    transaction.execute_batch(sql)?;
+    transaction.execute("UPDATE schema_meta SET version = ?1", [target_version])?;
+    transaction.commit()?;
+    Ok(())
+}
+
 fn record_id(prefix: &str) -> String {
     format!(
         "{prefix}-{}-{}",
-        timestamp(),
+        epoch_millis(),
         NEXT_RECORD_ID.fetch_add(1, Ordering::Relaxed)
     )
 }
 
 fn timestamp() -> String {
+    Utc::now().to_rfc3339_opts(SecondsFormat::Millis, true)
+}
+
+fn epoch_millis() -> u128 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .unwrap_or_default()
         .as_millis()
-        .to_string()
 }
 
 fn append_markdown_section(markdown: &mut String, title: &str, value: &str) {
@@ -797,7 +876,7 @@ fn query_course_summaries(
         "SELECT c.id,
                 c.name,
                 c.color,
-                (SELECT COUNT(*) FROM problems p WHERE p.course_id = c.id),
+                (SELECT COUNT(*) FROM problems p WHERE p.course_id = c.id AND p.status != 'trash'),
                 (SELECT COUNT(*) FROM problems p WHERE p.course_id = c.id AND p.status = 'inbox'),
                 (SELECT COUNT(*) FROM problems p
                  WHERE p.course_id = c.id
@@ -805,10 +884,10 @@ fn query_course_summaries(
                    AND p.next_review_at IS NOT NULL
                    AND p.next_review_at <= ?1),
                 (SELECT COUNT(*) FROM course_materials m WHERE m.course_id = c.id),
-                COALESCE((SELECT MAX(p.updated_at) FROM problems p WHERE p.course_id = c.id), c.updated_at)
+                COALESCE((SELECT MAX(p.updated_at) FROM problems p WHERE p.course_id = c.id AND p.status != 'trash'), c.updated_at)
          FROM courses c
          WHERE c.archived_at IS NULL
-         ORDER BY (SELECT MAX(p.updated_at) FROM problems p WHERE p.course_id = c.id) DESC,
+         ORDER BY (SELECT MAX(p.updated_at) FROM problems p WHERE p.course_id = c.id AND p.status != 'trash') DESC,
                   c.created_at DESC",
     )?;
     let rows = statement.query_map([today], |row| {
@@ -827,6 +906,13 @@ fn query_course_summaries(
 }
 
 fn query_recent_problems(connection: &Connection) -> DatabaseResult<Vec<RecentProblem>> {
+    query_problems(connection, Some(5))
+}
+
+fn query_problems(
+    connection: &Connection,
+    limit: Option<usize>,
+) -> DatabaseResult<Vec<RecentProblem>> {
     let mut statement = connection.prepare(
         "SELECT p.id,
                 p.course_id,
@@ -838,21 +924,39 @@ fn query_recent_problems(connection: &Connection) -> DatabaseResult<Vec<RecentPr
          FROM problems p
          JOIN courses c ON c.id = p.course_id
          LEFT JOIN inbox_items i ON i.problem_id = p.id
-         ORDER BY p.updated_at DESC
-         LIMIT 5",
+         WHERE p.status != 'trash'
+         ORDER BY p.updated_at DESC",
     )?;
     let rows = statement.query_map([], |row| {
+        let title: String = row.get(3)?;
+        let fallback_filename: String = row.get(4)?;
         Ok(RecentProblem {
             id: row.get(0)?,
             course_id: row.get(1)?,
             course_name: row.get(2)?,
-            title: row.get(3)?,
-            fallback_filename: row.get(4)?,
+            title: problem_display_title(&title, &fallback_filename),
+            fallback_filename,
             status: row.get(5)?,
             updated_at: row.get(6)?,
         })
     })?;
-    rows.collect::<Result<Vec<_>, _>>().map_err(Into::into)
+    let mut problems = rows.collect::<Result<Vec<_>, _>>()?;
+    if let Some(limit) = limit {
+        problems.truncate(limit);
+    }
+    Ok(problems)
+}
+
+fn problem_display_title(title: &str, filename: &str) -> String {
+    if !title.trim().is_empty() {
+        return title.to_owned();
+    }
+    Path::new(filename)
+        .file_stem()
+        .and_then(|stem| stem.to_str())
+        .filter(|stem| !stem.trim().is_empty())
+        .unwrap_or("未命名题目")
+        .to_owned()
 }
 
 fn query_counted_fields(
@@ -892,7 +996,7 @@ fn query_counted_fields(
             .cmp(&left.count)
             .then_with(|| left.label.cmp(&right.label))
     });
-    signals.truncate(6);
+    signals.truncate(5);
     Ok(signals)
 }
 

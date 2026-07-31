@@ -8,6 +8,41 @@ use crate::{
 use super::{problems::ProblemFieldKind, review::ReviewGrade};
 
 #[test]
+fn imported_problem_metadata_and_field_saves_feed_parseable_dashboard_activity() {
+    let temp = tempfile::tempdir().expect("temporary library");
+    let source = temp.path().join("is-lm-import.png");
+    fs::write(&source, b"IS-LM import").expect("fixture source");
+    let database = Database::open(temp.path()).expect("database");
+    let original = import_original(&source, &temp.path().join("originals")).expect("original");
+    let inbox = database
+        .record_inbox_item("is-lm-import.png", &original, None)
+        .expect("inbox item");
+    let initial = database
+        .get_problem_document(&inbox.problem_id)
+        .expect("initial document");
+
+    let saved = database
+        .save_problem_field(
+            &inbox.problem_id,
+            ProblemFieldKind::Stem,
+            "How does fiscal expansion shift IS?",
+            &initial.version,
+        )
+        .expect("field saved");
+    let saved_at = chrono::DateTime::parse_from_rfc3339(&saved.updated_at)
+        .expect("parseable persisted update timestamp");
+    let today = saved_at.format("%Y-%m-%d").to_string();
+    let overview = database.dashboard_overview(&today).expect("dashboard");
+
+    assert_eq!(initial.title, "is-lm-import");
+    assert_ne!(saved.version, initial.version);
+    assert!(saved.version.starts_with("version-"));
+    assert_eq!(overview.recent_problems[0].title, "is-lm-import");
+    assert_eq!(overview.recent_problems[0].updated_at, saved.updated_at);
+    assert_eq!(overview.activity_last_seven_days.last().unwrap().count, 1);
+}
+
+#[test]
 fn rejects_a_field_save_based_on_a_stale_document_version() {
     let temp = tempfile::tempdir().expect("temporary library");
     let source = temp.path().join("is-lm.png");
@@ -18,7 +53,7 @@ fn rejects_a_field_save_based_on_a_stale_document_version() {
         .record_inbox_item("is-lm.png", &original, None)
         .expect("inbox item");
     let expected_version = database
-        .problem_updated_at(&inbox.problem_id)
+        .problem_version(&inbox.problem_id)
         .expect("initial version");
 
     let first = database
@@ -76,7 +111,7 @@ fn lists_only_due_problems_with_a_question_stem() {
         .record_inbox_item("due-review.png", &original, None)
         .expect("inbox item");
     let version = database
-        .problem_updated_at(&inbox.problem_id)
+        .problem_version(&inbox.problem_id)
         .expect("initial version");
 
     database
@@ -108,7 +143,7 @@ fn builds_separate_question_and_answer_books_from_local_records() {
         .record_inbox_item("export.png", &original, None)
         .expect("inbox item");
     let initial_version = database
-        .problem_updated_at(&inbox.problem_id)
+        .problem_version(&inbox.problem_id)
         .expect("initial version");
     let stem = database
         .save_problem_field(
@@ -123,7 +158,7 @@ fn builds_separate_question_and_answer_books_from_local_records() {
             &inbox.problem_id,
             ProblemFieldKind::StandardAnswer,
             "LM 曲线向右移动。",
-            &stem.updated_at,
+            &stem.version,
         )
         .expect("answer saved");
     database
@@ -131,7 +166,7 @@ fn builds_separate_question_and_answer_books_from_local_records() {
             &inbox.problem_id,
             ProblemFieldKind::Explanation,
             "实际货币余额上升，均衡利率下降。",
-            &answer.updated_at,
+            &answer.version,
         )
         .expect("explanation saved");
 
@@ -163,7 +198,7 @@ fn writes_a_completed_book_to_the_user_selected_destination() {
         .record_inbox_item("write-export.png", &original, None)
         .expect("inbox item");
     let version = database
-        .problem_updated_at(&inbox.problem_id)
+        .problem_version(&inbox.problem_id)
         .expect("initial version");
     database
         .save_problem_field(

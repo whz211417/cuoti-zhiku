@@ -19,12 +19,12 @@ pub fn save_problem_field(
     problem_id: String,
     kind: String,
     value: String,
-    expected_updated_at: String,
+    expected_version: String,
 ) -> Result<crate::domain::problems::SavedProblemField, String> {
     let kind = ProblemFieldKind::parse(&kind).ok_or_else(|| "不支持的题目字段。".to_owned())?;
     state
         .database
-        .save_problem_field(&problem_id, kind, &value, &expected_updated_at)
+        .save_problem_field(&problem_id, kind, &value, &expected_version)
         .map_err(|error| error.to_string())
 }
 
