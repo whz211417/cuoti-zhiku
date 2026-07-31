@@ -326,7 +326,7 @@ input:not([type="radio"]):not([type="checkbox"]) { min-height: 44px; }
 .dashboard-signal-group h3, .dashboard-activity h3 { display: inline-flex; align-items: center; gap: 7px; margin: 0 0 10px; color: #416f9f; font-size: 12px; font-weight: 700; }
 .dashboard-ranked-list { margin: 0; padding: 0; list-style: none; }
 .dashboard-ranked-list li { display: grid; min-height: 35px; grid-template-columns: 22px minmax(0, 1fr) auto; align-items: center; gap: 7px; border-top: 1px solid var(--separator); }
-.dashboard-ranked-list li > span:first-child { color: #95a7ba; font-size: 10px; font-variant-numeric: tabular-nums; }
+.dashboard-ranked-list li > span:first-child { color: #737378; font-size: 11px; font-variant-numeric: tabular-nums; }
 .dashboard-ranked-list strong { overflow: hidden; color: var(--ink); font-size: 12px; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
 .dashboard-ranked-list li > span:last-child { color: var(--tertiary); font-size: 11px; font-variant-numeric: tabular-nums; }
 .dashboard-signal-empty { padding-top: 10px; border-top: 1px solid var(--separator); }
