@@ -22,6 +22,7 @@ fn insert_dashboard_course(connection: &Connection, id: &str, name: &str, create
         .expect("insert dashboard course");
 }
 
+#[allow(clippy::too_many_arguments)]
 fn insert_dashboard_problem(
     connection: &Connection,
     id: &str,
