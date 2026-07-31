@@ -85,7 +85,7 @@ function makeOverview(overrides: Partial<DashboardOverview> = {}): DashboardOver
         courseName: '宏观经济学',
         title: 'IS 曲线题目',
         fallbackFilename: 'is-curve.pdf',
-        status: 'organized',
+        status: 'active',
         updatedAt: '2026-07-30T08:30:00Z',
       },
     ],
@@ -281,7 +281,7 @@ test('uses filenames and then a useful label for untitled recent problems', asyn
         courseName: '宏观经济学',
         title: '',
         fallbackFilename: '课堂截图.png',
-        status: 'pending',
+        status: 'inbox',
         updatedAt: '2026-07-29T08:30:00Z',
       },
       {
@@ -290,7 +290,7 @@ test('uses filenames and then a useful label for untitled recent problems', asyn
         courseName: '',
         title: '',
         fallbackFilename: '',
-        status: 'pending',
+        status: 'inbox',
         updatedAt: '2026-07-28T08:30:00Z',
       },
     ],
@@ -344,7 +344,7 @@ test('caps recent problems at five', async () => {
     courseName: '宏观经济学',
     title: `最近题目 ${index + 1}`,
     fallbackFilename: `problem-${index + 1}.pdf`,
-    status: 'organized',
+    status: 'active',
     updatedAt: `2026-07-${30 - index}T08:30:00Z`,
   }));
   getDashboardOverview.mockResolvedValue(makeOverview({ recentProblems }));
@@ -353,4 +353,35 @@ test('caps recent problems at five', async () => {
 
   expect(await screen.findByRole('button', { name: '打开 最近题目 5' })).toBeVisible();
   expect(screen.queryByRole('button', { name: '打开 最近题目 6' })).not.toBeInTheDocument();
+});
+
+test('shows native active and inbox problem statuses correctly', async () => {
+  getDashboardOverview.mockResolvedValue(makeOverview({
+    recentProblems: [
+      {
+        id: 'problem-active',
+        courseId: 'macro',
+        courseName: '宏观经济学',
+        title: '已进入学习的题目',
+        fallbackFilename: '',
+        status: 'active',
+        updatedAt: '2026-07-30T08:30:00Z',
+      },
+      {
+        id: 'problem-inbox',
+        courseId: 'macro',
+        courseName: '宏观经济学',
+        title: '刚投进来的题目',
+        fallbackFilename: '',
+        status: 'inbox',
+        updatedAt: '2026-07-29T08:30:00Z',
+      },
+    ],
+  }));
+
+  renderDashboard();
+
+  const recent = await screen.findByRole('region', { name: '接着上次的思路' });
+  expect(within(recent).getByText('复习中')).toBeVisible();
+  expect(within(recent).getByText('待整理')).toBeVisible();
 });

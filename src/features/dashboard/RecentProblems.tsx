@@ -11,9 +11,9 @@ function problemTitle(problem: RecentProblem) {
 }
 
 function statusLabel(status: string) {
-  if (status === 'organized') return '已整理';
-  if (status === 'reviewing') return '复习中';
-  return '待整理';
+  if (status === 'active') return '复习中';
+  if (status === 'inbox') return '待整理';
+  return status;
 }
 
 function updatedDate(value: string) {
