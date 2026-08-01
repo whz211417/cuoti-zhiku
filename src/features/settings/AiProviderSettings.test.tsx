@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/react';
+import { act, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, expect, test, vi } from 'vitest';
 import { AiProviderSettings } from './AiProviderSettings';
@@ -141,4 +141,92 @@ test('ignores an in-flight connection result after the form changes', async () =
   await waitFor(() => expect(screen.getByRole('button', { name: '测试连接' })).toBeEnabled());
   expect(screen.queryByText('连接可用')).not.toBeInTheDocument();
   expect(screen.getByRole('button', { name: '设为当前' })).toBeDisabled();
+});
+
+test('locks editing after a store-load failure and recovers only after retry succeeds', async () => {
+  loadAiProviderState.mockRejectedValueOnce(new Error('disk unavailable')).mockResolvedValueOnce({ providers: [], activeProviderId: null });
+  const user = userEvent.setup();
+  render(<AiProviderSettings />);
+
+  expect(await screen.findByRole('alert')).toHaveTextContent('disk unavailable');
+  expect(screen.getByRole('button', { name: /DeepSeek/ })).toBeDisabled();
+  await user.click(screen.getByRole('button', { name: '重试读取' }));
+  expect(await screen.findByLabelText('阿里云百炼 配置编辑器')).toBeVisible();
+});
+
+test('preserves loaded settings when credential migration status rejects', async () => {
+  getAiCredentialMigrationStatus.mockRejectedValue('migration unavailable');
+  render(<AiProviderSettings />);
+
+  expect(await screen.findByLabelText('阿里云百炼 配置编辑器')).toBeVisible();
+  expect(await screen.findByRole('alert')).toHaveTextContent('旧版凭据迁移尚未完成');
+});
+
+test('requires a fresh connection test after replacing an API key', async () => {
+  hasAiProviderKey.mockResolvedValue(true);
+  const user = userEvent.setup();
+  render(<AiProviderSettings />);
+  await user.click(await screen.findByRole('button', { name: /DeepSeek/ }));
+  await user.click(screen.getByRole('button', { name: '测试连接' }));
+  expect(await screen.findByText('连接可用')).toBeVisible();
+  await user.type(screen.getByLabelText('API Key'), 'replacement-key');
+  await user.click(screen.getByRole('button', { name: '安全保存 Key' }));
+
+  await waitFor(() => expect(saveAiProviderKey).toHaveBeenCalledWith('deepseek', 'replacement-key'));
+  expect(screen.getByRole('button', { name: '设为当前' })).toBeDisabled();
+});
+
+test('does not allow a new custom provider to store a key before its config is persisted', async () => {
+  const user = userEvent.setup();
+  render(<AiProviderSettings />);
+  await user.click(await screen.findByRole('button', { name: '自定义兼容平台' }));
+  await user.type(screen.getByLabelText('API Key'), 'custom-key');
+
+  expect(screen.getByRole('button', { name: '安全保存 Key' })).toBeDisabled();
+});
+
+test('shows string command failures without erasing the credential field for another provider', async () => {
+  let resolveSave!: () => void;
+  saveAiProviderKey.mockReturnValue(new Promise<void>((resolve) => { resolveSave = resolve; }));
+  const user = userEvent.setup();
+  render(<AiProviderSettings />);
+  await user.click(await screen.findByRole('button', { name: /DeepSeek/ }));
+  await user.type(screen.getByLabelText('API Key'), 'old-key');
+  await user.click(screen.getByRole('button', { name: '安全保存 Key' }));
+  await user.click(screen.getByRole('button', { name: /OpenAI/ }));
+  await user.type(screen.getByLabelText('API Key'), 'new-key');
+  await act(async () => { resolveSave(); });
+
+  expect(screen.getByLabelText('API Key')).toHaveValue('new-key');
+});
+
+test('clearing the active provider key immediately deactivates and persists the selection', async () => {
+  const deepseek = {
+    id: 'deepseek', displayName: 'DeepSeek', baseUrl: 'https://api.deepseek.com', selectedModel: 'deepseek-v4-flash',
+    visionModel: null, supportsVision: false, requestTimeoutSeconds: 60, isEnabled: true, preset: 'deepseek' as const, allowInsecureLocalhost: false,
+  };
+  loadAiProviderState.mockResolvedValue({ providers: [deepseek], activeProviderId: 'deepseek' });
+  hasAiProviderKey.mockResolvedValue(true);
+  const user = userEvent.setup();
+  render(<AiProviderSettings />);
+
+  await user.click(await screen.findByRole('button', { name: /DeepSeek/ }));
+  await user.click(screen.getByRole('button', { name: '移除 Key' }));
+
+  await waitFor(() => expect(clearAiProviderKey).toHaveBeenCalledWith('deepseek'));
+  await waitFor(() => expect(saveAiProviderState).toHaveBeenCalledWith({
+    providers: [{ ...deepseek, isEnabled: false }], activeProviderId: null,
+  }));
+  expect(screen.getByText(/尚未选择当前 AI 平台/)).toBeVisible();
+});
+
+test('uses a catalog vision model when a preset text model is selected', async () => {
+  hasAiProviderKey.mockResolvedValue(true);
+  const user = userEvent.setup();
+  render(<AiProviderSettings />);
+  await user.click(await screen.findByRole('button', { name: /智谱/ }));
+  await user.selectOptions(screen.getByLabelText('推荐模型'), 'glm-5.2');
+  await user.click(screen.getByRole('button', { name: '测试连接' }));
+
+  await waitFor(() => expect(testAiProvider).toHaveBeenCalledWith(expect.objectContaining({ selectedModel: 'glm-5.2', visionModel: 'glm-4.5v', supportsVision: true })));
 });

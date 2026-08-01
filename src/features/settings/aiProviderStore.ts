@@ -23,7 +23,7 @@ const isPresetKind = (value: unknown): value is AiProviderPresetKind =>
   || value === 'moonshot' || value === 'openai' || value === 'custom';
 
 const isStoredTimeout = (value: unknown): value is number =>
-  typeof value === 'number' && Number.isInteger(value) && value > 0;
+  typeof value === 'number' && Number.isInteger(value) && value >= 1 && value <= 300;
 
 const normalizeTimeout = (value: number) => Math.min(MAX_TIMEOUT_SECONDS, Math.max(MIN_TIMEOUT_SECONDS, value));
 
@@ -99,8 +99,15 @@ export const loadAiProviderState = async (): Promise<AiProviderState> => {
 export const saveAiProviderState = async (state: AiProviderState): Promise<void> => {
   try {
     const store = await loadStore();
+    const previous = await store.get<unknown>(STORE_KEY);
     await store.set(STORE_KEY, normalizeAiProviderState(state));
-    await store.save();
+    try {
+      await store.save();
+    } catch (error) {
+      if (previous === undefined) await store.delete(STORE_KEY);
+      else await store.set(STORE_KEY, previous);
+      throw error;
+    }
   } catch {
     throw new Error('无法保存 AI 平台配置。上一次可用配置没有被替换。');
   }

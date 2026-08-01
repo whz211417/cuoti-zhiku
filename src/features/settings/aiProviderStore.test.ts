@@ -2,7 +2,8 @@ import { beforeEach, expect, test, vi } from 'vitest';
 import { createPresetProvider } from './aiProviderCatalog';
 import { loadAiProviderState, normalizeAiProviderState, saveAiProviderState } from './aiProviderStore';
 
-const { storeGet, storeSet, storeSave, storeLoad } = vi.hoisted(() => ({
+const { storeDelete, storeGet, storeSet, storeSave, storeLoad } = vi.hoisted(() => ({
+  storeDelete: vi.fn(),
   storeGet: vi.fn(),
   storeSet: vi.fn(),
   storeSave: vi.fn(),
@@ -15,7 +16,7 @@ vi.mock('@tauri-apps/plugin-store', () => ({
 
 beforeEach(() => {
   vi.clearAllMocks();
-  storeLoad.mockResolvedValue({ get: storeGet, set: storeSet, save: storeSave });
+  storeLoad.mockResolvedValue({ delete: storeDelete, get: storeGet, set: storeSet, save: storeSave });
 });
 
 test('repairs an invalid active provider without inventing a key', async () => {
@@ -41,6 +42,10 @@ test('normalizes persisted timeouts to the native 10 to 180 second contract', ()
     .toEqual({ providers: [{ ...bailian, requestTimeoutSeconds: 10 }], activeProviderId: 'bailian' });
   expect(normalizeAiProviderState({ providers: [{ ...bailian, requestTimeoutSeconds: 300 }], activeProviderId: 'bailian' }))
     .toEqual({ providers: [{ ...bailian, requestTimeoutSeconds: 180 }], activeProviderId: 'bailian' });
+  expect(normalizeAiProviderState({ providers: [{ ...bailian, requestTimeoutSeconds: 999_999_999 }], activeProviderId: 'bailian' }))
+    .toEqual({ providers: [], activeProviderId: null });
+  expect(normalizeAiProviderState({ providers: [{ ...bailian, requestTimeoutSeconds: 10.5 }], activeProviderId: 'bailian' }))
+    .toEqual({ providers: [], activeProviderId: null });
 });
 
 test('recovers corrupt and duplicate persisted entries as an empty or deduplicated non-sensitive state', async () => {
@@ -76,4 +81,25 @@ test('surfaces store read and write failures without replacing data', async () =
   storeSet.mockRejectedValueOnce(new Error('disk full'));
   await expect(saveAiProviderState({ providers: [], activeProviderId: null })).rejects.toThrow('无法保存 AI 平台配置');
   expect(storeSave).not.toHaveBeenCalled();
+});
+
+test('rolls the Store memory state back when disk save rejects', async () => {
+  const previous = { providers: [], activeProviderId: null };
+  storeGet.mockResolvedValue(previous);
+  storeSave.mockRejectedValueOnce(new Error('disk full'));
+
+  await expect(saveAiProviderState({ providers: [createPresetProvider('bailian')], activeProviderId: 'bailian' }))
+    .rejects.toThrow('无法保存 AI 平台配置');
+
+  expect(storeSet).toHaveBeenLastCalledWith('state', previous);
+});
+
+test('removes a newly failed state from Store memory when no previous state existed', async () => {
+  storeGet.mockResolvedValue(undefined);
+  storeSave.mockRejectedValueOnce(new Error('disk full'));
+
+  await expect(saveAiProviderState({ providers: [createPresetProvider('bailian')], activeProviderId: 'bailian' }))
+    .rejects.toThrow('无法保存 AI 平台配置');
+
+  expect(storeDelete).toHaveBeenCalledWith('state');
 });
