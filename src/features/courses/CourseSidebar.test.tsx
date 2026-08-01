@@ -25,3 +25,17 @@ test('creates a language course with an explicit kind', async () => {
   await userEvent.click(screen.getByRole('button', { name: '添加' }));
   expect(createCourse).toHaveBeenCalledWith('日语 N2', '', '#7895A5', 'language');
 });
+
+test('opens course creation from a new request token and returns the exact created course', async () => {
+  const created = { id: 'course-exact', name: '统计学', term: '', color: '#7895A5', kind: 'school' as const };
+  const onCourseCreated = vi.fn();
+  getCourses.mockResolvedValue([]);
+  createCourse.mockResolvedValue(created);
+  const view = render(<CourseSidebar onCourseCreated={onCourseCreated} onSelectCourse={vi.fn()} openCreateToken={0} selectedCourseId={null} />);
+
+  view.rerender(<CourseSidebar onCourseCreated={onCourseCreated} onSelectCourse={vi.fn()} openCreateToken={1} selectedCourseId={null} />);
+  await userEvent.type(await screen.findByLabelText('课程名称'), '统计学');
+  await userEvent.click(screen.getByRole('button', { name: '添加' }));
+
+  expect(onCourseCreated).toHaveBeenCalledWith(created);
+});

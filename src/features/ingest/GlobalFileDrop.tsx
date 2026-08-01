@@ -112,7 +112,7 @@ export function GlobalFileDrop({
           </>
         ) : phase === 'importing' || phase === 'complete' ? (
           <>
-            <p className="eyebrow">本地收件箱</p>
+            <p className="eyebrow">本地待整理</p>
             <h2>{phase === 'importing' ? '正在保存原件' : '导入结果'}</h2>
             <ImportProgress phase={phase} results={results} />
             {phase === 'complete' ? (

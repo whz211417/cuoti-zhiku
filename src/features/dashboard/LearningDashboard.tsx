@@ -6,16 +6,27 @@ import { CourseShelf } from './CourseShelf';
 import { LearningSignals } from './LearningSignals';
 import { RecentProblems } from './RecentProblems';
 import { TodayFocus } from './TodayFocus';
+import { EmptyLibraryStart } from '../onboarding/EmptyLibraryStart';
 
 type LearningDashboardProps = {
   refreshToken?: number;
+  onCreateCourse: () => void;
   onIngest: () => void;
+  onImportMaterial: () => void;
   onOpenCourse: (id: string) => void;
   onOpenInbox: () => void;
   onOpenProblem: (id: string) => void;
   onOverviewLoaded?: (overview: DashboardOverview) => void;
   onStartReview: () => void;
 };
+
+// eslint-disable-next-line react-refresh/only-export-components -- required public selector contract
+export function isLibraryEmpty(overview: DashboardOverview) {
+  return overview.courseCount === 0
+    && overview.pendingInboxCount === 0
+    && overview.materialCount === 0
+    && overview.recentProblems.length === 0;
+}
 
 function DashboardSkeleton() {
   return (
@@ -29,7 +40,9 @@ function DashboardSkeleton() {
 }
 
 export function LearningDashboard({
+  onCreateCourse,
   onIngest,
+  onImportMaterial,
   onOpenCourse,
   onOpenInbox,
   onOpenProblem,
@@ -89,19 +102,29 @@ export function LearningDashboard({
       {overview ? (
         <div className="dashboard-content">
           {error ? <p className="dashboard-refresh-error" role="status">最新数据暂时无法读取，仍显示上次结果。</p> : null}
-          <TodayFocus
-            onIngest={onIngest}
-            onOpenInbox={onOpenInbox}
-            onStartReview={onStartReview}
-            overview={overview}
-          />
-          <CourseShelf courses={overview.courseSummaries} onOpenCourse={onOpenCourse} />
-          <RecentProblems onOpenProblem={onOpenProblem} problems={overview.recentProblems} />
-          <LearningSignals
-            activity={overview.activityLastSevenDays}
-            knowledgeTopics={overview.topKnowledgeTopics}
-            mistakeReasons={overview.topMistakeReasons}
-          />
+          {isLibraryEmpty(overview) ? (
+            <EmptyLibraryStart
+              onCreateCourse={onCreateCourse}
+              onImportMaterial={onImportMaterial}
+              onImportProblem={onIngest}
+            />
+          ) : (
+            <>
+              <TodayFocus
+                onIngest={onIngest}
+                onOpenInbox={onOpenInbox}
+                onStartReview={onStartReview}
+                overview={overview}
+              />
+              <CourseShelf courses={overview.courseSummaries} onOpenCourse={onOpenCourse} />
+              <RecentProblems onOpenProblem={onOpenProblem} problems={overview.recentProblems} />
+              <LearningSignals
+                activity={overview.activityLastSevenDays}
+                knowledgeTopics={overview.topKnowledgeTopics}
+                mistakeReasons={overview.topMistakeReasons}
+              />
+            </>
+          )}
         </div>
       ) : null}
     </section>

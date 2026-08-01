@@ -3,11 +3,13 @@ import userEvent from '@testing-library/user-event';
 import { beforeEach, expect, test, vi } from 'vitest';
 import { saveProblemBook } from '../features/export/exportBooks';
 import { selectProblemFiles } from '../features/inbox/selectProblemFiles';
+import { selectCourseMaterialFile } from '../features/materials/selectCourseMaterialFile';
 import { App } from './App';
 
-const { completeReview, getDueReviewProblems, localCalendarDate, searchLibraryMock } = vi.hoisted(() => ({
+const { completeReview, getDueReviewProblems, importCourseMaterialFile, localCalendarDate, searchLibraryMock } = vi.hoisted(() => ({
   completeReview: vi.fn(),
   getDueReviewProblems: vi.fn(),
+  importCourseMaterialFile: vi.fn(),
   localCalendarDate: vi.fn(() => '2026-07-30'),
   searchLibraryMock: vi.fn(),
 }));
@@ -17,6 +19,7 @@ vi.mock('../features/inbox/selectProblemFiles', () => ({
   SUPPORTED_PROBLEM_EXTENSIONS: ['png', 'jpg', 'jpeg', 'webp', 'pdf', 'markdown', 'md', 'txt'],
   selectProblemFiles: vi.fn(),
 }));
+vi.mock('../features/materials/selectCourseMaterialFile', () => ({ selectCourseMaterialFile: vi.fn() }));
 vi.mock('../features/settings/AiSettings', () => ({ AiSettings: () => <div>AI 设置</div> }));
 vi.mock('../lib/dates', () => ({ localCalendarDate, timeGreeting: () => '早上好' }));
 vi.mock('../lib/preferences', () => ({
@@ -25,12 +28,14 @@ vi.mock('../lib/preferences', () => ({
 vi.mock('../lib/tauri', () => ({
   completeReview,
   getDueReviewProblems,
+  importCourseMaterialFile,
   searchLibrary: searchLibraryMock,
 }));
 
 vi.mock('../features/dashboard/LearningDashboard', () => ({
   LearningDashboard: ({
     onIngest,
+    onImportMaterial,
     onOpenCourse,
     onOpenInbox,
     onOpenProblem,
@@ -39,6 +44,7 @@ vi.mock('../features/dashboard/LearningDashboard', () => ({
     refreshToken = 0,
   }: {
     onIngest: () => void;
+    onImportMaterial: () => void;
     onOpenCourse: (id: string) => void;
     onOpenInbox: () => void;
     onOpenProblem: (id: string) => void;
@@ -55,6 +61,7 @@ vi.mock('../features/dashboard/LearningDashboard', () => ({
       <button onClick={onStartReview} type="button">开始复习</button>
       <button onClick={onOpenInbox} type="button">继续整理</button>
       <button onClick={onIngest} type="button">总览投进题目</button>
+      <button onClick={onImportMaterial} type="button">总览导入学习资料</button>
       <button onClick={() => onOpenCourse('course-dashboard')} type="button">打开课程摘要</button>
       <button onClick={() => onOpenProblem('problem-dashboard')} type="button">打开最近题目</button>
       <button onClick={() => onOverviewLoaded?.({ recentProblems: [{
@@ -71,7 +78,7 @@ vi.mock('../features/courses/CourseSidebar', () => ({
     onSelectCourse,
     selectedCourseId,
   }: {
-    onCourseCreated?: () => void;
+    onCourseCreated?: (course: { id: string }) => void;
     onSelectCourse: (id: string | null) => void;
     selectedCourseId: string | null;
   }) => (
@@ -80,7 +87,7 @@ vi.mock('../features/courses/CourseSidebar', () => ({
       <button
         onClick={() => {
           onSelectCourse('course-created');
-          onCourseCreated?.();
+          onCourseCreated?.({ id: 'course-created' });
         }}
         type="button"
       >
@@ -186,6 +193,41 @@ beforeEach(() => {
   completeReview.mockResolvedValue(undefined);
   localCalendarDate.mockReturnValue('2026-07-30');
   searchLibraryMock.mockResolvedValue([]);
+  importCourseMaterialFile.mockResolvedValue({ id: 'material-1' });
+});
+
+test('imports a selected learning material into the exact created course after an empty-library prompt', async () => {
+  const user = userEvent.setup();
+  vi.mocked(selectCourseMaterialFile).mockResolvedValue('C:/course/chapter.pdf');
+  render(<App />);
+
+  await user.click(screen.getByRole('button', { name: '总览导入学习资料' }));
+  expect(importCourseMaterialFile).not.toHaveBeenCalled();
+  await user.click(screen.getByRole('button', { name: '创建课程' }));
+
+  await waitFor(() => expect(importCourseMaterialFile).toHaveBeenCalledWith('course-created', 'C:/course/chapter.pdf'));
+});
+
+test('imports a selected learning material immediately when a course is already selected', async () => {
+  const user = userEvent.setup();
+  vi.mocked(selectCourseMaterialFile).mockResolvedValue('C:/course/notes.md');
+  render(<App />);
+
+  await user.click(screen.getByRole('button', { name: '选择课程' }));
+  await user.click(screen.getByRole('button', { name: '总览导入学习资料' }));
+
+  await waitFor(() => expect(importCourseMaterialFile).toHaveBeenCalledWith('course-sidebar', 'C:/course/notes.md'));
+});
+
+test('does not import a learning material after its picker is cancelled', async () => {
+  const user = userEvent.setup();
+  vi.mocked(selectCourseMaterialFile).mockResolvedValue(null);
+  render(<App />);
+
+  await user.click(screen.getByRole('button', { name: '总览导入学习资料' }));
+  await user.click(screen.getByRole('button', { name: '创建课程' }));
+
+  expect(importCourseMaterialFile).not.toHaveBeenCalled();
 });
 
 test('opens on the learning overview and navigates from its primary review action', async () => {
@@ -204,8 +246,8 @@ test('retains inbox, review and archive navigation in the sidebar', async () => 
   const user = userEvent.setup();
   render(<App />);
 
-  await user.click(screen.getByRole('button', { name: '收件箱 本地' }));
-  expect(screen.getByRole('heading', { name: '收件箱' })).toBeVisible();
+  await user.click(screen.getByRole('button', { name: '待整理 本地' }));
+  expect(screen.getByRole('heading', { name: '待整理' })).toBeVisible();
 
   await user.click(screen.getByRole('button', { name: '今日复习' }));
   expect(screen.getByRole('heading', { name: '今日复习' })).toBeVisible();
@@ -289,7 +331,7 @@ test('increments one refresh token after every successful mutation', async () =>
   expect(screen.getByRole('status', { name: '总览刷新令牌' })).toHaveTextContent('0');
 
   await user.click(screen.getByRole('button', { name: '投进题目' }));
-  expect(await screen.findByRole('heading', { name: '收件箱' })).toBeVisible();
+  expect(await screen.findByRole('heading', { name: '待整理' })).toBeVisible();
   await user.click(screen.getByRole('button', { name: '完成收件箱导入' }));
   await user.click(screen.getByRole('button', { name: '学习总览' }));
   expect(screen.getByRole('status', { name: '总览刷新令牌' })).toHaveTextContent('2');

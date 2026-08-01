@@ -103,7 +103,9 @@ function makeOverview(overrides: Partial<DashboardOverview> = {}): DashboardOver
 }
 
 const callbacks = {
+  onCreateCourse: vi.fn(),
   onIngest: vi.fn(),
+  onImportMaterial: vi.fn(),
   onOpenCourse: vi.fn(),
   onOpenInbox: vi.fn(),
   onOpenProblem: vi.fn(),
@@ -208,6 +210,23 @@ test('keeps real zero statistics visible without sample replacements', async () 
   expect(within(statistics).getByText('待整理')).toBeVisible();
   expect(within(statistics).getByText('课程')).toBeVisible();
   expect(within(statistics).getByText('资料')).toBeVisible();
+});
+
+test('shows three real actions only for an empty library', async () => {
+  getDashboardOverview.mockResolvedValue(makeOverview({
+    courseCount: 0,
+    pendingInboxCount: 0,
+    materialCount: 0,
+    courseSummaries: [],
+    recentProblems: [],
+  }));
+
+  renderDashboard();
+
+  expect(await screen.findByRole('button', { name: '拖入题目或题图' })).toBeVisible();
+  expect(screen.getByRole('button', { name: '导入学习资料' })).toBeVisible();
+  expect(screen.getByRole('button', { name: '新建课程' })).toBeVisible();
+  expect(screen.queryByText(/本周已学习 12/)).not.toBeInTheDocument();
 });
 
 test('renders exactly seven locale-aware activity cells', async () => {

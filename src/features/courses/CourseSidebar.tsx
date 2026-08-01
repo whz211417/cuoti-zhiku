@@ -1,12 +1,14 @@
-import { FormEvent, useEffect, useState } from 'react';
+import { FormEvent, useEffect, useRef, useState } from 'react';
 import { createCourse, getCourses, type Course, type CourseKind } from '../../lib/tauri';
 
 export function CourseSidebar({
   onCourseCreated,
+  openCreateToken,
   onSelectCourse,
   selectedCourseId,
 }: {
-  onCourseCreated?: () => void;
+  onCourseCreated?: (course: Course) => void;
+  openCreateToken?: number;
   onSelectCourse: (courseId: string | null) => void;
   selectedCourseId: string | null;
 }) {
@@ -14,8 +16,14 @@ export function CourseSidebar({
   const [isAdding, setIsAdding] = useState(false);
   const [name, setName] = useState('');
   const [kind, setKind] = useState<CourseKind>('school');
+  const lastOpenCreateToken = useRef(openCreateToken);
 
   useEffect(() => { void getCourses().then(setCourses).catch(() => undefined); }, []);
+  useEffect(() => {
+    if (openCreateToken === undefined || openCreateToken === lastOpenCreateToken.current) return;
+    lastOpenCreateToken.current = openCreateToken;
+    setIsAdding(true);
+  }, [openCreateToken]);
   const addCourse = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (!name.trim()) return;
@@ -25,7 +33,7 @@ export function CourseSidebar({
     setKind('school');
     setIsAdding(false);
     onSelectCourse(course.id);
-    onCourseCreated?.();
+    onCourseCreated?.(course);
   };
 
   return (

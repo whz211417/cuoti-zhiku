@@ -69,7 +69,7 @@ export function ArchiveLibrary({
           <div className="archive-empty">
             <Archive aria-hidden="true" size={22} />
             <h3>还没有题目档案</h3>
-            <p>从收件箱导入一道题后，它会出现在这里。</p>
+            <p>从待整理导入一道题后，它会出现在这里。</p>
           </div>
         ) : null}
         {problems.length > 0 ? (

@@ -38,9 +38,9 @@ export function IngestDropzone({
   };
 
   return (
-    <section aria-label="收件箱投题" className="inbox-capture">
+    <section aria-label="待整理投题" className="inbox-capture">
       <div className="inbox-capture-copy">
-        <p className="eyebrow">收件箱</p>
+        <p className="eyebrow">待整理</p>
         <h2>把题目先放进来。</h2>
         <p>题图和 PDF 会先安全保存到本地，再慢慢补题干、答案和解析。</p>
       </div>

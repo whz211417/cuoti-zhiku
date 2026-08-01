@@ -13,19 +13,20 @@ import { saveProblemBook, type BookKind } from '../features/export/exportBooks';
 import { GlobalFileDrop } from '../features/ingest/GlobalFileDrop';
 import { IngestDropzone } from '../features/inbox/IngestDropzone';
 import { selectProblemFiles } from '../features/inbox/selectProblemFiles';
+import { selectCourseMaterialFile } from '../features/materials/selectCourseMaterialFile';
 import { ProblemDocument } from '../features/problems/ProblemDocument';
 import { ReviewReader } from '../features/review/ReviewReader';
 import { CommandPalette } from '../features/search/CommandPalette';
 import { AiSettings } from '../features/settings/AiSettings';
 import { localCalendarDate, timeGreeting } from '../lib/dates';
 import { getMotionPreferences } from '../lib/preferences';
-import { completeReview, getDueReviewProblems, type DashboardOverview, type RecentProblem, type ReviewProblem } from '../lib/tauri';
+import { completeReview, getDueReviewProblems, importCourseMaterialFile, type Course, type DashboardOverview, type RecentProblem, type ReviewProblem } from '../lib/tauri';
 
 type Workspace = 'overview' | 'inbox' | 'review' | 'archive';
 
 const workspaceTitles: Record<Workspace, { eyebrow: string; title: string }> = {
   overview: { eyebrow: '学习节奏', title: '学习总览' },
-  inbox: { eyebrow: '本地资料库', title: '收件箱' },
+  inbox: { eyebrow: '本地资料库', title: '待整理' },
   review: { eyebrow: '专注复习', title: '今日复习' },
   archive: { eyebrow: '个人档案', title: '全部档案' },
 };
@@ -37,6 +38,8 @@ export function App() {
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   const [isIngesting, setIsIngesting] = useState(false);
+  const [courseCreateRequestToken, setCourseCreateRequestToken] = useState(0);
+  const [materialImportError, setMaterialImportError] = useState<string | null>(null);
   const [materialInitialQuery, setMaterialInitialQuery] = useState('');
   const [refreshToken, setRefreshToken] = useState(0);
   const [reviewQueue, setReviewQueue] = useState<ReviewProblem[]>([]);
@@ -56,13 +59,14 @@ export function App() {
   const settingsDialogRef = useRef<HTMLElement>(null);
   const settingsRestoreFocusRef = useRef<HTMLElement | null>(null);
   const gradeInFlightRef = useRef(false);
+  const pendingMaterialPathRef = useRef<string | null>(null);
   const reviewRequestRef = useRef(0);
   const activeTitle = selectedProblemId ? { eyebrow: '本地资料库', title: '题目档案' } : workspaceTitles[workspace];
   const problemBackLabel = workspace === 'archive'
     ? '返回全部档案'
     : workspace === 'overview'
       ? '返回学习总览'
-      : '返回收件箱';
+      : '返回待整理';
   const activeNavIndex = selectedProblemId
     ? null
     : workspace === 'overview'
@@ -213,6 +217,47 @@ export function App() {
     }
   };
 
+  const importMaterialIntoCourse = async (courseId: string, path: string) => {
+    setMaterialImportError(null);
+    try {
+      await importCourseMaterialFile(courseId, path);
+      setSelectedCourseId(courseId);
+      refreshOverview();
+    } catch {
+      setMaterialImportError('学习资料没有导入成功。请稍后重试；原文件没有被修改。');
+    }
+  };
+
+  const requestMaterialImport = async () => {
+    setMaterialImportError(null);
+    const selectedCourseAtRequest = selectedCourseId;
+    let path: string | null;
+    try {
+      path = await selectCourseMaterialFile();
+    } catch {
+      setMaterialImportError('无法打开学习资料选择窗口，请稍后重试。');
+      return;
+    }
+    if (!path) return;
+    if (selectedCourseAtRequest) {
+      await importMaterialIntoCourse(selectedCourseAtRequest, path);
+      return;
+    }
+    pendingMaterialPathRef.current = path;
+    setCourseCreateRequestToken((token) => token + 1);
+  };
+
+  const requestCourseCreation = () => {
+    setCourseCreateRequestToken((token) => token + 1);
+  };
+
+  const handleCourseCreated = (course: Course) => {
+    refreshOverview();
+    const pendingPath = pendingMaterialPathRef.current;
+    pendingMaterialPathRef.current = null;
+    if (pendingPath) void importMaterialIntoCourse(course.id, pendingPath);
+  };
+
   const exportBook = async (kind: BookKind) => {
     setExportingBook(kind);
     setExportStatus(null);
@@ -306,7 +351,7 @@ export function App() {
             <span><LayoutDashboard aria-hidden="true" size={16} />学习总览</span>
           </button>
           <button aria-current={workspace === 'inbox' && !selectedProblemId ? 'page' : undefined} className={`nav-item ${workspace === 'inbox' && !selectedProblemId ? 'is-active' : ''}`} onClick={() => selectWorkspace('inbox')} type="button">
-            <span><Inbox aria-hidden="true" size={16} />收件箱</span><em>本地</em>
+            <span><Inbox aria-hidden="true" size={16} />待整理</span><em>本地</em>
           </button>
           <button aria-current={workspace === 'review' ? 'page' : undefined} className={`nav-item ${workspace === 'review' ? 'is-active' : ''}`} onClick={() => selectWorkspace('review')} type="button">
             <span><BookOpenCheck aria-hidden="true" size={16} />今日复习</span>
@@ -316,7 +361,7 @@ export function App() {
           </button>
         </nav>
 
-        <div className="sidebar-section"><CourseSidebar onCourseCreated={refreshOverview} onSelectCourse={setSelectedCourseId} selectedCourseId={selectedCourseId} /></div>
+        <div className="sidebar-section"><CourseSidebar onCourseCreated={handleCourseCreated} onSelectCourse={setSelectedCourseId} openCreateToken={courseCreateRequestToken} selectedCourseId={selectedCourseId} /></div>
         <p className="local-note"><ShieldCheck aria-hidden="true" size={13} />仅存储在这台电脑</p>
       </DynamicControlSurface>
 
@@ -343,7 +388,9 @@ export function App() {
           ) : workspace === 'overview' ? (
             <div className="dashboard-stage">
               <LearningDashboard
+                onCreateCourse={requestCourseCreation}
                 onIngest={() => void ingestProblemFiles()}
+                onImportMaterial={() => void requestMaterialImport()}
                 onOpenCourse={openCourse}
                 onOpenInbox={() => selectWorkspace('inbox')}
                 onOpenProblem={openProblem}
@@ -351,6 +398,7 @@ export function App() {
                 onStartReview={() => selectWorkspace('review')}
                 refreshToken={refreshToken}
               />
+              {materialImportError ? <p className="material-import-error" role="alert">{materialImportError}</p> : null}
             </div>
           ) : workspace === 'inbox' ? (
             <div className="inbox-stage">
