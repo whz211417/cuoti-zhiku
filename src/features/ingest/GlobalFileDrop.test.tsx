@@ -1,4 +1,5 @@
 import { act, render, screen, waitFor } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { beforeEach, expect, test, vi } from 'vitest';
 import { GlobalFileDrop } from './GlobalFileDrop';
 import type { WindowFileDrop } from './windowFileDrop';
@@ -65,4 +66,44 @@ test('unregisters the native event subscription after unmount', async () => {
   view.unmount();
 
   expect(unlisten).toHaveBeenCalledOnce();
+});
+
+test('keeps the visible shell non-interactive until the import result is complete', async () => {
+  let resolveImport!: (value: unknown) => void;
+  importFiles.mockReturnValue(new Promise((resolve) => { resolveImport = resolve; }));
+  const onOpenInbox = vi.fn();
+  render(<GlobalFileDrop courseId={null} onImported={vi.fn()} onOpenInbox={onOpenInbox} />);
+  await waitFor(() => expect(subscribeToWindowFileDrop).toHaveBeenCalledOnce());
+
+  act(() => emitDrop({ type: 'enter', paths: ['C:\\one.pdf'] }));
+  expect(screen.getByLabelText('拖放文件导入')).not.toHaveClass('is-complete');
+  act(() => emitDrop({ type: 'drop', paths: ['C:\\one.pdf'] }));
+  expect(screen.getByLabelText('拖放文件导入')).not.toHaveClass('is-complete');
+
+  await act(async () => resolveImport([{ sourcePath: 'C:\\one.pdf', item: { id: 'i1', problemId: 'p1', attachmentId: 'a1', filename: 'one.pdf', createdAt: 'now' }, error: null }]));
+  expect(screen.getByLabelText('拖放文件导入')).toHaveClass('is-complete');
+  await userEvent.click(screen.getByRole('button', { name: '查看待整理' }));
+  expect(onOpenInbox).toHaveBeenCalledOnce();
+});
+
+test('keeps guidance current on over then hides it on leave', async () => {
+  render(<GlobalFileDrop courseId={null} onImported={vi.fn()} onOpenInbox={vi.fn()} />);
+  await waitFor(() => expect(subscribeToWindowFileDrop).toHaveBeenCalledOnce());
+
+  act(() => emitDrop({ type: 'enter', paths: ['C:\\one.pdf'] }));
+  act(() => emitDrop({ type: 'over', paths: ['C:\\one.pdf', 'C:\\two.png'] }));
+  expect(screen.getByText('准备导入 2 个文件')).toBeVisible();
+  act(() => emitDrop({ type: 'leave', paths: [] }));
+  expect(screen.getByLabelText('拖放文件导入')).toHaveAttribute('aria-hidden', 'true');
+});
+
+test('keeps the error result visible when native import rejects', async () => {
+  importFiles.mockRejectedValue(new Error('native import unavailable'));
+  render(<GlobalFileDrop courseId={null} onImported={vi.fn()} onOpenInbox={vi.fn()} />);
+  await waitFor(() => expect(subscribeToWindowFileDrop).toHaveBeenCalledOnce());
+
+  await act(async () => emitDrop({ type: 'drop', paths: ['C:\\one.pdf'] }));
+
+  expect(await screen.findByText('未能导入 1 个文件')).toBeVisible();
+  expect(screen.getByText('未导入的文件不会影响已经保存的原件。')).toBeVisible();
 });

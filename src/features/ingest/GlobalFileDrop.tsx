@@ -96,7 +96,7 @@ export function GlobalFileDrop({
 
   const visible = phase !== 'idle';
   return (
-    <aside aria-hidden={!visible} aria-label="拖放文件导入" className={`global-file-drop${visible ? ' is-visible' : ''}`}>
+    <aside aria-hidden={!visible} aria-label="拖放文件导入" className={`global-file-drop${visible ? ' is-visible' : ''}${phase === 'complete' ? ' is-complete' : ''}`}>
       <section className="global-file-drop__surface">
         {phase === 'ready' ? (
           <>

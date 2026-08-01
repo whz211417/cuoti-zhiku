@@ -458,7 +458,8 @@ input:not([type="radio"]):not([type="checkbox"]) { min-height: 44px; }
 
 /* Whole-window capture is intentionally a transient material, never a second workspace. */
 .global-file-drop { position: fixed; z-index: 90; inset: 14px; display: grid; place-items: center; opacity: 0; pointer-events: none; transform: scale(.985); transition: opacity 180ms ease-out, transform 240ms cubic-bezier(.2, .8, .2, 1); }
-.global-file-drop.is-visible { opacity: 1; pointer-events: auto; transform: scale(1); }
+.global-file-drop.is-visible { opacity: 1; transform: scale(1); }
+.global-file-drop.is-complete .global-file-drop__surface { pointer-events: auto; }
 .global-file-drop::before { position: absolute; inset: -14px; content: ""; background: rgb(30 34 44 / .16); }
 .global-file-drop__surface { position: relative; display: grid; width: min(420px, calc(100vw - 52px)); justify-items: center; border: 1px solid rgb(255 255 255 / .72); border-radius: 24px; padding: 32px; color: var(--ink); background: rgb(248 248 250 / .94); box-shadow: 0 24px 70px rgb(28 32 40 / .2), inset 0 1px rgb(255 255 255 / .76); text-align: center; }
 .global-file-drop__surface h2 { margin: 5px 0 7px; font-size: 25px; letter-spacing: -.04em; }
@@ -473,7 +474,7 @@ input:not([type="radio"]):not([type="checkbox"]) { min-height: 44px; }
 .global-file-drop__result { display: grid; justify-items: center; }
 .global-file-drop__detail { margin-top: 6px; }
 .global-file-drop__actions { display: flex; align-items: center; gap: 8px; margin-top: 22px; }
-.global-file-drop__open, .global-file-drop__dismiss { display: inline-flex; min-height: 38px; align-items: center; justify-content: center; border: 0; font-weight: 680; transition: transform 180ms var(--motion-spring), background-color 180ms var(--motion-spring); }
+.global-file-drop__open, .global-file-drop__dismiss { display: inline-flex; min-height: 38px; align-items: center; justify-content: center; border: 0; font-weight: 680; transition: transform 180ms var(--motion-spring); }
 .global-file-drop__open { border-radius: 10px; padding: 0 14px; color: white; background: var(--blue); }
 .global-file-drop__open:hover { background: var(--blue-pressed); }
 .global-file-drop__open:active, .global-file-drop__dismiss:active { transform: scale(.97); }
