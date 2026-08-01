@@ -232,3 +232,49 @@ Implementation commits:
 
 - Final NSIS generation and launch/dialog smoke testing remain controller release steps.
 - Opaque legacy `updated_at` values still cannot recover their original historical save instant; migration 5's documented fallback remains unchanged.
+
+## 2026-08-01 problem-request race addendum
+
+Reviewed HEAD: `0a62156`
+
+Implementation commit:
+
+- `8a77170` — `fix: ignore stale problem document requests`
+
+### Race fix
+
+`ProblemDocument` now invalidates pending document work when `problemId` changes and scopes initial loads plus the complete save/conflict-refresh lifecycle to both the active problem and a request generation. Late success, error, and completion paths cannot replace the next problem's document, expose the previous problem's retry action, or reset current saving/error state. Same-problem conflict refresh still installs the latest version token while retaining the learner's draft for explicit retry.
+
+### TDD evidence
+
+- The focused red run executed 10 tests: the existing 6 passed and exactly 4 new regressions failed.
+- The four failures covered a stale initial-load response, stale initial-load rejection, stale conflict-refresh response, and stale conflict-refresh rejection after rerendering from problem A to problem B.
+- The conflict-response regression demonstrated the blocking symptom directly: the late refresh replaced B's heading with A's remote document. The rejection regression exposed A's save error and retry control inside B's active editor.
+- After the active-problem/request-generation guard, the focused file passed all 10 tests, including the existing same-problem draft/version retry behavior.
+
+### Fresh problem-race verification matrix
+
+- `pnpm exec vitest run`
+  - Exit 0; 19 test files and 102 tests passed.
+- `pnpm lint`
+  - Exit 0; ESLint completed with `--max-warnings=0`.
+- `pnpm typecheck`
+  - Exit 0; `tsc --noEmit` completed without diagnostics.
+- `pnpm build`
+  - Exit 0; TypeScript plus Vite production build completed, 1610 modules transformed.
+- GNU-host `cargo fmt --check`
+  - Exit 0; no formatting diff.
+- GNU-host `cargo test`
+  - Exit 0; 52 Rust tests passed, plus zero-test main/doc targets passed.
+- GNU-host `cargo clippy --all-targets -- -D warnings`
+  - Exit 0; completed with warnings denied.
+- `git diff --check 8031a1e316ab0af4d644c4a0f02c0e84ba4d1c4a..HEAD`
+  - Exit 0 before this report-only commit.
+- `pnpm tauri build --no-bundle --target x86_64-pc-windows-gnu`
+  - Exit 0; its frontend production build completed and the optimized application was written to `src-tauri/target/x86_64-pc-windows-gnu/release/cuoti-zhiku.exe`.
+  - `--no-bundle` was used deliberately; no NSIS installer was built.
+
+### Remaining handoff risks
+
+- Final NSIS generation and launch/dialog smoke testing remain controller release steps.
+- Opaque legacy `updated_at` values still cannot recover their original historical save instant; migration 5's documented fallback remains unchanged.
