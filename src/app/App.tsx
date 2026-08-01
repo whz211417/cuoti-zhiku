@@ -230,15 +230,20 @@ export function App() {
 
   const requestMaterialImport = async () => {
     setMaterialImportError(null);
+    pendingMaterialPathRef.current = null;
     const selectedCourseAtRequest = selectedCourseId;
     let path: string | null;
     try {
       path = await selectCourseMaterialFile();
     } catch {
+      pendingMaterialPathRef.current = null;
       setMaterialImportError('无法打开学习资料选择窗口，请稍后重试。');
       return;
     }
-    if (!path) return;
+    if (!path) {
+      pendingMaterialPathRef.current = null;
+      return;
+    }
     if (selectedCourseAtRequest) {
       await importMaterialIntoCourse(selectedCourseAtRequest, path);
       return;
@@ -256,6 +261,10 @@ export function App() {
     const pendingPath = pendingMaterialPathRef.current;
     pendingMaterialPathRef.current = null;
     if (pendingPath) void importMaterialIntoCourse(course.id, pendingPath);
+  };
+
+  const cancelCourseCreation = () => {
+    pendingMaterialPathRef.current = null;
   };
 
   const exportBook = async (kind: BookKind) => {
@@ -361,7 +370,7 @@ export function App() {
           </button>
         </nav>
 
-        <div className="sidebar-section"><CourseSidebar onCourseCreated={handleCourseCreated} onSelectCourse={setSelectedCourseId} openCreateToken={courseCreateRequestToken} selectedCourseId={selectedCourseId} /></div>
+        <div className="sidebar-section"><CourseSidebar onCancelCourseCreate={cancelCourseCreation} onCourseCreated={handleCourseCreated} onSelectCourse={setSelectedCourseId} openCreateToken={courseCreateRequestToken} selectedCourseId={selectedCourseId} /></div>
         <p className="local-note"><ShieldCheck aria-hidden="true" size={13} />仅存储在这台电脑</p>
       </DynamicControlSurface>
 

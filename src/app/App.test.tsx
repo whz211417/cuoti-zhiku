@@ -74,10 +74,12 @@ vi.mock('../features/dashboard/LearningDashboard', () => ({
 
 vi.mock('../features/courses/CourseSidebar', () => ({
   CourseSidebar: ({
+    onCancelCourseCreate,
     onCourseCreated,
     onSelectCourse,
     selectedCourseId,
   }: {
+    onCancelCourseCreate?: () => void;
     onCourseCreated?: (course: { id: string }) => void;
     onSelectCourse: (id: string | null) => void;
     selectedCourseId: string | null;
@@ -93,6 +95,7 @@ vi.mock('../features/courses/CourseSidebar', () => ({
       >
         创建课程
       </button>
+      <button onClick={onCancelCourseCreate} type="button">取消创建课程</button>
       <span>{selectedCourseId ?? '未分类'}</span>
     </div>
   ),
@@ -225,6 +228,47 @@ test('does not import a learning material after its picker is cancelled', async 
   render(<App />);
 
   await user.click(screen.getByRole('button', { name: '总览导入学习资料' }));
+  await user.click(screen.getByRole('button', { name: '创建课程' }));
+
+  expect(importCourseMaterialFile).not.toHaveBeenCalled();
+});
+
+test('discards an older pending material when a later picker is cancelled before course creation', async () => {
+  const user = userEvent.setup();
+  vi.mocked(selectCourseMaterialFile)
+    .mockResolvedValueOnce('C:/course/older.pdf')
+    .mockResolvedValueOnce(null);
+  render(<App />);
+
+  await user.click(screen.getByRole('button', { name: '总览导入学习资料' }));
+  await user.click(screen.getByRole('button', { name: '总览导入学习资料' }));
+  await user.click(screen.getByRole('button', { name: '创建课程' }));
+
+  expect(importCourseMaterialFile).not.toHaveBeenCalled();
+});
+
+test('discards an older pending material when a later picker fails before course creation', async () => {
+  const user = userEvent.setup();
+  vi.mocked(selectCourseMaterialFile)
+    .mockResolvedValueOnce('C:/course/older.pdf')
+    .mockRejectedValueOnce(new Error('dialog failed'));
+  render(<App />);
+
+  await user.click(screen.getByRole('button', { name: '总览导入学习资料' }));
+  await user.click(screen.getByRole('button', { name: '总览导入学习资料' }));
+  expect(await screen.findByRole('alert')).toHaveTextContent('无法打开学习资料选择窗口');
+  await user.click(screen.getByRole('button', { name: '创建课程' }));
+
+  expect(importCourseMaterialFile).not.toHaveBeenCalled();
+});
+
+test('discards a pending material when the user cancels course creation', async () => {
+  const user = userEvent.setup();
+  vi.mocked(selectCourseMaterialFile).mockResolvedValue('C:/course/cancelled.pdf');
+  render(<App />);
+
+  await user.click(screen.getByRole('button', { name: '总览导入学习资料' }));
+  await user.click(screen.getByRole('button', { name: '取消创建课程' }));
   await user.click(screen.getByRole('button', { name: '创建课程' }));
 
   expect(importCourseMaterialFile).not.toHaveBeenCalled();
