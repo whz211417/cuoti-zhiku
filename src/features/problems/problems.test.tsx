@@ -1,6 +1,7 @@
-import { render, screen } from '@testing-library/react';
+import { act, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, expect, test, vi } from 'vitest';
+import type { ProblemDocument as ProblemDocumentModel } from '../../lib/tauri';
 import { ProblemDocument } from './ProblemDocument';
 
 const { getProblemDocument, hasAiApiKey, runProblemAnalysis, saveProblemField } = vi.hoisted(() => ({
@@ -13,6 +14,16 @@ const { getProblemDocument, hasAiApiKey, runProblemAnalysis, saveProblemField } 
 vi.mock('../../lib/tauri', () => ({ getProblemDocument, hasAiApiKey, runProblemAnalysis, saveProblemField }));
 
 beforeEach(() => vi.resetAllMocks());
+
+function deferred<T>() {
+  let resolve!: (value: T | PromiseLike<T>) => void;
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<T>((resolvePromise, rejectPromise) => {
+    resolve = resolvePromise;
+    reject = rejectPromise;
+  });
+  return { promise, reject, resolve };
+}
 
 test('renders a saved problem as a reading document', async () => {
   getProblemDocument.mockResolvedValue({
@@ -32,6 +43,62 @@ test('renders a saved problem as a reading document', async () => {
   expect(await screen.findByRole('heading', { name: '财政扩张如何影响 IS 曲线？' })).toBeVisible();
   expect(screen.getByText('我的作答')).toBeVisible();
   expect(screen.getByText('我认为 IS 会右移。')).toBeVisible();
+});
+
+test('ignores an initial document response after a different problem is selected', async () => {
+  const problemA = deferred<ProblemDocumentModel>();
+  const problemB = deferred<ProblemDocumentModel>();
+  getProblemDocument.mockImplementation((problemId: string) => (
+    problemId === 'problem-race-a' ? problemA.promise : problemB.promise
+  ));
+  const { rerender } = render(<ProblemDocument problemId="problem-race-a" />);
+
+  rerender(<ProblemDocument problemId="problem-race-b" />);
+  await act(async () => problemB.resolve({
+    id: 'problem-race-b',
+    title: '',
+    status: 'inbox',
+    updatedAt: '2026-07-30T08:01:00Z',
+    version: 'version-b1',
+    fields: [{ kind: 'stem', value: '题目 B 的题干', updatedAt: '2026-07-30T08:01:00Z' }],
+  }));
+  expect(await screen.findByRole('heading', { name: '题目 B 的题干' })).toBeVisible();
+
+  await act(async () => problemA.resolve({
+    id: 'problem-race-a',
+    title: '',
+    status: 'inbox',
+    updatedAt: '2026-07-30T08:00:00Z',
+    version: 'version-a1',
+    fields: [{ kind: 'stem', value: '迟到的题目 A', updatedAt: '2026-07-30T08:00:00Z' }],
+  }));
+
+  expect(screen.getByRole('heading', { name: '题目 B 的题干' })).toBeVisible();
+  expect(screen.queryByRole('heading', { name: '迟到的题目 A' })).not.toBeInTheDocument();
+});
+
+test('ignores an initial document rejection after a different problem is selected', async () => {
+  const problemA = deferred<ProblemDocumentModel>();
+  getProblemDocument.mockImplementation((problemId: string) => (
+    problemId === 'problem-race-a'
+      ? problemA.promise
+      : Promise.resolve({
+        id: 'problem-race-b',
+        title: '',
+        status: 'inbox',
+        updatedAt: '2026-07-30T08:01:00Z',
+        version: 'version-b1',
+        fields: [{ kind: 'stem', value: '题目 B 的题干', updatedAt: '2026-07-30T08:01:00Z' }],
+      })
+  ));
+  const { rerender } = render(<ProblemDocument problemId="problem-race-a" />);
+
+  rerender(<ProblemDocument problemId="problem-race-b" />);
+  expect(await screen.findByRole('heading', { name: '题目 B 的题干' })).toBeVisible();
+  await act(async () => problemA.reject(new Error('late problem A failure')));
+
+  expect(screen.getByRole('heading', { name: '题目 B 的题干' })).toBeVisible();
+  expect(screen.queryByText('暂时无法打开这份题目档案。')).not.toBeInTheDocument();
 });
 
 test('saves an added stem with the document version', async () => {
@@ -177,6 +244,102 @@ test('reloads a stale document version without discarding the draft before retry
     'version-2',
   );
   expect(await screen.findByRole('heading', { name: '保留的本地草稿' })).toBeVisible();
+});
+
+test('ignores a late conflict refresh after another problem is selected', async () => {
+  const conflictRefresh = deferred<ProblemDocumentModel>();
+  let problemALoads = 0;
+  getProblemDocument.mockImplementation((problemId: string) => {
+    if (problemId === 'problem-race-a') {
+      problemALoads += 1;
+      return problemALoads === 1
+        ? Promise.resolve({
+          id: 'problem-race-a',
+          title: '',
+          status: 'inbox',
+          updatedAt: '2026-07-30T08:00:00Z',
+          version: 'version-a1',
+          fields: [{ kind: 'stem', value: '题目 A 的题干', updatedAt: '2026-07-30T08:00:00Z' }],
+        })
+        : conflictRefresh.promise;
+    }
+    return Promise.resolve({
+      id: 'problem-race-b',
+      title: '',
+      status: 'inbox',
+      updatedAt: '2026-07-30T08:02:00Z',
+      version: 'version-b1',
+      fields: [{ kind: 'stem', value: '题目 B 的题干', updatedAt: '2026-07-30T08:02:00Z' }],
+    });
+  });
+  saveProblemField.mockRejectedValueOnce(new Error('stale document version'));
+  const user = userEvent.setup();
+  const { rerender } = render(<ProblemDocument problemId="problem-race-a" />);
+
+  await user.click(await screen.findByRole('button', { name: '编辑题干' }));
+  await user.clear(screen.getByLabelText('编辑题干'));
+  await user.type(screen.getByLabelText('编辑题干'), '题目 A 的本地草稿');
+  await user.click(screen.getByRole('button', { name: '保存题干' }));
+  await waitFor(() => expect(getProblemDocument).toHaveBeenCalledTimes(2));
+
+  rerender(<ProblemDocument problemId="problem-race-b" />);
+  expect(await screen.findByRole('heading', { name: '题目 B 的题干' })).toBeVisible();
+  await act(async () => conflictRefresh.resolve({
+    id: 'problem-race-a',
+    title: '',
+    status: 'inbox',
+    updatedAt: '2026-07-30T08:01:00Z',
+    version: 'version-a2',
+    fields: [{ kind: 'stem', value: '题目 A 的远端更新', updatedAt: '2026-07-30T08:01:00Z' }],
+  }));
+
+  expect(screen.getByRole('heading', { name: '题目 B 的题干' })).toBeVisible();
+  expect(screen.queryByRole('button', { name: '重试保存题干' })).not.toBeInTheDocument();
+  expect(saveProblemField).toHaveBeenCalledTimes(1);
+});
+
+test('ignores a late conflict-refresh rejection in the next problem editor', async () => {
+  const conflictRefresh = deferred<ProblemDocumentModel>();
+  let problemALoads = 0;
+  getProblemDocument.mockImplementation((problemId: string) => {
+    if (problemId === 'problem-race-a') {
+      problemALoads += 1;
+      return problemALoads === 1
+        ? Promise.resolve({
+          id: 'problem-race-a',
+          title: '',
+          status: 'inbox',
+          updatedAt: '2026-07-30T08:00:00Z',
+          version: 'version-a1',
+          fields: [{ kind: 'stem', value: '题目 A 的题干', updatedAt: '2026-07-30T08:00:00Z' }],
+        })
+        : conflictRefresh.promise;
+    }
+    return Promise.resolve({
+      id: 'problem-race-b',
+      title: '',
+      status: 'inbox',
+      updatedAt: '2026-07-30T08:02:00Z',
+      version: 'version-b1',
+      fields: [{ kind: 'stem', value: '题目 B 的题干', updatedAt: '2026-07-30T08:02:00Z' }],
+    });
+  });
+  saveProblemField.mockRejectedValueOnce(new Error('stale document version'));
+  const user = userEvent.setup();
+  const { rerender } = render(<ProblemDocument problemId="problem-race-a" />);
+
+  await user.click(await screen.findByRole('button', { name: '编辑题干' }));
+  await user.click(screen.getByRole('button', { name: '保存题干' }));
+  await waitFor(() => expect(getProblemDocument).toHaveBeenCalledTimes(2));
+
+  rerender(<ProblemDocument problemId="problem-race-b" />);
+  await user.click(await screen.findByRole('button', { name: '编辑题干' }));
+  await user.clear(screen.getByLabelText('编辑题干'));
+  await user.type(screen.getByLabelText('编辑题干'), '题目 B 的本地草稿');
+  await act(async () => conflictRefresh.reject(new Error('late problem A refresh failure')));
+
+  expect(screen.getByLabelText('编辑题干')).toHaveValue('题目 B 的本地草稿');
+  expect(screen.queryByRole('alert')).not.toBeInTheDocument();
 });
 
 test('lets the learner explicitly choose deep analysis before sending', async () => {

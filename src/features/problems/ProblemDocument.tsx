@@ -1,5 +1,5 @@
 import { Sparkles, X } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { InspectorSurface } from '../../components/material/InspectorSurface';
 import { getProblemDocument, hasAiApiKey, runProblemAnalysis, saveProblemField, type AiFieldSuggestion, type ProblemDocument as ProblemDocumentModel } from '../../lib/tauri';
 
@@ -25,14 +25,40 @@ export function ProblemDocument({ onSaved, problemId }: { onSaved?: () => void; 
   const [aiMode, setAiMode] = useState<'flash' | 'deep'>('flash');
   const [aiSuggestions, setAiSuggestions] = useState<AiFieldSuggestion[]>([]);
   const [aiError, setAiError] = useState<string | null>(null);
+  const activeProblemRef = useRef(problemId);
+  const requestGenerationRef = useRef(0);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
+    if (activeProblemRef.current === problemId) return;
+    activeProblemRef.current = problemId;
+    requestGenerationRef.current += 1;
     setDocument(null);
     setLoadError(null);
     setSaveError(null);
     setEditingKind(null);
     setDraft('');
-    void getProblemDocument(problemId).then(setDocument).catch(() => setLoadError('暂时无法打开这份题目档案。'));
+    setIsSaving(false);
+  }, [problemId]);
+
+  useEffect(() => {
+    const requestGeneration = requestGenerationRef.current + 1;
+    requestGenerationRef.current = requestGeneration;
+    void getProblemDocument(problemId).then((nextDocument) => {
+      if (
+        activeProblemRef.current === problemId
+        && requestGenerationRef.current === requestGeneration
+      ) setDocument(nextDocument);
+    }).catch(() => {
+      if (
+        activeProblemRef.current === problemId
+        && requestGenerationRef.current === requestGeneration
+      ) setLoadError('暂时无法打开这份题目档案。');
+    });
+    return () => {
+      if (requestGenerationRef.current === requestGeneration) {
+        requestGenerationRef.current += 1;
+      }
+    };
   }, [problemId]);
 
   if (loadError) return <p className="document-notice" role="status">{loadError}</p>;
@@ -45,11 +71,20 @@ export function ProblemDocument({ onSaved, problemId }: { onSaved?: () => void; 
     setSaveError(null);
   };
   const save = async (kind: string) => {
+    if (document.id !== problemId || activeProblemRef.current !== problemId) return;
+    const requestProblemId = problemId;
+    const requestGeneration = requestGenerationRef.current + 1;
+    requestGenerationRef.current = requestGeneration;
+    const isActiveRequest = () => (
+      activeProblemRef.current === requestProblemId
+      && requestGenerationRef.current === requestGeneration
+    );
     setIsSaving(true);
     setSaveError(null);
     try {
       const saved = await saveProblemField(document.id, kind, draft, document.version);
-      setDocument((current) => current ? {
+      if (!isActiveRequest()) return;
+      setDocument((current) => current?.id === requestProblemId ? {
         ...current,
         updatedAt: saved.updatedAt,
         version: saved.version,
@@ -59,8 +94,10 @@ export function ProblemDocument({ onSaved, problemId }: { onSaved?: () => void; 
       setSaveError(null);
       onSaved?.();
     } catch {
+      if (!isActiveRequest()) return;
       try {
         const latestDocument = await getProblemDocument(document.id);
+        if (!isActiveRequest()) return;
         if (latestDocument.version !== document.version) {
           setDocument(latestDocument);
           setSaveError('题目已在另一处更新。已重新载入最新内容，草稿仍在这里，请重试。');
@@ -68,10 +105,10 @@ export function ProblemDocument({ onSaved, problemId }: { onSaved?: () => void; 
           setSaveError('保存没有完成。草稿仍在这里，请重试。');
         }
       } catch {
-        setSaveError('保存没有完成。草稿仍在这里，请重试。');
+        if (isActiveRequest()) setSaveError('保存没有完成。草稿仍在这里，请重试。');
       }
     } finally {
-      setIsSaving(false);
+      if (isActiveRequest()) setIsSaving(false);
     }
   };
 
