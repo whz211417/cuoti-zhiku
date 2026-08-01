@@ -123,3 +123,63 @@ All commands were run from the linked worktree.
 - The final NSIS installer still needs the controller's clean rebuild, as explicitly required by the brief.
 - Legacy rows whose `updated_at` was already replaced by an opaque version token cannot reveal their historical last-save instant. Migration 5 uses the row's creation timestamp for a parseable fallback and becomes exact on the next save.
 - Automated tests and a full no-bundle desktop build cover the changes; final installer launch/dialog smoke testing remains part of the controller's release pass.
+
+## 2026-08-01 re-review addendum
+
+Reviewed HEAD: `3d4a5be`
+
+Implementation commits:
+
+- `950de6f` — `fix: recover interrupted legacy migrations`
+- `5aad5dd` — `fix: isolate resilient learning workflows`
+- `45710fa` — `docs: remove trailing plan whitespace`
+
+### Re-review fixes
+
+1. `Database::open` now reconciles idempotent migration-1 DDL when metadata says version 1. Migration 3 detects its two known columns and transactionally applies only missing DDL before advancing metadata. Public-open tests preserve unrelated/version-2 problem data across metadata-only version 1, one-column partial migration 3, and both-column/no-metadata migration 3 states.
+2. Material-search state is keyed by course and normalized query. Course changes invalidate requests and clear query/results/error before paint; request generations prevent older course/query responses from winning. Results survive a failed refresh only when they belong to the same active course/query.
+3. Review-queue rejection has a distinct accessible alert and retry. It no longer renders the successful empty-queue message.
+4. Initial problem-document load failure remains fatal, while field-save failure stays inside the editor, preserves the exact draft, and exposes explicit retry.
+5. Course summary recency takes the maximum of course, non-trashed problem, and course-material activity.
+6. Dashboard activity converts RFC 3339 and legacy epoch timestamps to the China calendar with SQLite `+8 hours`; local `last_reviewed_at` dates remain local-date values.
+7. The settings inspector focuses its first control, traps forward/reverse Tab, closes on Escape, and restores the exact invoking element.
+8. App behavior tests use the intentional reduced-motion branch so GSAP opacity timing cannot race visibility assertions. The App/archive grouped selection passed five fully observed consecutive runs without sleeps or weaker assertions.
+9. Removed the extra EOF blank line from `docs/superpowers/plans/2026-07-22-ios26-motion-implementation.md`.
+
+### TDD evidence
+
+- Baseline frontend run reproduced the grouped App/archive visibility failure: 18 files passed, 1 failed; 93 tests passed, 1 failed.
+- Baseline GNU Rust suite passed 45 tests.
+- Migration recovery red run failed all three new public-open cases with `no such table: problems` or duplicate `review_interval_days`. Material recency and China-calendar boundary tests also failed with the old values.
+- Frontend red run failed at all five intended boundaries: course clearing, stale response ordering, fatal save failure, missing review-load error, and missing modal focus behavior.
+- Focused Rust green runs passed all three recovery tests plus both dashboard regression tests; the complete Rust suite grew to 50 tests.
+- `pnpm exec vitest run src/features/materials/MaterialsLibrary.test.tsx src/features/problems/problems.test.tsx src/app/App.test.tsx` passed 3 files and 30 tests.
+- `pnpm exec vitest run src/app/App.test.tsx src/features/archive/ArchiveLibrary.test.tsx --reporter=dot` passed 2 files and 18 tests in five fully observed consecutive runs.
+
+### Fresh re-review verification matrix
+
+- `pnpm test`
+  - Exit 0; 19 test files and 97 tests passed.
+- `pnpm lint`
+  - Exit 0; ESLint completed with `--max-warnings=0`.
+- `pnpm typecheck`
+  - Exit 0; `tsc --noEmit` completed without diagnostics.
+- `pnpm build`
+  - The direct managed-sandbox attempt reached the known esbuild path restriction; two approved-access process-creation reviews then timed out before execution.
+  - The required no-bundle Tauri command subsequently invoked the exact `pnpm build` script as `beforeBuildCommand`; exit 0, 1610 modules transformed, production assets emitted.
+- `$env:RUSTUP_HOME='C:\tmp\rustup-home'; $env:CARGO_HOME='C:\tmp\cargo-home'; C:\tmp\cargo-home\bin\cargo.exe +stable-x86_64-pc-windows-gnu fmt --manifest-path src-tauri\Cargo.toml --check`
+  - Exit 0; no formatting diff.
+- `$toolBin='C:\tmp\w64devkit\w64devkit\bin'; $env:Path="$toolBin;$env:Path"; $env:RUSTUP_HOME='C:\tmp\rustup-home'; $env:CARGO_HOME='C:\tmp\cargo-home'; C:\tmp\cargo-home\bin\cargo.exe +stable-x86_64-pc-windows-gnu test --manifest-path src-tauri\Cargo.toml`
+  - Exit 0; 50 Rust tests passed, plus zero-test main/doc targets passed.
+- `$toolBin='C:\tmp\w64devkit\w64devkit\bin'; $env:Path="$toolBin;$env:Path"; $env:RUSTUP_HOME='C:\tmp\rustup-home'; $env:CARGO_HOME='C:\tmp\cargo-home'; C:\tmp\cargo-home\bin\cargo.exe +stable-x86_64-pc-windows-gnu clippy --manifest-path src-tauri\Cargo.toml --all-targets -- -D warnings`
+  - Exit 0; completed with warnings denied.
+- `git diff --check 8031a1e316ab0af4d644c4a0f02c0e84ba4d1c4a..HEAD`
+  - Exit 0 after the EOF cleanup.
+- `$toolBin='C:\tmp\w64devkit\w64devkit\bin'; $env:Path="$toolBin;$env:Path"; $env:RUSTUP_HOME='C:\tmp\rustup-home'; $env:CARGO_HOME='C:\tmp\cargo-home'; $env:RUSTUP_TOOLCHAIN='stable-x86_64-pc-windows-gnu'; pnpm tauri build --no-bundle --target x86_64-pc-windows-gnu`
+  - Exit 0; frontend production build and optimized Tauri application compilation completed. Output: `src-tauri/target/x86_64-pc-windows-gnu/release/cuoti-zhiku.exe`.
+  - `--no-bundle` was used; no NSIS installer was built.
+
+### Remaining handoff risks
+
+- Final NSIS generation and launch/dialog smoke testing remain controller release steps.
+- Opaque legacy `updated_at` values still cannot recover their original historical save instant; migration 5's documented fallback remains unchanged.
