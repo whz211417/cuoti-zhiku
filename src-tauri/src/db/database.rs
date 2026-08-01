@@ -155,6 +155,13 @@ impl Database {
             connection.query_row("SELECT version FROM schema_meta LIMIT 1", [], |row| {
                 row.get::<_, i64>(0)
             })?;
+        if schema_version == 1 {
+            apply_migration(
+                &mut connection,
+                include_str!("../../migrations/0001_initial.sql"),
+                1,
+            )?;
+        }
         if schema_version < 2 {
             apply_migration(
                 &mut connection,
@@ -164,11 +171,7 @@ impl Database {
             schema_version = 2;
         }
         if schema_version < 3 {
-            apply_migration(
-                &mut connection,
-                include_str!("../../migrations/0003_review_state.sql"),
-                3,
-            )?;
+            apply_review_state_migration(&mut connection)?;
             schema_version = 3;
         }
         if schema_version < 4 {
@@ -814,6 +817,47 @@ pub(crate) fn apply_migration(
     Ok(())
 }
 
+fn apply_review_state_migration(connection: &mut Connection) -> DatabaseResult<()> {
+    let has_interval = connection.query_row(
+        "SELECT EXISTS(
+             SELECT 1 FROM pragma_table_info('problems')
+             WHERE name = 'review_interval_days'
+         )",
+        [],
+        |row| row.get::<_, bool>(0),
+    )?;
+    let has_last_reviewed = connection.query_row(
+        "SELECT EXISTS(
+             SELECT 1 FROM pragma_table_info('problems')
+             WHERE name = 'last_reviewed_at'
+         )",
+        [],
+        |row| row.get::<_, bool>(0),
+    )?;
+
+    if !has_interval && !has_last_reviewed {
+        return apply_migration(
+            connection,
+            include_str!("../../migrations/0003_review_state.sql"),
+            3,
+        );
+    }
+
+    let transaction = connection.transaction()?;
+    if !has_interval {
+        transaction.execute_batch(
+            "ALTER TABLE problems
+             ADD COLUMN review_interval_days INTEGER NOT NULL DEFAULT 1;",
+        )?;
+    }
+    if !has_last_reviewed {
+        transaction.execute_batch("ALTER TABLE problems ADD COLUMN last_reviewed_at TEXT;")?;
+    }
+    transaction.execute("UPDATE schema_meta SET version = 3", [])?;
+    transaction.commit()?;
+    Ok(())
+}
+
 fn record_id(prefix: &str) -> String {
     format!(
         "{prefix}-{}-{}",
@@ -884,11 +928,14 @@ fn query_course_summaries(
                    AND p.next_review_at IS NOT NULL
                    AND p.next_review_at <= ?1),
                 (SELECT COUNT(*) FROM course_materials m WHERE m.course_id = c.id),
-                COALESCE((SELECT MAX(p.updated_at) FROM problems p WHERE p.course_id = c.id AND p.status != 'trash'), c.updated_at)
+                MAX(
+                    c.updated_at,
+                    COALESCE((SELECT MAX(p.updated_at) FROM problems p WHERE p.course_id = c.id AND p.status != 'trash'), c.updated_at),
+                    COALESCE((SELECT MAX(m.created_at) FROM course_materials m WHERE m.course_id = c.id), c.updated_at)
+                ) AS aggregate_updated_at
          FROM courses c
          WHERE c.archived_at IS NULL
-         ORDER BY (SELECT MAX(p.updated_at) FROM problems p WHERE p.course_id = c.id AND p.status != 'trash') DESC,
-                  c.created_at DESC",
+         ORDER BY aggregate_updated_at DESC, c.created_at DESC",
     )?;
     let rows = statement.query_map([today], |row| {
         Ok(CourseSummary {
@@ -1036,8 +1083,8 @@ fn query_activity_days(connection: &Connection, today: &str) -> DatabaseResult<V
                  SELECT id FROM problems
                  WHERE CASE
                      WHEN updated_at NOT LIKE '%-%' AND CAST(updated_at AS INTEGER) > 100000000000
-                         THEN date(CAST(updated_at AS INTEGER) / 1000, 'unixepoch')
-                     ELSE substr(updated_at, 1, 10)
+                         THEN date(CAST(updated_at AS INTEGER) / 1000, 'unixepoch', '+8 hours')
+                     ELSE date(updated_at, '+8 hours')
                  END = ?1
                  UNION
                  SELECT id FROM problems WHERE last_reviewed_at = ?1

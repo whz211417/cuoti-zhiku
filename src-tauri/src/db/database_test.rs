@@ -444,6 +444,36 @@ fn dashboard_overview_aggregates_courses_materials_inbox_and_reviewed_problems()
 }
 
 #[test]
+fn course_last_updated_includes_its_latest_material_activity() {
+    let (root, database) = dashboard_database();
+    let connection = dashboard_connection(&root);
+    insert_dashboard_course(
+        &connection,
+        "materials",
+        "Material activity",
+        "2026-07-01T00:00:00Z",
+    );
+    insert_library_material(
+        &connection,
+        "latest-material",
+        "materials",
+        "latest.md",
+        "2026-07-31T03:04:05Z",
+        &["latest course material"],
+    );
+    drop(connection);
+
+    let overview = database
+        .dashboard_overview("2026-07-31")
+        .expect("dashboard with material activity");
+
+    assert_eq!(
+        overview.course_summaries[0].updated_at,
+        "2026-07-31T03:04:05Z"
+    );
+}
+
+#[test]
 fn dashboard_overview_rejects_a_today_value_outside_the_iso_date_format() {
     let (_root, database) = dashboard_database();
 
@@ -506,6 +536,45 @@ fn dashboard_overview_returns_exactly_seven_consecutive_activity_dates_ending_to
         activity.iter().map(|day| day.count).collect::<Vec<_>>(),
         vec![1; 7]
     );
+}
+
+#[test]
+fn dashboard_activity_uses_the_china_calendar_across_the_utc_midnight_boundary() {
+    let (root, database) = dashboard_database();
+    let connection = dashboard_connection(&root);
+    insert_dashboard_course(&connection, "activity", "China calendar", "2026-07-01");
+    for (id, updated_at) in [
+        ("before-china-midnight", "2026-07-29T15:59:59Z"),
+        ("at-china-midnight", "2026-07-29T16:00:00Z"),
+        ("china-early-morning", "2026-07-30T00:30:00Z"),
+    ] {
+        insert_dashboard_problem(
+            &connection,
+            id,
+            "activity",
+            "active",
+            id,
+            None,
+            updated_at,
+            None,
+        );
+    }
+    drop(connection);
+
+    let activity = database
+        .dashboard_overview("2026-07-30")
+        .expect("China-calendar dashboard activity")
+        .activity_last_seven_days;
+
+    let count_for = |date: &str| {
+        activity
+            .iter()
+            .find(|day| day.date == date)
+            .expect("requested activity date")
+            .count
+    };
+    assert_eq!(count_for("2026-07-29"), 1);
+    assert_eq!(count_for("2026-07-30"), 2);
 }
 
 #[test]
@@ -671,6 +740,39 @@ fn seed_schema_version(root: &std::path::Path, version: i64) {
     }
 }
 
+fn seed_version_two_problem(root: &std::path::Path) {
+    seed_schema_version(root, 2);
+    let connection = Connection::open(root.join("library.sqlite3")).expect("version two database");
+    connection
+        .execute(
+            "INSERT INTO courses(id, name, term, color, created_at, updated_at)
+             VALUES ('legacy-course', 'Legacy course', '', '#CE8876', '2026-07-01', '2026-07-01')",
+            [],
+        )
+        .expect("legacy course");
+    connection
+        .execute(
+            "INSERT INTO problems(id, course_id, status, title, created_at, updated_at)
+             VALUES ('legacy-problem', 'legacy-course', 'active', 'Preserved problem', '2026-07-01', '2026-07-01')",
+            [],
+        )
+        .expect("legacy problem");
+}
+
+fn assert_recovered_review_schema(root: &std::path::Path, database: &Database) {
+    assert_eq!(database.schema_version().expect("current schema"), 5);
+    let connection = Connection::open(root.join("library.sqlite3")).expect("recovered database");
+    let recovered: (String, i64, Option<String>) = connection
+        .query_row(
+            "SELECT title, review_interval_days, last_reviewed_at
+             FROM problems WHERE id = 'legacy-problem'",
+            [],
+            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+        )
+        .expect("preserved legacy problem");
+    assert_eq!(recovered, ("Preserved problem".into(), 1, None));
+}
+
 #[test]
 fn migrates_supported_legacy_versions_to_the_current_schema() {
     for starting_version in [1, 2, 3] {
@@ -681,6 +783,74 @@ fn migrates_supported_legacy_versions_to_the_current_schema() {
 
         assert_eq!(database.schema_version().expect("current schema"), 5);
     }
+}
+
+#[test]
+fn open_recovers_version_one_with_only_schema_metadata_and_preserves_unrelated_data() {
+    let root = tempfile::tempdir().expect("incomplete version one root");
+    let connection = Connection::open(root.path().join("library.sqlite3")).expect("seed database");
+    connection
+        .execute_batch(
+            "CREATE TABLE schema_meta(version INTEGER NOT NULL);
+             INSERT INTO schema_meta(version) VALUES (1);
+             CREATE TABLE legacy_marker(value TEXT NOT NULL);
+             INSERT INTO legacy_marker(value) VALUES ('keep me');",
+        )
+        .expect("incomplete version one schema");
+    drop(connection);
+
+    let database = Database::open(root.path()).expect("recover incomplete version one schema");
+    let connection =
+        Connection::open(root.path().join("library.sqlite3")).expect("recovered database");
+    let marker: String = connection
+        .query_row("SELECT value FROM legacy_marker", [], |row| row.get(0))
+        .expect("unrelated legacy row");
+    let problems_exists: bool = connection
+        .query_row(
+            "SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'problems')",
+            [],
+            |row| row.get(0),
+        )
+        .expect("problems table lookup");
+
+    assert_eq!(database.schema_version().expect("current schema"), 5);
+    assert_eq!(marker, "keep me");
+    assert!(problems_exists);
+}
+
+#[test]
+fn open_recovers_version_two_after_only_the_first_review_column_was_added() {
+    let root = tempfile::tempdir().expect("partial review migration root");
+    seed_version_two_problem(root.path());
+    let connection =
+        Connection::open(root.path().join("library.sqlite3")).expect("partial database");
+    connection
+        .execute(
+            "ALTER TABLE problems ADD COLUMN review_interval_days INTEGER NOT NULL DEFAULT 1",
+            [],
+        )
+        .expect("first review column");
+    drop(connection);
+
+    let database = Database::open(root.path()).expect("recover first review column");
+
+    assert_recovered_review_schema(root.path(), &database);
+}
+
+#[test]
+fn open_recovers_version_two_after_both_review_columns_were_added() {
+    let root = tempfile::tempdir().expect("complete review ddl root");
+    seed_version_two_problem(root.path());
+    let connection =
+        Connection::open(root.path().join("library.sqlite3")).expect("partial database");
+    connection
+        .execute_batch(include_str!("../../migrations/0003_review_state.sql"))
+        .expect("review columns without metadata advance");
+    drop(connection);
+
+    let database = Database::open(root.path()).expect("recover completed review ddl");
+
+    assert_recovered_review_schema(root.path(), &database);
 }
 
 #[test]
