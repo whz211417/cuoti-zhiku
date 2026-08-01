@@ -152,6 +152,7 @@ test('locks editing after a store-load failure and recovers only after retry suc
   expect(screen.getByRole('button', { name: /DeepSeek/ })).toBeDisabled();
   await user.click(screen.getByRole('button', { name: '重试读取' }));
   expect(await screen.findByLabelText('阿里云百炼 配置编辑器')).toBeVisible();
+  expect(screen.queryByText('disk unavailable')).not.toBeInTheDocument();
 });
 
 test('preserves loaded settings when credential migration status rejects', async () => {
@@ -218,6 +219,48 @@ test('clearing the active provider key immediately deactivates and persists the 
     providers: [{ ...deepseek, isEnabled: false }], activeProviderId: null,
   }));
   expect(screen.getByText(/尚未选择当前 AI 平台/)).toBeVisible();
+});
+
+test('ignores a stale has-key result after saving a provider key', async () => {
+  let resolveOldHas!: (value: boolean) => void;
+  const deepseek = {
+    id: 'deepseek', displayName: 'DeepSeek', baseUrl: 'https://api.deepseek.com', selectedModel: 'deepseek-v4-flash',
+    visionModel: null, supportsVision: false, requestTimeoutSeconds: 60, isEnabled: true, preset: 'deepseek' as const, allowInsecureLocalhost: false,
+  };
+  loadAiProviderState.mockResolvedValue({ providers: [deepseek], activeProviderId: 'deepseek' });
+  hasAiProviderKey.mockImplementation((id: string) => id === 'deepseek'
+    ? new Promise<boolean>((resolve) => { resolveOldHas = resolve; })
+    : Promise.resolve(false));
+  const user = userEvent.setup();
+  render(<AiProviderSettings />);
+  await user.click(await screen.findByRole('button', { name: /DeepSeek/ }));
+  await user.type(screen.getByLabelText('API Key'), 'replacement-key');
+  await user.click(screen.getByRole('button', { name: '安全保存 Key' }));
+  await waitFor(() => expect(saveAiProviderKey).toHaveBeenCalled());
+  await act(async () => { resolveOldHas(false); });
+
+  expect(screen.getByText(/当前使用：DeepSeek/)).toBeVisible();
+});
+
+test('clearing an active key after switching editors still deactivates its captured provider', async () => {
+  let resolveClear!: () => void;
+  const deepseek = {
+    id: 'deepseek', displayName: 'DeepSeek', baseUrl: 'https://api.deepseek.com', selectedModel: 'deepseek-v4-flash',
+    visionModel: null, supportsVision: false, requestTimeoutSeconds: 60, isEnabled: true, preset: 'deepseek' as const, allowInsecureLocalhost: false,
+  };
+  loadAiProviderState.mockResolvedValue({ providers: [deepseek], activeProviderId: 'deepseek' });
+  hasAiProviderKey.mockResolvedValue(true);
+  clearAiProviderKey.mockReturnValue(new Promise<void>((resolve) => { resolveClear = resolve; }));
+  const user = userEvent.setup();
+  render(<AiProviderSettings />);
+  await user.click(await screen.findByRole('button', { name: /DeepSeek/ }));
+  await user.click(screen.getByRole('button', { name: '移除 Key' }));
+  await user.click(screen.getByRole('button', { name: /OpenAI/ }));
+  await act(async () => { resolveClear(); });
+
+  await waitFor(() => expect(saveAiProviderState).toHaveBeenCalledWith({ providers: [{ ...deepseek, isEnabled: false }], activeProviderId: null }));
+  expect(screen.getByLabelText('OpenAI 配置编辑器')).toBeVisible();
+  expect(screen.queryByText('已从 Windows 凭据管理器移除 Key。')).not.toBeInTheDocument();
 });
 
 test('uses a catalog vision model when a preset text model is selected', async () => {

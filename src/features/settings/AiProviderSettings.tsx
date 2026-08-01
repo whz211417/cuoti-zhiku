@@ -86,6 +86,10 @@ export function AiProviderSettings() {
     return connectionGenerationRef.current;
   };
 
+  const invalidateKeyStatus = (providerId: string) => {
+    keyRequestRef.current[providerId] = (keyRequestRef.current[providerId] ?? 0) + 1;
+  };
+
   const refreshKeyStatus = async (providerId: string) => {
     const token = (keyRequestRef.current[providerId] ?? 0) + 1;
     keyRequestRef.current[providerId] = token;
@@ -95,8 +99,12 @@ export function AiProviderSettings() {
         setKeyStatusById((previous) => ({ ...previous, [providerId]: hasKeyResult ? 'present' : 'absent' }));
         if (!hasKeyResult) setState((previous) => {
           if (previous.activeProviderId !== providerId) return previous;
+          const next = { providers: previous.providers.map((provider) => provider.id === providerId ? { ...provider, isEnabled: false } : provider), activeProviderId: null };
           if (draftRef.current.id === providerId) setMessage({ kind: 'error', message: '当前平台缺少 Key，已在本次会话中停用。' });
-          return { providers: previous.providers.map((provider) => provider.id === providerId ? { ...provider, isEnabled: false } : provider), activeProviderId: null };
+          void saveAiProviderState(next).catch(() => {
+            if (aliveRef.current && draftRef.current.id === providerId) setMessage({ kind: 'error', message: '当前平台缺少 Key，已停用；本机状态更新失败。' });
+          });
+          return next;
         });
       }
       return hasKeyResult;
@@ -112,6 +120,7 @@ export function AiProviderSettings() {
   const load = async () => {
     const token = ++loadRequestRef.current;
     setLoadState('loading');
+    setMessage(null);
     try {
       const loaded = await loadAiProviderState();
       if (!aliveRef.current || token !== loadRequestRef.current) return;
@@ -208,12 +217,15 @@ export function AiProviderSettings() {
     const providerId = draft.id;
     if (!canSaveKey || workRef.current) return;
     const generation = invalidateConnection();
+    invalidateKeyStatus(providerId);
     workRef.current = true;
     setIsWorking(true);
     try {
       await saveAiProviderKey(providerId, apiKey);
-      if (aliveRef.current && draftRef.current.id === providerId && generation === connectionGenerationRef.current) {
+      if (aliveRef.current) {
         setKeyStatusById((previous) => ({ ...previous, [providerId]: 'present' }));
+      }
+      if (aliveRef.current && draftRef.current.id === providerId && generation === connectionGenerationRef.current) {
         setMessage({ kind: 'success', message: 'Key 已保存到 Windows 凭据管理器。' });
       }
     } catch (error) {
@@ -229,18 +241,22 @@ export function AiProviderSettings() {
     const providerId = draft.id;
     if (workRef.current) return;
     const generation = invalidateConnection();
+    invalidateKeyStatus(providerId);
     const wasActive = state.activeProviderId === providerId;
     workRef.current = true;
     setIsWorking(true);
     try {
       await clearAiProviderKey(providerId);
-      if (aliveRef.current && draftRef.current.id === providerId && generation === connectionGenerationRef.current) {
-        setKeyStatusById((previous) => ({ ...previous, [providerId]: 'absent' }));
-        if (wasActive) {
-          const next = { providers: state.providers.map((provider) => provider.id === providerId ? { ...provider, isEnabled: false } : provider), activeProviderId: null };
-          setState(next);
-          try { await saveAiProviderState(next); } catch { setMessage({ kind: 'error', message: 'Key已移除但当前选择更新失败。请重新打开设置确认。' }); return; }
+      if (aliveRef.current) setKeyStatusById((previous) => ({ ...previous, [providerId]: 'absent' }));
+      if (wasActive) {
+        const next = { providers: state.providers.map((provider) => provider.id === providerId ? { ...provider, isEnabled: false } : provider), activeProviderId: null };
+        if (aliveRef.current) setState(next);
+        try { await saveAiProviderState(next); } catch {
+          if (aliveRef.current && draftRef.current.id === providerId && generation === connectionGenerationRef.current) setMessage({ kind: 'error', message: 'Key已移除但当前选择更新失败。请重新打开设置确认。' });
+          return;
         }
+      }
+      if (aliveRef.current && draftRef.current.id === providerId && generation === connectionGenerationRef.current) {
         setMessage({ kind: 'success', message: '已从 Windows 凭据管理器移除 Key。' });
       }
     } catch (error) {
@@ -294,17 +310,19 @@ export function AiProviderSettings() {
   };
 
   const retryMigration = async () => {
-    if (isWorking) return;
+    if (workRef.current) return;
+    workRef.current = true;
     setIsWorking(true);
     try {
       const result = await retryAiCredentialMigration();
       if (aliveRef.current) {
         setMigrationStatus(result);
-        setMessage({ kind: result === 'migrated' || result === 'not_needed' ? 'success' : 'error', message: result === 'migrated' ? '旧 Key 已安全迁移。' : '迁移仍未完成；不会显示或复制任何 Key。' });
+        setMessage({ kind: result === 'migrated' || result === 'not_needed' ? 'success' : 'error', message: result === 'migrated' ? '旧 Key 已安全迁移。' : result === 'not_needed' ? '无需迁移；凭据已按平台独立管理。' : '迁移仍未完成；不会显示或复制任何 Key。' });
       }
     } catch (error) {
       if (aliveRef.current) setMessage({ kind: 'error', message: getErrorMessage(error, '迁移重试失败；现有凭据未被改变。') });
     } finally {
+      workRef.current = false;
       if (aliveRef.current) setIsWorking(false);
     }
   };
@@ -327,7 +345,11 @@ export function AiProviderSettings() {
             const listConfigured = Boolean(listed && keyStatusById[preset.id] === 'present');
             return <button aria-current={selection === preset.id ? 'page' : undefined} className={selection === preset.id ? 'is-selected' : ''} disabled={loadState !== 'ready'} key={preset.id} onClick={() => selectProvider(preset.id)} type="button"><span><strong>{preset.displayName}</strong><small>{keyStatusById[preset.id] === 'unknown' ? '凭据状态未知' : listConfigured ? '已配置' : '未配置'}</small></span>{state.activeProviderId === preset.id ? <Check aria-label="当前平台" size={15} /> : <ChevronRight aria-hidden="true" size={15} />}</button>;
           })}
-          <button aria-current={selection === 'custom' ? 'page' : undefined} aria-label="自定义兼容平台" className={`ai-provider-custom ${selection === 'custom' ? 'is-selected' : ''}`} disabled={loadState !== 'ready'} onClick={() => selectProvider('custom')} type="button"><Plus aria-hidden="true" size={15} /><span><strong>自定义兼容平台</strong><small>{state.providers.some((provider) => provider.preset === 'custom') ? '已配置' : '添加服务'}</small></span>{state.providers.some((provider) => provider.id === state.activeProviderId && provider.preset === 'custom') ? <Check aria-label="当前平台" size={15} /> : null}</button>
+          {(() => {
+            const custom = state.providers.find((provider) => provider.preset === 'custom');
+            const badge = !custom ? '待保存 Key' : keyStatusById[custom.id] === 'unknown' ? '凭据状态未知' : keyStatusById[custom.id] === 'present' ? '已配置' : '待保存 Key';
+            return <button aria-current={selection === 'custom' ? 'page' : undefined} aria-label="自定义兼容平台" className={`ai-provider-custom ${selection === 'custom' ? 'is-selected' : ''}`} disabled={loadState !== 'ready'} onClick={() => selectProvider('custom')} type="button"><Plus aria-hidden="true" size={15} /><span><strong>自定义兼容平台</strong><small>{badge}</small></span>{custom?.id === state.activeProviderId ? <Check aria-label="当前平台" size={15} /> : null}</button>;
+          })()}
         </nav>
 
         {loadState === 'loading' ? <p className="ai-provider-loading" role="status">正在读取本机 AI 设置…</p> : loadState === 'error' ? <div className="ai-provider-loading"><p role="alert">{message?.message ?? '无法读取 AI 平台设置；编辑已锁定。'}</p><button className="ai-provider-secondary-action" onClick={() => void load()} type="button">重试读取</button></div> : <AiProviderEditor key={draft.id} canSaveConfig={canSaveConfig} canSaveKey={canSaveKey} canSetCurrent={canSetCurrent} canTest={canTest} configured={configured} keyStatus={keyStatus} onClearKey={clearKey} onConfigChange={updateDraft} onSaveConfig={saveConfig} onSaveKey={saveKey} onSetCurrent={setCurrent} onTest={testConnection} preset={AI_PROVIDER_PRESETS.find((preset) => preset.id === draft.preset)} provider={draft} saving={isWorking} status={message} />}
