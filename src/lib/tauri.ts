@@ -1,5 +1,8 @@
 import { invoke } from '@tauri-apps/api/core';
 
+// Shared only as a non-sensitive DTO. Credential values never cross this boundary.
+export type { AiProviderConfig, AiProviderId } from '../features/settings/aiProviderCatalog';
+
 export type LibraryHealth = {
   schemaVersion: number;
   foreignKeysEnabled: boolean;
