@@ -20,7 +20,7 @@ vi.mock('../features/inbox/selectProblemFiles', () => ({
   selectProblemFiles: vi.fn(),
 }));
 vi.mock('../features/materials/selectCourseMaterialFile', () => ({ selectCourseMaterialFile: vi.fn() }));
-vi.mock('../features/settings/AiSettings', () => ({ AiSettings: () => <div>AI 设置</div> }));
+vi.mock('../features/settings/AiProviderSettings', () => ({ AiProviderSettings: () => <div>AI 设置</div> }));
 vi.mock('../lib/dates', () => ({ localCalendarDate, timeGreeting: () => '早上好' }));
 vi.mock('../lib/preferences', () => ({
   getMotionPreferences: () => ({ reduceMotion: true, reduceTransparency: false }),

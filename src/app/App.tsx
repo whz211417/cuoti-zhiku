@@ -17,7 +17,7 @@ import { selectCourseMaterialFile } from '../features/materials/selectCourseMate
 import { ProblemDocument } from '../features/problems/ProblemDocument';
 import { ReviewReader } from '../features/review/ReviewReader';
 import { CommandPalette } from '../features/search/CommandPalette';
-import { AiSettings } from '../features/settings/AiSettings';
+import { AiProviderSettings } from '../features/settings/AiProviderSettings';
 import { localCalendarDate, timeGreeting } from '../lib/dates';
 import { getMotionPreferences } from '../lib/preferences';
 import { completeReview, getDueReviewProblems, importCourseMaterialFile, type Course, type DashboardOverview, type RecentProblem, type ReviewProblem } from '../lib/tauri';
@@ -485,7 +485,7 @@ export function App() {
                   <div><strong>本地资料库</strong><span>题目、附件和记录只保存在此设备。</span></div>
                   <span className="preference-status">已启用</span>
                 </div>
-                <div className="preference-row preference-ai"><AiSettings /></div>
+                <div className="preference-row preference-ai"><AiProviderSettings /></div>
                 <div className="preference-row preference-export">
                   <div><strong>导出本地题册</strong><span>选择位置后生成 Markdown；题目册不会包含标准答案。</span></div>
                   <div className="export-actions">
