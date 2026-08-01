@@ -75,6 +75,25 @@ export function AiProviderSettings() {
   const keyRequestRef = useRef<Record<string, number>>({});
   const workRef = useRef(false);
   const draftRef = useRef(draft);
+  const stateRef = useRef(state);
+  const storeWriteQueueRef = useRef<Promise<void>>(Promise.resolve());
+
+  const commitLocalState = (next: AiProviderState) => {
+    stateRef.current = next;
+    setState(next);
+  };
+
+  const enqueueStoreMutation = (mutation: (latest: AiProviderState) => AiProviderState | null) => {
+    const run = async () => {
+      const next = mutation(stateRef.current);
+      if (!next) return;
+      await saveAiProviderState(next);
+      commitLocalState(next);
+    };
+    const queued = storeWriteQueueRef.current.then(run, run);
+    storeWriteQueueRef.current = queued.catch(() => undefined);
+    return queued;
+  };
 
   const configured = state.providers.some((provider) => provider.id === draft.id);
   const keyStatus = keyStatusById[draft.id] ?? 'unknown';
@@ -97,15 +116,16 @@ export function AiProviderSettings() {
       const hasKeyResult = await hasAiProviderKey(providerId);
       if (aliveRef.current && token === keyRequestRef.current[providerId]) {
         setKeyStatusById((previous) => ({ ...previous, [providerId]: hasKeyResult ? 'present' : 'absent' }));
-        if (!hasKeyResult) setState((previous) => {
-          if (previous.activeProviderId !== providerId) return previous;
-          const next = { providers: previous.providers.map((provider) => provider.id === providerId ? { ...provider, isEnabled: false } : provider), activeProviderId: null };
-          if (draftRef.current.id === providerId) setMessage({ kind: 'error', message: '当前平台缺少 Key，已在本次会话中停用。' });
-          void saveAiProviderState(next).catch(() => {
-            if (aliveRef.current && draftRef.current.id === providerId) setMessage({ kind: 'error', message: '当前平台缺少 Key，已停用；本机状态更新失败。' });
+        if (!hasKeyResult) {
+          void enqueueStoreMutation((latest) => {
+            if (latest.activeProviderId !== providerId) return null;
+            return { providers: latest.providers.map((provider) => provider.id === providerId ? { ...provider, isEnabled: false } : provider), activeProviderId: null };
+          }).then(() => {
+            if (aliveRef.current && draftRef.current.id === providerId) setMessage({ kind: 'error', message: '当前平台缺少 Key，已在本次会话中停用。' });
+          }).catch(() => {
+            if (aliveRef.current) setMessage({ kind: 'error', message: '当前平台缺少 Key；本机状态更新失败。' });
           });
-          return next;
-        });
+        }
       }
       return hasKeyResult;
     } catch (error) {
@@ -129,7 +149,7 @@ export function AiProviderSettings() {
           : loaded.providers.find((provider) => provider.preset === 'custom') ? 'custom' : 'bailian';
         const initialCustom = loaded.providers.find((provider) => provider.preset === 'custom') ?? null;
         const initialDraft = providerForSelection(loaded, initialSelection, initialCustom);
-        setState(loaded);
+        commitLocalState(loaded);
         setSelection(initialSelection);
         setCustomDraft(initialCustom);
         draftRef.current = initialDraft;
@@ -175,11 +195,24 @@ export function AiProviderSettings() {
     setMessage(null);
   };
 
-  const persist = async (next: AiProviderState, successMessage?: string) => {
-    await saveAiProviderState(next);
+  const persist = async (provider: AiProviderConfig, makeCurrent: boolean, successMessage?: string) => {
+    const providerId = provider.id;
+    const generation = connectionGenerationRef.current;
+    await enqueueStoreMutation((latest) => {
+      const activeProviderId = makeCurrent ? provider.id : latest.activeProviderId;
+      const persistedProvider = { ...provider, isEnabled: activeProviderId === provider.id };
+      return {
+        providers: [
+          ...latest.providers
+            .filter((candidate) => candidate.id !== provider.id)
+            .map((candidate) => ({ ...candidate, isEnabled: candidate.id === activeProviderId })),
+          persistedProvider,
+        ],
+        activeProviderId,
+      };
+    });
     if (!aliveRef.current) return;
-    setState(next);
-    if (successMessage) setMessage({ kind: 'success', message: successMessage });
+    if (successMessage && draftRef.current.id === providerId && generation === connectionGenerationRef.current) setMessage({ kind: 'success', message: successMessage });
   };
 
   const existing = state.providers.find((provider) => provider.id === draft.id);
@@ -199,12 +232,8 @@ export function AiProviderSettings() {
     setIsWorking(true);
     setMessage(null);
     try {
-      const savedDraft = { ...draft, isEnabled: state.activeProviderId === draft.id ? true : false };
-      const next: AiProviderState = {
-        providers: [...state.providers.filter((provider) => provider.id !== draft.id), savedDraft],
-        activeProviderId: state.activeProviderId,
-      };
-      await persist(next, '平台设置已保存在本机。连接通过后可将它设为当前。');
+      const savedDraft = { ...draft };
+      await persist(savedDraft, false, '平台设置已保存在本机。连接通过后可将它设为当前。');
     } catch (error) {
       if (aliveRef.current) setMessage({ kind: 'error', message: getErrorMessage(error, '无法保存平台设置；上一次可用配置未被替换。') });
     } finally {
@@ -242,17 +271,23 @@ export function AiProviderSettings() {
     if (workRef.current) return;
     const generation = invalidateConnection();
     invalidateKeyStatus(providerId);
-    const wasActive = state.activeProviderId === providerId;
+    const wasActive = stateRef.current.activeProviderId === providerId;
     workRef.current = true;
     setIsWorking(true);
     try {
       await clearAiProviderKey(providerId);
       if (aliveRef.current) setKeyStatusById((previous) => ({ ...previous, [providerId]: 'absent' }));
       if (wasActive) {
-        const next = { providers: state.providers.map((provider) => provider.id === providerId ? { ...provider, isEnabled: false } : provider), activeProviderId: null };
-        if (aliveRef.current) setState(next);
-        try { await saveAiProviderState(next); } catch {
-          if (aliveRef.current && draftRef.current.id === providerId && generation === connectionGenerationRef.current) setMessage({ kind: 'error', message: 'Key已移除但当前选择更新失败。请重新打开设置确认。' });
+        const next = { providers: stateRef.current.providers.map((provider) => provider.id === providerId ? { ...provider, isEnabled: false } : provider), activeProviderId: null };
+        if (aliveRef.current) commitLocalState(next);
+        try {
+          await enqueueStoreMutation((latest) => {
+            if (latest.activeProviderId === providerId) return { providers: latest.providers.map((provider) => provider.id === providerId ? { ...provider, isEnabled: false } : provider), activeProviderId: null };
+            if (latest.activeProviderId === null && latest.providers.some((provider) => provider.id === providerId && !provider.isEnabled)) return latest;
+            return null;
+          });
+        } catch {
+          if (aliveRef.current) setMessage({ kind: 'error', message: 'Key已移除但当前选择更新失败。请重新打开设置确认。' });
           return;
         }
       }
@@ -300,7 +335,7 @@ export function AiProviderSettings() {
     setMessage(null);
     try {
       const saved = { ...draft, isEnabled: true };
-      await persist({ providers: [...state.providers.filter((provider) => provider.id !== saved.id), saved], activeProviderId: saved.id }, '已设为当前 AI 平台。');
+      await persist(saved, true, '已设为当前 AI 平台。');
     } catch (error) {
       if (aliveRef.current) setMessage({ kind: 'error', message: getErrorMessage(error, '无法更新当前 AI 平台；原有选择保持不变。') });
     } finally {

@@ -1,3 +1,4 @@
+import { StrictMode } from 'react';
 import { act, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, expect, test, vi } from 'vitest';
@@ -160,7 +161,7 @@ test('preserves loaded settings when credential migration status rejects', async
   render(<AiProviderSettings />);
 
   expect(await screen.findByLabelText('阿里云百炼 配置编辑器')).toBeVisible();
-  expect(await screen.findByRole('alert')).toHaveTextContent('旧版凭据迁移尚未完成');
+  expect(await screen.findByText('旧版凭据迁移尚未完成，现有 Key 保持安全。')).toBeVisible();
 });
 
 test('requires a fresh connection test after replacing an API key', async () => {
@@ -261,6 +262,67 @@ test('clearing an active key after switching editors still deactivates its captu
   await waitFor(() => expect(saveAiProviderState).toHaveBeenCalledWith({ providers: [{ ...deepseek, isEnabled: false }], activeProviderId: null }));
   expect(screen.getByLabelText('OpenAI 配置编辑器')).toBeVisible();
   expect(screen.queryByText('已从 Windows 凭据管理器移除 Key。')).not.toBeInTheDocument();
+});
+
+test('StrictMode schedules one persisted missing-key repair for an active provider', async () => {
+  const deepseek = {
+    id: 'deepseek', displayName: 'DeepSeek', baseUrl: 'https://api.deepseek.com', selectedModel: 'deepseek-v4-flash',
+    visionModel: null, supportsVision: false, requestTimeoutSeconds: 60, isEnabled: true, preset: 'deepseek' as const, allowInsecureLocalhost: false,
+  };
+  loadAiProviderState.mockResolvedValue({ providers: [deepseek], activeProviderId: 'deepseek' });
+  hasAiProviderKey.mockResolvedValue(false);
+  render(<StrictMode><AiProviderSettings /></StrictMode>);
+
+  await waitFor(() => expect(saveAiProviderState).toHaveBeenCalledWith({ providers: [{ ...deepseek, isEnabled: false }], activeProviderId: null }));
+  expect(saveAiProviderState).toHaveBeenCalledTimes(1);
+});
+
+test('serializes automatic missing-key repair before a newer provider selection without overwriting it', async () => {
+  let resolveHasDeepseek!: (value: boolean) => void;
+  let resolveRepair!: () => void;
+  let inFlightWrites = 0;
+  let maxInFlightWrites = 0;
+  const deepseek = {
+    id: 'deepseek', displayName: 'DeepSeek', baseUrl: 'https://api.deepseek.com', selectedModel: 'deepseek-v4-flash',
+    visionModel: null, supportsVision: false, requestTimeoutSeconds: 60, isEnabled: true, preset: 'deepseek' as const, allowInsecureLocalhost: false,
+  };
+  loadAiProviderState.mockResolvedValue({ providers: [deepseek], activeProviderId: 'deepseek' });
+  hasAiProviderKey.mockImplementation((id: string) => id === 'deepseek'
+    ? new Promise<boolean>((resolve) => { resolveHasDeepseek = resolve; })
+    : Promise.resolve(true));
+  saveAiProviderState.mockImplementation(() => {
+    inFlightWrites += 1;
+    maxInFlightWrites = Math.max(maxInFlightWrites, inFlightWrites);
+    if (saveAiProviderState.mock.calls.length === 1) {
+      return new Promise<void>((resolve) => { resolveRepair = () => { inFlightWrites -= 1; resolve(); }; });
+    }
+    inFlightWrites -= 1;
+    return Promise.resolve();
+  });
+  const user = userEvent.setup();
+  render(<AiProviderSettings />);
+
+  await waitFor(() => expect(hasAiProviderKey).toHaveBeenCalledWith('deepseek'));
+  await act(async () => { resolveHasDeepseek(false); });
+  await waitFor(() => expect(saveAiProviderState).toHaveBeenCalledTimes(1));
+  await user.click(screen.getByRole('button', { name: /OpenAI/ }));
+  await waitFor(() => expect(screen.getByRole('button', { name: '测试连接' })).toBeEnabled());
+  await user.click(screen.getByRole('button', { name: '测试连接' }));
+  await user.click(await screen.findByRole('button', { name: '设为当前' }));
+
+  await act(async () => { resolveRepair(); });
+  await waitFor(() => expect(saveAiProviderState).toHaveBeenCalledTimes(2));
+  const finalSavedState = saveAiProviderState.mock.calls.at(-1)?.[0];
+  expect(finalSavedState).toEqual(expect.objectContaining({
+    activeProviderId: 'openai',
+    providers: expect.arrayContaining([
+      expect.objectContaining({ id: 'deepseek', isEnabled: false }),
+      expect.objectContaining({ id: 'openai', isEnabled: true }),
+    ]),
+  }));
+  expect(finalSavedState.providers.filter((provider: { isEnabled: boolean }) => provider.isEnabled).map((provider: { id: string }) => provider.id)).toEqual(['openai']);
+  expect(maxInFlightWrites).toBe(1);
+  expect(screen.getByText(/当前使用：OpenAI/)).toBeVisible();
 });
 
 test('uses a catalog vision model when a preset text model is selected', async () => {
