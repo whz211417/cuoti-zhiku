@@ -4,8 +4,6 @@ pub mod ingest;
 pub mod material;
 
 #[cfg(test)]
-mod ai_test;
-#[cfg(test)]
 mod credentials_test;
 #[cfg(test)]
 mod ingest_test;

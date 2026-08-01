@@ -8,8 +8,10 @@ import {
   hasAiProviderKey,
   importFiles,
   retryAiCredentialMigration,
+  runProblemAnalysis,
   saveAiProviderKey,
   searchLibrary,
+  testAiProvider,
 } from './tauri';
 
 vi.mock('@tauri-apps/api/core', () => ({ invoke: vi.fn() }));
@@ -79,4 +81,40 @@ test('queries and retries credential migration without requesting a credential v
 
   await expect(retryAiCredentialMigration()).resolves.toBe('conflict');
   expect(invoke).toHaveBeenCalledWith('retry_ai_credential_migration');
+});
+
+test('sends only the native-safe provider config to AI commands', async () => {
+  vi.mocked(invoke).mockResolvedValue({ authenticated: true, modelAvailable: true, visionDeclared: false });
+  const config = {
+    id: 'deepseek',
+    displayName: 'DeepSeek',
+    baseUrl: 'https://api.deepseek.com',
+    selectedModel: 'deepseek-v4-flash',
+    visionModel: null,
+    supportsVision: false,
+    requestTimeoutSeconds: 60,
+    isEnabled: true,
+    preset: 'deepseek' as const,
+    allowInsecureLocalhost: false,
+  };
+  const nativeConfig = {
+    id: 'deepseek',
+    displayName: 'DeepSeek',
+    baseUrl: 'https://api.deepseek.com',
+    selectedModel: 'deepseek-v4-flash',
+    visionModel: null,
+    supportsVision: false,
+    requestTimeoutSeconds: 60,
+    allowInsecureLocalhost: false,
+  };
+
+  await testAiProvider(config);
+  expect(invoke).toHaveBeenCalledWith('test_ai_provider', { config: nativeConfig });
+
+  await runProblemAnalysis('problem-1', 'deep', config);
+  expect(invoke).toHaveBeenCalledWith('run_problem_analysis', {
+    problemId: 'problem-1',
+    mode: 'deep',
+    config: nativeConfig,
+  });
 });

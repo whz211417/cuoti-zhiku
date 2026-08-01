@@ -1,4 +1,5 @@
 import { invoke } from '@tauri-apps/api/core';
+import type { AiProviderConfig } from '../features/settings/aiProviderCatalog';
 
 // Shared only as a non-sensitive DTO. Credential values never cross this boundary.
 export type { AiProviderConfig, AiProviderId } from '../features/settings/aiProviderCatalog';
@@ -129,8 +130,51 @@ export const saveProblemField = (problemId: string, kind: string, value: string,
   });
 
 export type AiFieldSuggestion = { kind: string; value: string };
-export const runProblemAnalysis = (problemId: string, mode: 'flash' | 'deep') =>
-  invoke<AiFieldSuggestion[]>('run_problem_analysis', { problemId, mode });
+export type AiConnectionResult = {
+  authenticated: boolean;
+  modelAvailable: boolean;
+  visionDeclared: boolean;
+};
+
+type NativeAiProviderConfig = Omit<AiProviderConfig, 'isEnabled' | 'preset'>;
+
+const toNativeAiProviderConfig = (config: AiProviderConfig): NativeAiProviderConfig => ({
+  id: config.id,
+  displayName: config.displayName,
+  baseUrl: config.baseUrl,
+  selectedModel: config.selectedModel,
+  visionModel: config.visionModel,
+  supportsVision: config.supportsVision,
+  requestTimeoutSeconds: config.requestTimeoutSeconds,
+  allowInsecureLocalhost: config.allowInsecureLocalhost,
+});
+
+// Temporary compatibility for the existing review surface until Task 8 owns provider selection.
+const legacyBailianConfig: AiProviderConfig = {
+  id: 'bailian',
+  displayName: '阿里云百炼',
+  baseUrl: 'https://dashscope.aliyuncs.com/compatible-mode/v1',
+  selectedModel: 'qwen3.6-flash',
+  visionModel: 'qwen3.6-flash',
+  supportsVision: true,
+  requestTimeoutSeconds: 60,
+  isEnabled: true,
+  preset: 'bailian',
+  allowInsecureLocalhost: false,
+};
+
+export const testAiProvider = (config: AiProviderConfig) =>
+  invoke<AiConnectionResult>('test_ai_provider', { config: toNativeAiProviderConfig(config) });
+
+export const runProblemAnalysis = (
+  problemId: string,
+  mode: 'flash' | 'deep',
+  config: AiProviderConfig = legacyBailianConfig,
+) => invoke<AiFieldSuggestion[]>('run_problem_analysis', {
+  problemId,
+  mode,
+  config: toNativeAiProviderConfig(config),
+});
 
 export const importFiles = (paths: string[], courseId?: string) =>
   invoke<ImportFileResult[]>('import_files', { paths, courseId });

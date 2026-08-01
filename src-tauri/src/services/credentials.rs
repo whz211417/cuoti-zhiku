@@ -302,6 +302,7 @@ pub fn save_api_key(value: &str) -> Result<(), String> {
     save_provider_key(BAILIAN_PROVIDER_ID, value)
 }
 
+#[allow(dead_code)]
 pub fn read_api_key() -> Result<String, String> {
     read_provider_key(BAILIAN_PROVIDER_ID)
 }

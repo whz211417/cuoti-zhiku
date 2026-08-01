@@ -1,7 +1,10 @@
 use base64::Engine;
 use tauri::State;
 
-use crate::{services::ai::AnalysisMode, AppState};
+use crate::{
+    services::ai::{AiConnectionResult, AiProviderClient, AiProviderConfig, AnalysisMode},
+    AppState,
+};
 
 #[tauri::command]
 pub fn has_ai_api_key() -> bool {
@@ -45,10 +48,22 @@ pub fn retry_ai_credential_migration() -> crate::services::credentials::Credenti
 }
 
 #[tauri::command]
+pub async fn test_ai_provider(config: AiProviderConfig) -> Result<AiConnectionResult, String> {
+    config.validate().map_err(|error| error.to_string())?;
+    let api_key = crate::services::credentials::read_provider_key(&config.id)?;
+    let client = AiProviderClient::new(config, api_key).map_err(|error| error.to_string())?;
+    client
+        .test_connection()
+        .await
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
 pub async fn run_problem_analysis(
     state: State<'_, AppState>,
     problem_id: String,
     mode: AnalysisMode,
+    config: AiProviderConfig,
 ) -> Result<Vec<crate::services::ai::AiFieldSuggestion>, String> {
     let document = state
         .database
@@ -63,7 +78,8 @@ pub async fn run_problem_analysis(
     if existing_text.trim().is_empty() {
         return Err("请先补充题干或个人作答，再使用 AI 辅助整理。".to_owned());
     }
-    let api_key = crate::services::credentials::read_api_key()?;
+    config.validate().map_err(|error| error.to_string())?;
+    let api_key = crate::services::credentials::read_provider_key(&config.id)?;
     let images = state
         .database
         .problem_attachment(&problem_id)
@@ -84,7 +100,9 @@ pub async fn run_problem_analysis(
         .transpose()?
         .into_iter()
         .collect::<Vec<_>>();
-    crate::services::ai::request_analysis(&api_key, mode, &existing_text, &[], &images)
+    let client = AiProviderClient::new(config, api_key).map_err(|error| error.to_string())?;
+    client
+        .analyze(mode, &existing_text, &[], &images)
         .await
         .map_err(|error| error.to_string())
 }
