@@ -6,11 +6,66 @@ use super::{
 use serde_json::{json, Value};
 use std::{
     io::{Read, Write},
-    net::TcpListener,
+    net::{TcpListener, TcpStream},
     sync::mpsc,
     thread,
     time::{Duration, Instant},
 };
+
+const TEST_MAX_RESPONSE_BYTES: usize = 1024 * 1024;
+
+fn accept_before(listener: &TcpListener, timeout: Duration) -> Option<TcpStream> {
+    let deadline = Instant::now() + timeout;
+    loop {
+        match listener.accept() {
+            Ok((stream, _)) => return Some(stream),
+            Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => {
+                if Instant::now() >= deadline {
+                    return None;
+                }
+                thread::sleep(Duration::from_millis(5));
+            }
+            Err(error) => panic!("local mock accept failed: {error}"),
+        }
+    }
+}
+
+fn read_http_request(stream: &mut TcpStream) -> (String, Vec<u8>) {
+    stream
+        .set_nonblocking(false)
+        .expect("restore blocking mock connection");
+    stream
+        .set_read_timeout(Some(Duration::from_secs(2)))
+        .expect("configure mock request timeout");
+    let mut bytes = Vec::new();
+    let mut buffer = [0_u8; 2048];
+    let header_end = loop {
+        let read = stream.read(&mut buffer).expect("read local mock request");
+        assert!(read > 0, "request ended before headers");
+        bytes.extend_from_slice(&buffer[..read]);
+        if let Some(position) = bytes.windows(4).position(|window| window == b"\r\n\r\n") {
+            break position + 4;
+        }
+    };
+    let headers = String::from_utf8_lossy(&bytes[..header_end]).into_owned();
+    let content_length = headers
+        .lines()
+        .find_map(|line| {
+            let (name, value) = line.split_once(':')?;
+            name.eq_ignore_ascii_case("content-length")
+                .then(|| value.trim().parse::<usize>().expect("valid content length"))
+        })
+        .unwrap_or(0);
+    while bytes.len() < header_end + content_length {
+        let read = stream.read(&mut buffer).expect("read local mock body");
+        assert!(read > 0, "request ended before body");
+        bytes.extend_from_slice(&buffer[..read]);
+    }
+    (
+        headers,
+        bytes[header_end..header_end + content_length].to_vec(),
+    )
+}
 
 fn config(base_url: String) -> AiProviderConfig {
     AiProviderConfig {
@@ -36,50 +91,10 @@ fn spawn_json_server(
     let address = listener.local_addr().expect("local mock address");
     let (request_sender, request_receiver) = mpsc::channel();
     let handle = thread::spawn(move || {
-        let deadline = Instant::now() + Duration::from_secs(5);
-        let (mut stream, _) = loop {
-            match listener.accept() {
-                Ok(connection) => break connection,
-                Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => {
-                    assert!(Instant::now() < deadline, "local mock request timed out");
-                    thread::sleep(Duration::from_millis(5));
-                }
-                Err(error) => panic!("local mock accept failed: {error}"),
-            }
-        };
-        stream
-            .set_nonblocking(false)
-            .expect("restore blocking mock connection");
-        stream
-            .set_read_timeout(Some(Duration::from_secs(2)))
-            .expect("configure mock request timeout");
-
-        let mut bytes = Vec::new();
-        let mut buffer = [0_u8; 2048];
-        let header_end = loop {
-            let read = stream.read(&mut buffer).expect("read local mock request");
-            assert!(read > 0, "request ended before headers");
-            bytes.extend_from_slice(&buffer[..read]);
-            if let Some(position) = bytes.windows(4).position(|window| window == b"\r\n\r\n") {
-                break position + 4;
-            }
-        };
-        let headers = String::from_utf8_lossy(&bytes[..header_end]);
-        let content_length = headers
-            .lines()
-            .find_map(|line| {
-                let (name, value) = line.split_once(':')?;
-                name.eq_ignore_ascii_case("content-length")
-                    .then(|| value.trim().parse::<usize>().expect("valid content length"))
-            })
-            .expect("content length header");
-        while bytes.len() < header_end + content_length {
-            let read = stream.read(&mut buffer).expect("read local mock body");
-            assert!(read > 0, "request ended before body");
-            bytes.extend_from_slice(&buffer[..read]);
-        }
-        let body = serde_json::from_slice(&bytes[header_end..header_end + content_length])
-            .expect("JSON request body");
+        let mut stream =
+            accept_before(&listener, Duration::from_secs(5)).expect("local mock request timed out");
+        let (_, body) = read_http_request(&mut stream);
+        let body = serde_json::from_slice(&body).expect("JSON request body");
         let _ = request_sender.send(body);
 
         let reason = if status == 200 { "OK" } else { "Error" };
@@ -92,6 +107,130 @@ fn spawn_json_server(
             .expect("write local mock response");
     });
     (format!("http://{address}/v1"), request_receiver, handle)
+}
+
+#[derive(Debug)]
+struct RedirectObservation {
+    received: bool,
+    had_authorization: bool,
+    had_question_marker: bool,
+}
+
+fn spawn_redirect_pair(
+    status: u16,
+) -> (
+    String,
+    mpsc::Receiver<RedirectObservation>,
+    thread::JoinHandle<()>,
+    thread::JoinHandle<()>,
+) {
+    let target_listener = TcpListener::bind("127.0.0.1:0").expect("bind redirect target");
+    target_listener
+        .set_nonblocking(true)
+        .expect("configure redirect target");
+    let target_address = target_listener
+        .local_addr()
+        .expect("redirect target address");
+    let (observation_sender, observation_receiver) = mpsc::channel();
+    let target = thread::spawn(move || {
+        let Some(mut stream) = accept_before(&target_listener, Duration::from_millis(750)) else {
+            observation_sender
+                .send(RedirectObservation {
+                    received: false,
+                    had_authorization: false,
+                    had_question_marker: false,
+                })
+                .expect("record absent redirect");
+            return;
+        };
+        let (headers, body) = read_http_request(&mut stream);
+        observation_sender
+            .send(RedirectObservation {
+                received: true,
+                had_authorization: headers.to_ascii_lowercase().contains("authorization:"),
+                had_question_marker: String::from_utf8_lossy(&body)
+                    .contains("sensitive-question-marker"),
+            })
+            .expect("record followed redirect");
+        let response_body = r#"{"choices":[{"message":{"content":"{\"stem\":\"redirected\",\"knowledge_points\":[],\"citations\":[]}"}}]}"#;
+        let response = format!(
+            "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{response_body}",
+            response_body.len()
+        );
+        let _ = stream.write_all(response.as_bytes());
+    });
+
+    let redirect_listener = TcpListener::bind("127.0.0.1:0").expect("bind redirect source");
+    redirect_listener
+        .set_nonblocking(true)
+        .expect("configure redirect source");
+    let redirect_address = redirect_listener
+        .local_addr()
+        .expect("redirect source address");
+    let source = thread::spawn(move || {
+        let mut stream = accept_before(&redirect_listener, Duration::from_secs(5))
+            .expect("redirect source request timed out");
+        let _ = read_http_request(&mut stream);
+        let location = format!("http://{target_address}/redirect-location-marker");
+        let response_body = r#"{"marker":"redirect-response-marker"}"#;
+        let response = format!(
+            "HTTP/1.1 {status} Redirect\r\nLocation: {location}\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{response_body}",
+            response_body.len()
+        );
+        stream
+            .write_all(response.as_bytes())
+            .expect("write redirect response");
+    });
+    (
+        format!("http://{redirect_address}/v1"),
+        observation_receiver,
+        source,
+        target,
+    )
+}
+
+fn spawn_oversized_chunked_error_server() -> (String, mpsc::Receiver<usize>, thread::JoinHandle<()>)
+{
+    const CHUNK_BYTES: usize = 16 * 1024;
+    const TOTAL_BYTES: usize = 4 * 1024 * 1024;
+    let listener = TcpListener::bind("127.0.0.1:0").expect("bind chunked mock");
+    listener
+        .set_nonblocking(true)
+        .expect("configure chunked mock");
+    let address = listener.local_addr().expect("chunked mock address");
+    let (written_sender, written_receiver) = mpsc::channel();
+    let server = thread::spawn(move || {
+        let mut stream = accept_before(&listener, Duration::from_secs(5))
+            .expect("chunked mock request timed out");
+        let _ = read_http_request(&mut stream);
+        stream
+            .write_all(
+                b"HTTP/1.1 401 Unauthorized\r\nContent-Type: application/json\r\nTransfer-Encoding: chunked\r\nConnection: close\r\n\r\n",
+            )
+            .expect("write chunked response headers");
+        let mut payload = vec![b'x'; CHUNK_BYTES];
+        payload[..25].copy_from_slice(b"sensitive-response-marker");
+        let mut written = 0;
+        while written < TOTAL_BYTES {
+            let header = format!("{:X}\r\n", payload.len());
+            if stream.write_all(header.as_bytes()).is_err()
+                || stream.write_all(&payload).is_err()
+                || stream.write_all(b"\r\n").is_err()
+                || stream.flush().is_err()
+            {
+                break;
+            }
+            written += payload.len();
+            thread::sleep(Duration::from_millis(2));
+        }
+        if written == TOTAL_BYTES {
+            let _ = stream.write_all(b"0\r\n\r\n");
+        }
+        written_sender
+            .send(written)
+            .expect("record chunked bytes written");
+    });
+    (format!("http://{address}/v1"), written_receiver, server)
 }
 
 fn block_on<F: std::future::Future>(future: F) -> F::Output {
@@ -329,6 +468,50 @@ fn local_mock_maps_service_failures_to_safe_errors() {
     assert_eq!(error.kind(), AiErrorKind::Authentication);
     assert!(!error.to_string().contains("placeholder-key"));
     assert!(!error.to_string().contains("secret-response-marker"));
+}
+
+#[test]
+fn never_follows_307_or_308_redirects_with_question_or_credentials() {
+    for status in [307, 308] {
+        let (base_url, observed, source, target) = spawn_redirect_pair(status);
+        let client = AiProviderClient::new(config(base_url), "placeholder-key".to_owned()).unwrap();
+
+        let outcome =
+            block_on(client.analyze(AnalysisMode::Flash, "sensitive-question-marker", &[], &[]));
+        let observation = observed.recv_timeout(Duration::from_secs(2)).unwrap();
+        source.join().unwrap();
+        target.join().unwrap();
+
+        assert!(!observation.received);
+        assert!(!observation.had_authorization);
+        assert!(!observation.had_question_marker);
+        let error = outcome.unwrap_err();
+        assert_eq!(error.kind(), AiErrorKind::Network);
+        assert!(!error.to_string().contains("redirect-location-marker"));
+        assert!(!error.to_string().contains("redirect-response-marker"));
+        assert!(!error.to_string().contains("placeholder-key"));
+        assert!(!error.to_string().contains("sensitive-question-marker"));
+    }
+}
+
+#[test]
+fn aborts_chunked_error_response_just_after_the_size_limit() {
+    const TOTAL_BYTES: usize = 4 * 1024 * 1024;
+    let (base_url, written, server) = spawn_oversized_chunked_error_server();
+    let client = AiProviderClient::new(config(base_url), "placeholder-key".to_owned()).unwrap();
+
+    let error = block_on(client.test_connection()).unwrap_err();
+    let written = written.recv_timeout(Duration::from_secs(2)).unwrap();
+    server.join().unwrap();
+
+    assert_eq!(error.kind(), AiErrorKind::Format);
+    assert!(
+        written < TOTAL_BYTES,
+        "client consumed the complete response"
+    );
+    assert!(written <= TEST_MAX_RESPONSE_BYTES + 8 * 16 * 1024);
+    assert!(!error.to_string().contains("sensitive-response-marker"));
+    assert!(!error.to_string().contains("placeholder-key"));
 }
 
 #[test]

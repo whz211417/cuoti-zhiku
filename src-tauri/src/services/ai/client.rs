@@ -96,6 +96,7 @@ impl AiProviderClient {
         }
         let http = reqwest::Client::builder()
             .timeout(Duration::from_secs(config.request_timeout_seconds))
+            .redirect(reqwest::redirect::Policy::none())
             .build()
             .map_err(|_| safe_error(AiErrorKind::Network))?;
         Ok(Self {
@@ -131,7 +132,7 @@ impl AiProviderClient {
     }
 
     async fn send(&self, body: &Value) -> Result<String, AiError> {
-        let response = self
+        let mut response = self
             .http
             .post(&self.endpoint)
             .bearer_auth(&self.api_key)
@@ -146,12 +147,16 @@ impl AiProviderClient {
         {
             return Err(safe_error(AiErrorKind::Format));
         }
-        let bytes = response
-            .bytes()
+        let mut bytes = Vec::new();
+        while let Some(chunk) = response
+            .chunk()
             .await
-            .map_err(|error| safe_error(classify_transport(error.is_timeout())))?;
-        if bytes.len() as u64 > MAX_RESPONSE_BYTES {
-            return Err(safe_error(AiErrorKind::Format));
+            .map_err(|error| safe_error(classify_transport(error.is_timeout())))?
+        {
+            if chunk.len() as u64 > MAX_RESPONSE_BYTES - bytes.len() as u64 {
+                return Err(safe_error(AiErrorKind::Format));
+            }
+            bytes.extend_from_slice(&chunk);
         }
         let text = String::from_utf8_lossy(&bytes);
         if !(200..300).contains(&status) {
