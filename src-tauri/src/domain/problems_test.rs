@@ -31,7 +31,9 @@ fn imported_problem_metadata_and_field_saves_feed_parseable_dashboard_activity()
         .expect("field saved");
     let saved_at = chrono::DateTime::parse_from_rfc3339(&saved.updated_at)
         .expect("parseable persisted update timestamp");
-    let today = saved_at.format("%Y-%m-%d").to_string();
+    let today = (saved_at + chrono::Duration::hours(8))
+        .format("%Y-%m-%d")
+        .to_string();
     let overview = database.dashboard_overview(&today).expect("dashboard");
 
     assert_eq!(initial.title, "is-lm-import");
