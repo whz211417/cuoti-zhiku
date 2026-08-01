@@ -9,13 +9,28 @@ pub fn has_ai_api_key() -> bool {
 }
 
 #[tauri::command]
+pub fn has_ai_provider_key(provider_id: String) -> Result<bool, String> {
+    crate::services::credentials::has_provider_key(&provider_id)
+}
+
+#[tauri::command]
 pub fn save_ai_api_key(api_key: String) -> Result<(), String> {
     crate::services::credentials::save_api_key(&api_key)
 }
 
 #[tauri::command]
+pub fn save_ai_provider_key(provider_id: String, api_key: String) -> Result<(), String> {
+    crate::services::credentials::save_provider_key(&provider_id, &api_key)
+}
+
+#[tauri::command]
 pub fn clear_ai_api_key() -> Result<(), String> {
     crate::services::credentials::clear_api_key()
+}
+
+#[tauri::command]
+pub fn clear_ai_provider_key(provider_id: String) -> Result<(), String> {
+    crate::services::credentials::clear_provider_key(&provider_id)
 }
 
 #[tauri::command]

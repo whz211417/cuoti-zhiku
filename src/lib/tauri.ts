@@ -15,6 +15,12 @@ export const restoreLibraryBackup = (source: string) => invoke<string>('restore_
 export const hasAiApiKey = () => invoke<boolean>('has_ai_api_key');
 export const saveAiApiKey = (apiKey: string) => invoke<void>('save_ai_api_key', { apiKey });
 export const clearAiApiKey = () => invoke<void>('clear_ai_api_key');
+export const hasAiProviderKey = (providerId: string) =>
+  invoke<boolean>('has_ai_provider_key', { providerId });
+export const saveAiProviderKey = (providerId: string, apiKey: string) =>
+  invoke<void>('save_ai_provider_key', { providerId, apiKey });
+export const clearAiProviderKey = (providerId: string) =>
+  invoke<void>('clear_ai_provider_key', { providerId });
 
 export type InboxItem = {
   id: string;

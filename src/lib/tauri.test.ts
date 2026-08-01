@@ -1,6 +1,14 @@
 import { invoke } from '@tauri-apps/api/core';
 import { beforeEach, expect, test, vi } from 'vitest';
-import { getDashboardOverview, getLibraryHealth, importFiles, searchLibrary } from './tauri';
+import {
+  clearAiProviderKey,
+  getDashboardOverview,
+  getLibraryHealth,
+  hasAiProviderKey,
+  importFiles,
+  saveAiProviderKey,
+  searchLibrary,
+} from './tauri';
 
 vi.mock('@tauri-apps/api/core', () => ({ invoke: vi.fn() }));
 
@@ -43,4 +51,20 @@ test('uses the bounded default search limit', async () => {
   await searchLibrary('IS-LM');
 
   expect(invoke).toHaveBeenCalledWith('search_library', { query: 'IS-LM', limit: 12 });
+});
+
+test('keeps provider credentials behind narrow native commands', async () => {
+  vi.mocked(invoke).mockResolvedValue(true);
+
+  await expect(hasAiProviderKey('deepseek')).resolves.toBe(true);
+  expect(invoke).toHaveBeenCalledWith('has_ai_provider_key', { providerId: 'deepseek' });
+
+  await saveAiProviderKey('deepseek', 'test-only-key');
+  expect(invoke).toHaveBeenCalledWith('save_ai_provider_key', {
+    providerId: 'deepseek',
+    apiKey: 'test-only-key',
+  });
+
+  await clearAiProviderKey('deepseek');
+  expect(invoke).toHaveBeenCalledWith('clear_ai_provider_key', { providerId: 'deepseek' });
 });

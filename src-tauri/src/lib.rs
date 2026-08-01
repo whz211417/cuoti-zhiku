@@ -19,6 +19,8 @@ pub struct AppState {
 pub fn run() {
     tauri::Builder::default()
         .setup(|app| {
+            // Migration is best-effort: an unavailable Credential Manager must not block local study work.
+            let _ = services::credentials::migrate_legacy_dashscope_key_on_startup();
             let library_root = app.path().app_local_data_dir()?;
             let database = db::database::Database::open(&library_root)?;
             app.manage(AppState {
@@ -30,8 +32,11 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             commands::ai::has_ai_api_key,
+            commands::ai::has_ai_provider_key,
             commands::ai::save_ai_api_key,
+            commands::ai::save_ai_provider_key,
             commands::ai::clear_ai_api_key,
+            commands::ai::clear_ai_provider_key,
             commands::ai::run_problem_analysis,
             commands::backup::create_library_backup,
             commands::backup::restore_library_backup,
