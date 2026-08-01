@@ -5,6 +5,21 @@ use crate::db::database::Database;
 use super::ingest::import_original;
 
 #[test]
+fn stores_markdown_and_text_originals() {
+    let temp = tempfile::tempdir().unwrap();
+    for (name, expected) in [
+        ("notes.md", "text/markdown"),
+        ("outline.markdown", "text/markdown"),
+        ("question.txt", "text/plain"),
+    ] {
+        let source = temp.path().join(name);
+        fs::write(&source, "学习内容").unwrap();
+        let imported = import_original(&source, &temp.path().join("originals")).unwrap();
+        assert_eq!(imported.mime_type, expected);
+    }
+}
+
+#[test]
 fn stores_content_once_under_its_sha256_path() {
     let temp = tempfile::tempdir().expect("temporary file library");
     let source = temp.path().join("elasticity.png");

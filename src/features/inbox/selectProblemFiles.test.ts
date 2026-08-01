@@ -23,6 +23,16 @@ test('returns no results when file selection is cancelled', async () => {
   expect(importFiles).not.toHaveBeenCalled();
 });
 
+test('manual picker exposes every supported original type', async () => {
+  vi.mocked(open).mockResolvedValue(null);
+
+  await selectProblemFiles(null);
+
+  expect(open).toHaveBeenCalledWith(expect.objectContaining({
+    filters: [{ name: '题目与资料', extensions: ['png', 'jpg', 'jpeg', 'webp', 'pdf', 'markdown', 'md', 'txt'] }],
+  }));
+});
+
 test('imports a single selected file without an unset course', async () => {
   const results = [{ sourcePath: 'C:/notes/is-lm.pdf', item: null, error: 'failed' }];
   vi.mocked(open).mockResolvedValue('C:/notes/is-lm.pdf');
@@ -47,7 +57,7 @@ test('imports every selected file into the active course', async () => {
   expect(importFiles).toHaveBeenCalledWith(paths, 'macro');
   expect(open).toHaveBeenCalledWith({
     multiple: true,
-    filters: [{ name: '题目与资料', extensions: ['png', 'jpg', 'jpeg', 'webp', 'pdf'] }],
+    filters: [{ name: '题目与资料', extensions: ['png', 'jpg', 'jpeg', 'webp', 'pdf', 'markdown', 'md', 'txt'] }],
   });
 });
 

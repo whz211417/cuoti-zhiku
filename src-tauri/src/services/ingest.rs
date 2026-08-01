@@ -100,6 +100,8 @@ fn supported_file_type(source: &Path) -> Result<(String, String), IngestError> {
         "jpg" | "jpeg" => "image/jpeg",
         "webp" => "image/webp",
         "pdf" => "application/pdf",
+        "md" | "markdown" => "text/markdown",
+        "txt" => "text/plain",
         _ => return Err(IngestError::UnsupportedFile(source.to_path_buf())),
     };
     Ok((extension, mime_type.to_owned()))
