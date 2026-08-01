@@ -34,6 +34,17 @@ pub fn clear_ai_provider_key(provider_id: String) -> Result<(), String> {
 }
 
 #[tauri::command]
+pub fn get_ai_credential_migration_status(
+) -> crate::services::credentials::CredentialMigrationStatus {
+    crate::services::credentials::credential_migration_status()
+}
+
+#[tauri::command]
+pub fn retry_ai_credential_migration() -> crate::services::credentials::CredentialMigrationStatus {
+    crate::services::credentials::retry_credential_migration()
+}
+
+#[tauri::command]
 pub async fn run_problem_analysis(
     state: State<'_, AppState>,
     problem_id: String,

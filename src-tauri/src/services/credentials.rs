@@ -1,5 +1,8 @@
 #![cfg_attr(test, allow(dead_code))]
 
+use serde::Serialize;
+use std::sync::{Mutex, MutexGuard, OnceLock};
+
 const SERVICE: &str = "com.cuoti.zhiku";
 const LEGACY_DASHSCOPE_ACCOUNT: &str = "dashscope-api-key";
 const BAILIAN_PROVIDER_ID: &str = "bailian";
@@ -10,10 +13,54 @@ pub(crate) enum CredentialError {
     Unavailable,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum CredentialMigrationStatus {
+    Ready,
+    NotNeeded,
+    Migrated,
+    Conflict,
+    Failed,
+}
+
 pub(crate) trait CredentialBackend {
     fn get(&self, account: &str) -> Result<String, CredentialError>;
     fn set(&self, account: &str, value: &str) -> Result<(), CredentialError>;
     fn delete(&self, account: &str) -> Result<(), CredentialError>;
+}
+
+#[derive(Default)]
+pub(crate) struct CredentialMutationCoordinator {
+    mutation_lock: Mutex<()>,
+}
+
+impl CredentialMutationCoordinator {
+    fn lock(&self) -> MutexGuard<'_, ()> {
+        self.mutation_lock
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+    }
+
+    #[cfg(test)]
+    pub(crate) fn is_locked_for_test(&self) -> bool {
+        self.mutation_lock.try_lock().is_err()
+    }
+}
+
+fn system_mutation_coordinator() -> &'static CredentialMutationCoordinator {
+    static COORDINATOR: OnceLock<CredentialMutationCoordinator> = OnceLock::new();
+    COORDINATOR.get_or_init(CredentialMutationCoordinator::default)
+}
+
+fn migration_status_slot() -> &'static Mutex<CredentialMigrationStatus> {
+    static STATUS: OnceLock<Mutex<CredentialMigrationStatus>> = OnceLock::new();
+    STATUS.get_or_init(|| Mutex::new(CredentialMigrationStatus::Ready))
+}
+
+fn set_migration_status(status: CredentialMigrationStatus) {
+    *migration_status_slot()
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner()) = status;
 }
 
 struct WindowsCredentialBackend;
@@ -70,7 +117,11 @@ fn missing_key_error() -> String {
     "尚未在 Windows 凭据管理器中保存该 AI 平台的 API Key。".to_owned()
 }
 
-pub(crate) fn save_provider_key_with_backend<B: CredentialBackend>(
+fn migration_verify_error() -> String {
+    "AI 平台凭据迁移校验未完成，可在设置中重试。".to_owned()
+}
+
+fn save_provider_key_unlocked<B: CredentialBackend>(
     backend: &B,
     provider_id: &str,
     value: &str,
@@ -83,6 +134,24 @@ pub(crate) fn save_provider_key_with_backend<B: CredentialBackend>(
     backend
         .set(&account, value)
         .map_err(|_| unavailable_error())
+}
+
+pub(crate) fn save_provider_key_with_coordinator<B: CredentialBackend>(
+    coordinator: &CredentialMutationCoordinator,
+    backend: &B,
+    provider_id: &str,
+    value: &str,
+) -> Result<(), String> {
+    let _mutation = coordinator.lock();
+    save_provider_key_unlocked(backend, provider_id, value)
+}
+
+pub(crate) fn save_provider_key_with_backend<B: CredentialBackend>(
+    backend: &B,
+    provider_id: &str,
+    value: &str,
+) -> Result<(), String> {
+    save_provider_key_with_coordinator(system_mutation_coordinator(), backend, provider_id, value)
 }
 
 pub(crate) fn read_provider_key_with_backend<B: CredentialBackend>(
@@ -108,7 +177,7 @@ pub(crate) fn has_provider_key_with_backend<B: CredentialBackend>(
     }
 }
 
-pub(crate) fn clear_provider_key_with_backend<B: CredentialBackend>(
+fn clear_provider_key_unlocked<B: CredentialBackend>(
     backend: &B,
     provider_id: &str,
 ) -> Result<(), String> {
@@ -119,18 +188,40 @@ pub(crate) fn clear_provider_key_with_backend<B: CredentialBackend>(
     }
 }
 
-pub(crate) fn migrate_legacy_dashscope_key<B: CredentialBackend>(
+fn clear_provider_key_with_coordinator<B: CredentialBackend>(
+    coordinator: &CredentialMutationCoordinator,
     backend: &B,
+    provider_id: &str,
 ) -> Result<(), String> {
+    let _mutation = coordinator.lock();
+    clear_provider_key_unlocked(backend, provider_id)
+}
+
+pub(crate) fn clear_provider_key_with_backend<B: CredentialBackend>(
+    backend: &B,
+    provider_id: &str,
+) -> Result<(), String> {
+    clear_provider_key_with_coordinator(system_mutation_coordinator(), backend, provider_id)
+}
+
+fn migrate_legacy_dashscope_key_unlocked<B: CredentialBackend>(
+    backend: &B,
+) -> Result<CredentialMigrationStatus, String> {
     let legacy_key = match backend.get(LEGACY_DASHSCOPE_ACCOUNT) {
         Ok(value) => value,
-        Err(CredentialError::Missing) => return Ok(()),
+        Err(CredentialError::Missing) => return Ok(CredentialMigrationStatus::NotNeeded),
         Err(CredentialError::Unavailable) => return Err(unavailable_error()),
     };
     let bailian_account = provider_account(BAILIAN_PROVIDER_ID)?;
 
     match backend.get(&bailian_account) {
-        Ok(_) => return Ok(()),
+        Ok(current_key) if current_key == legacy_key => {
+            backend
+                .delete(LEGACY_DASHSCOPE_ACCOUNT)
+                .map_err(|_| unavailable_error())?;
+            return Ok(CredentialMigrationStatus::Migrated);
+        }
+        Ok(_) => return Ok(CredentialMigrationStatus::Conflict),
         Err(CredentialError::Unavailable) => return Err(unavailable_error()),
         Err(CredentialError::Missing) => {}
     }
@@ -142,11 +233,26 @@ pub(crate) fn migrate_legacy_dashscope_key<B: CredentialBackend>(
         .get(&bailian_account)
         .map_err(|_| unavailable_error())?;
     if readback != legacy_key {
-        return Err("AI 平台凭据迁移校验失败，请稍后重试。".to_owned());
+        return Err(migration_verify_error());
     }
     backend
         .delete(LEGACY_DASHSCOPE_ACCOUNT)
-        .map_err(|_| unavailable_error())
+        .map_err(|_| unavailable_error())?;
+    Ok(CredentialMigrationStatus::Migrated)
+}
+
+pub(crate) fn migrate_legacy_dashscope_key_with_coordinator<B: CredentialBackend>(
+    coordinator: &CredentialMutationCoordinator,
+    backend: &B,
+) -> Result<CredentialMigrationStatus, String> {
+    let _mutation = coordinator.lock();
+    migrate_legacy_dashscope_key_unlocked(backend)
+}
+
+pub(crate) fn migrate_legacy_dashscope_key<B: CredentialBackend>(
+    backend: &B,
+) -> Result<CredentialMigrationStatus, String> {
+    migrate_legacy_dashscope_key_with_coordinator(system_mutation_coordinator(), backend)
 }
 
 pub fn save_provider_key(provider_id: &str, value: &str) -> Result<(), String> {
@@ -165,8 +271,30 @@ pub fn clear_provider_key(provider_id: &str) -> Result<(), String> {
     clear_provider_key_with_backend(&WindowsCredentialBackend, provider_id)
 }
 
-pub fn migrate_legacy_dashscope_key_on_startup() -> Result<(), String> {
-    migrate_legacy_dashscope_key(&WindowsCredentialBackend)
+fn attempt_legacy_dashscope_migration() -> CredentialMigrationStatus {
+    let status = match migrate_legacy_dashscope_key(&WindowsCredentialBackend) {
+        Ok(status) => status,
+        Err(_) => {
+            eprintln!("AI credential migration did not finish; it can be retried from Settings.");
+            CredentialMigrationStatus::Failed
+        }
+    };
+    set_migration_status(status);
+    status
+}
+
+pub fn migrate_legacy_dashscope_key_on_startup() -> CredentialMigrationStatus {
+    attempt_legacy_dashscope_migration()
+}
+
+pub fn credential_migration_status() -> CredentialMigrationStatus {
+    *migration_status_slot()
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+}
+
+pub fn retry_credential_migration() -> CredentialMigrationStatus {
+    attempt_legacy_dashscope_migration()
 }
 
 // Legacy compatibility is deliberately routed through the provider-scoped Bailian entry.
@@ -189,7 +317,7 @@ pub fn clear_api_key() -> Result<(), String> {
 #[cfg(test)]
 #[derive(Default)]
 pub(crate) struct MemoryCredentialBackend {
-    values: std::sync::Mutex<std::collections::BTreeMap<String, String>>,
+    values: Mutex<std::collections::BTreeMap<String, String>>,
 }
 
 #[cfg(test)]

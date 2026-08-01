@@ -2,10 +2,12 @@ import { invoke } from '@tauri-apps/api/core';
 import { beforeEach, expect, test, vi } from 'vitest';
 import {
   clearAiProviderKey,
+  getAiCredentialMigrationStatus,
   getDashboardOverview,
   getLibraryHealth,
   hasAiProviderKey,
   importFiles,
+  retryAiCredentialMigration,
   saveAiProviderKey,
   searchLibrary,
 } from './tauri';
@@ -67,4 +69,14 @@ test('keeps provider credentials behind narrow native commands', async () => {
 
   await clearAiProviderKey('deepseek');
   expect(invoke).toHaveBeenCalledWith('clear_ai_provider_key', { providerId: 'deepseek' });
+});
+
+test('queries and retries credential migration without requesting a credential value', async () => {
+  vi.mocked(invoke).mockResolvedValue('conflict');
+
+  await expect(getAiCredentialMigrationStatus()).resolves.toBe('conflict');
+  expect(invoke).toHaveBeenCalledWith('get_ai_credential_migration_status');
+
+  await expect(retryAiCredentialMigration()).resolves.toBe('conflict');
+  expect(invoke).toHaveBeenCalledWith('retry_ai_credential_migration');
 });

@@ -21,6 +21,11 @@ export const saveAiProviderKey = (providerId: string, apiKey: string) =>
   invoke<void>('save_ai_provider_key', { providerId, apiKey });
 export const clearAiProviderKey = (providerId: string) =>
   invoke<void>('clear_ai_provider_key', { providerId });
+export type AiCredentialMigrationStatus = 'ready' | 'not_needed' | 'migrated' | 'conflict' | 'failed';
+export const getAiCredentialMigrationStatus = () =>
+  invoke<AiCredentialMigrationStatus>('get_ai_credential_migration_status');
+export const retryAiCredentialMigration = () =>
+  invoke<AiCredentialMigrationStatus>('retry_ai_credential_migration');
 
 export type InboxItem = {
   id: string;
