@@ -34,6 +34,15 @@ test('returns independent empty state arrays for separate corrupt values', () =>
   expect(first.providers).not.toBe(second.providers);
 });
 
+test('normalizes persisted timeouts to the native 10 to 180 second contract', () => {
+  const bailian = createPresetProvider('bailian');
+
+  expect(normalizeAiProviderState({ providers: [{ ...bailian, requestTimeoutSeconds: 9 }], activeProviderId: 'bailian' }))
+    .toEqual({ providers: [{ ...bailian, requestTimeoutSeconds: 10 }], activeProviderId: 'bailian' });
+  expect(normalizeAiProviderState({ providers: [{ ...bailian, requestTimeoutSeconds: 300 }], activeProviderId: 'bailian' }))
+    .toEqual({ providers: [{ ...bailian, requestTimeoutSeconds: 180 }], activeProviderId: 'bailian' });
+});
+
 test('recovers corrupt and duplicate persisted entries as an empty or deduplicated non-sensitive state', async () => {
   const bailian = createPresetProvider('bailian');
   storeGet.mockResolvedValue({
@@ -56,7 +65,7 @@ test('serializes only approved configuration fields and no credential-shaped fie
     activeProviderId: 'bailian',
   });
   const serialized = JSON.stringify(storeSet.mock.calls[0][1]).toLowerCase();
-  expect(serialized).not.toMatch(/apikey|secret|\"key\"/);
+  expect(serialized).not.toMatch(/apikey|secret|"key"/);
   expect(storeSave).toHaveBeenCalledOnce();
 });
 

@@ -19,7 +19,8 @@ type AiProviderEditorProps = {
   testSucceededForCurrentForm: boolean;
 };
 
-const MAX_TIMEOUT_SECONDS = 300;
+const MIN_TIMEOUT_SECONDS = 10;
+const MAX_TIMEOUT_SECONDS = 180;
 
 const parseOrigin = (value: string) => {
   try {
@@ -41,7 +42,7 @@ const isAllowedHttpOrigin = (origin: string | null) => {
 
 const isValidProviderConfig = (provider: AiProviderConfig) => {
   const origin = parseOrigin(provider.baseUrl);
-  if (!origin || !provider.selectedModel.trim() || provider.requestTimeoutSeconds < 1 || provider.requestTimeoutSeconds > MAX_TIMEOUT_SECONDS) return false;
+  if (!origin || !provider.selectedModel.trim() || provider.requestTimeoutSeconds < MIN_TIMEOUT_SECONDS || provider.requestTimeoutSeconds > MAX_TIMEOUT_SECONDS) return false;
   if (origin.startsWith('https:')) return true;
   return isAllowedHttpOrigin(origin) && provider.allowInsecureLocalhost;
 };
@@ -164,7 +165,7 @@ export function AiProviderEditor({
           </label>
           <label className="ai-provider-field">
             <span>超时（秒）</span>
-            <input max={MAX_TIMEOUT_SECONDS} min={1} onChange={(event) => patch({ requestTimeoutSeconds: Number(event.target.value) || 0 })} type="number" value={provider.requestTimeoutSeconds} />
+            <input max={MAX_TIMEOUT_SECONDS} min={MIN_TIMEOUT_SECONDS} onChange={(event) => patch({ requestTimeoutSeconds: Number(event.target.value) || 0 })} type="number" value={provider.requestTimeoutSeconds} />
           </label>
         </div>
       </div>
@@ -187,7 +188,7 @@ export function AiProviderEditor({
         <button className="ai-provider-current-action" disabled={saving || !canSetCurrent} onClick={() => void onSetCurrent()} type="button"><Check aria-hidden="true" size={15} />设为当前</button>
       </footer>
       {saving ? <p className="ai-provider-progress" role="status">正在与 {provider.displayName} 通信…</p> : null}
-      {status ? <p className={`ai-provider-message is-${status.kind}`} role={status.kind === 'error' ? 'alert' : 'status'}>{status.message}</p> : null}
+      {status ? <p className={`ai-provider-message is-${status.kind}`} role={status.kind === 'error' ? 'alert' : 'status'}>{status.kind === 'success' && status.message.startsWith('连接可用') ? <><strong>连接可用</strong><span>现在可以设为当前 AI 平台。</span></> : status.message}</p> : null}
     </section>
   );
 }

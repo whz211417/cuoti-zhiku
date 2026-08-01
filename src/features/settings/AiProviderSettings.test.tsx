@@ -96,6 +96,24 @@ test('requires explicit acknowledgement before custom localhost HTTP can be pers
   })));
 });
 
+test('uses the native 10 to 180 second timeout contract and rejects out-of-range drafts', async () => {
+  const user = userEvent.setup();
+  render(<AiProviderSettings />);
+
+  await user.click(await screen.findByRole('button', { name: '自定义兼容平台' }));
+  const timeout = screen.getByLabelText('超时（秒）');
+  expect(timeout).toHaveAttribute('min', '10');
+  expect(timeout).toHaveAttribute('max', '180');
+  await user.clear(screen.getByLabelText('兼容 API 地址'));
+  await user.type(screen.getByLabelText('兼容 API 地址'), 'http://localhost:11434/v1');
+  await user.type(screen.getByLabelText('模型 ID'), 'qwen-local');
+  await user.click(screen.getByLabelText(/允许仅此本机地址使用 HTTP/));
+  expect(screen.getByRole('button', { name: '保存平台设置' })).toBeEnabled();
+  await user.clear(timeout);
+  await user.type(timeout, '9');
+  expect(screen.getByRole('button', { name: '保存平台设置' })).toBeDisabled();
+});
+
 test('invalidates a successful test result when the selected model changes', async () => {
   const user = userEvent.setup();
   hasAiProviderKey.mockResolvedValue(true);

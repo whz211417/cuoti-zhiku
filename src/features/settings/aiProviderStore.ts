@@ -8,7 +8,8 @@ import {
 
 const STORE_FILE = 'ai-providers.json';
 const STORE_KEY = 'state';
-const MAX_TIMEOUT_SECONDS = 300;
+const MIN_TIMEOUT_SECONDS = 10;
+const MAX_TIMEOUT_SECONDS = 180;
 
 type UnknownRecord = Record<string, unknown>;
 
@@ -21,8 +22,10 @@ const isPresetKind = (value: unknown): value is AiProviderPresetKind =>
   value === 'bailian' || value === 'deepseek' || value === 'zhipu'
   || value === 'moonshot' || value === 'openai' || value === 'custom';
 
-const isSafeTimeout = (value: unknown): value is number =>
-  typeof value === 'number' && Number.isInteger(value) && value >= 1 && value <= MAX_TIMEOUT_SECONDS;
+const isStoredTimeout = (value: unknown): value is number =>
+  typeof value === 'number' && Number.isInteger(value) && value > 0;
+
+const normalizeTimeout = (value: number) => Math.min(MAX_TIMEOUT_SECONDS, Math.max(MIN_TIMEOUT_SECONDS, value));
 
 const normalizeProvider = (value: unknown): AiProviderConfig | null => {
   if (!isRecord(value)
@@ -32,7 +35,7 @@ const normalizeProvider = (value: unknown): AiProviderConfig | null => {
     || typeof value.selectedModel !== 'string'
     || !(typeof value.visionModel === 'string' || value.visionModel === null)
     || typeof value.supportsVision !== 'boolean'
-    || !isSafeTimeout(value.requestTimeoutSeconds)
+    || !isStoredTimeout(value.requestTimeoutSeconds)
     || typeof value.isEnabled !== 'boolean'
     || !isPresetKind(value.preset)
     || typeof value.allowInsecureLocalhost !== 'boolean') {
@@ -53,7 +56,7 @@ const normalizeProvider = (value: unknown): AiProviderConfig | null => {
     selectedModel: value.selectedModel,
     visionModel: value.visionModel,
     supportsVision: value.supportsVision,
-    requestTimeoutSeconds: value.requestTimeoutSeconds,
+    requestTimeoutSeconds: normalizeTimeout(value.requestTimeoutSeconds),
     isEnabled: value.isEnabled,
     preset: value.preset,
     allowInsecureLocalhost: value.allowInsecureLocalhost,
