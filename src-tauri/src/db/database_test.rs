@@ -474,6 +474,57 @@ fn course_last_updated_includes_its_latest_material_activity() {
 }
 
 #[test]
+fn course_recency_normalizes_mixed_epoch_and_rfc3339_activity_before_ordering() {
+    let (root, database) = dashboard_database();
+    let connection = dashboard_connection(&root);
+    let legacy_course_time = chrono::DateTime::parse_from_rfc3339("2026-07-31T06:00:00Z")
+        .expect("legacy course timestamp")
+        .timestamp_millis()
+        .to_string();
+    let legacy_material_time = chrono::DateTime::parse_from_rfc3339("2026-07-31T08:00:00Z")
+        .expect("legacy material timestamp")
+        .timestamp_millis()
+        .to_string();
+    insert_dashboard_course(
+        &connection,
+        "mixed-formats",
+        "Mixed formats",
+        &legacy_course_time,
+    );
+    insert_dashboard_problem(
+        &connection,
+        "mixed-problem",
+        "mixed-formats",
+        "active",
+        "RFC problem",
+        None,
+        "2026-07-31T07:00:00Z",
+        None,
+    );
+    insert_library_material(
+        &connection,
+        "legacy-material",
+        "mixed-formats",
+        "legacy.md",
+        &legacy_material_time,
+        &["newest mixed-format activity"],
+    );
+    insert_dashboard_course(&connection, "rfc-only", "RFC only", "2026-07-31T07:30:00Z");
+    drop(connection);
+
+    let overview = database
+        .dashboard_overview("2026-07-31")
+        .expect("mixed-format dashboard");
+
+    assert_eq!(overview.course_summaries[0].id, "mixed-formats");
+    assert_eq!(
+        overview.course_summaries[0].updated_at,
+        "2026-07-31T08:00:00.000Z"
+    );
+    assert_eq!(overview.course_summaries[1].id, "rfc-only");
+}
+
+#[test]
 fn dashboard_overview_rejects_a_today_value_outside_the_iso_date_format() {
     let (_root, database) = dashboard_database();
 
@@ -816,6 +867,30 @@ fn open_recovers_version_one_with_only_schema_metadata_and_preserves_unrelated_d
     assert_eq!(database.schema_version().expect("current schema"), 5);
     assert_eq!(marker, "keep me");
     assert!(problems_exists);
+}
+
+#[test]
+fn open_recovers_an_empty_schema_metadata_table_and_preserves_unrelated_data() {
+    let root = tempfile::tempdir().expect("empty metadata root");
+    let connection = Connection::open(root.path().join("library.sqlite3")).expect("seed database");
+    connection
+        .execute_batch(
+            "CREATE TABLE schema_meta(version INTEGER NOT NULL);
+             CREATE TABLE legacy_marker(value TEXT NOT NULL);
+             INSERT INTO legacy_marker(value) VALUES ('keep empty-meta data');",
+        )
+        .expect("empty metadata schema");
+    drop(connection);
+
+    let database = Database::open(root.path()).expect("recover empty metadata schema");
+    let connection =
+        Connection::open(root.path().join("library.sqlite3")).expect("recovered database");
+    let marker: String = connection
+        .query_row("SELECT value FROM legacy_marker", [], |row| row.get(0))
+        .expect("unrelated legacy row");
+
+    assert_eq!(database.schema_version().expect("current schema"), 5);
+    assert_eq!(marker, "keep empty-meta data");
 }
 
 #[test]

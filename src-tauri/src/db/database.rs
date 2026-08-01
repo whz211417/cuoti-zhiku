@@ -10,7 +10,7 @@ use std::{
 };
 
 use chrono::{Duration, NaiveDate, SecondsFormat, Utc};
-use rusqlite::{params, Connection, Transaction};
+use rusqlite::{params, Connection, OptionalExtension, Transaction};
 use serde::Serialize;
 
 use crate::{
@@ -151,10 +151,12 @@ impl Database {
                 1,
             )?;
         }
-        let mut schema_version =
-            connection.query_row("SELECT version FROM schema_meta LIMIT 1", [], |row| {
+        let mut schema_version = connection
+            .query_row("SELECT version FROM schema_meta LIMIT 1", [], |row| {
                 row.get::<_, i64>(0)
-            })?;
+            })
+            .optional()?
+            .unwrap_or(1);
         if schema_version == 1 {
             apply_migration(
                 &mut connection,
@@ -917,7 +919,33 @@ fn query_course_summaries(
     today: &str,
 ) -> DatabaseResult<Vec<CourseSummary>> {
     let mut statement = connection.prepare(
-        "SELECT c.id,
+        "WITH course_activity AS (
+             SELECT id AS course_id, updated_at AS raw_updated_at FROM courses
+             UNION ALL
+             SELECT course_id, updated_at FROM problems WHERE status != 'trash'
+             UNION ALL
+             SELECT course_id, created_at FROM course_materials
+         ),
+         normalized_course_activity AS (
+             SELECT course_id,
+                    CASE
+                        WHEN raw_updated_at NOT GLOB '*[^0-9]*'
+                             AND CAST(raw_updated_at AS INTEGER) > 100000000000
+                            THEN strftime(
+                                '%Y-%m-%dT%H:%M:%fZ',
+                                CAST(raw_updated_at AS INTEGER) / 1000,
+                                'unixepoch'
+                            )
+                        ELSE raw_updated_at
+                    END AS updated_at
+             FROM course_activity
+         ),
+         latest_course_activity AS (
+             SELECT course_id, MAX(updated_at) AS updated_at
+             FROM normalized_course_activity
+             GROUP BY course_id
+         )
+         SELECT c.id,
                 c.name,
                 c.color,
                 (SELECT COUNT(*) FROM problems p WHERE p.course_id = c.id AND p.status != 'trash'),
@@ -928,12 +956,9 @@ fn query_course_summaries(
                    AND p.next_review_at IS NOT NULL
                    AND p.next_review_at <= ?1),
                 (SELECT COUNT(*) FROM course_materials m WHERE m.course_id = c.id),
-                MAX(
-                    c.updated_at,
-                    COALESCE((SELECT MAX(p.updated_at) FROM problems p WHERE p.course_id = c.id AND p.status != 'trash'), c.updated_at),
-                    COALESCE((SELECT MAX(m.created_at) FROM course_materials m WHERE m.course_id = c.id), c.updated_at)
-                ) AS aggregate_updated_at
+                activity.updated_at AS aggregate_updated_at
          FROM courses c
+         JOIN latest_course_activity activity ON activity.course_id = c.id
          WHERE c.archived_at IS NULL
          ORDER BY aggregate_updated_at DESC, c.created_at DESC",
     )?;
