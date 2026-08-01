@@ -129,7 +129,7 @@ export function AiProviderEditor({
         {remoteHttp ? <p className="ai-provider-danger" role="alert">远程 HTTP 不受支持。请改为 HTTPS；仅 localhost、127.0.0.1 或 [::1] 可在明确确认后使用 HTTP。</p> : null}
         {localhostHttp ? (
           <label className="ai-provider-localhost-confirm">
-            <input checked={provider.allowInsecureLocalhost} onChange={(event) => patch({ allowInsecureLocalhost: event.target.checked })} type="checkbox" />
+            <input aria-label="允许仅此本机地址使用 HTTP" checked={provider.allowInsecureLocalhost} onChange={(event) => patch({ allowInsecureLocalhost: event.target.checked })} type="checkbox" />
             <span>我确认仅允许此本机地址使用 HTTP：<strong>{origin}</strong></span>
           </label>
         ) : null}
