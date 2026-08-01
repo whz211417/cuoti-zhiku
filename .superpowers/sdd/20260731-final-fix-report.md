@@ -183,3 +183,52 @@ Implementation commits:
 
 - Final NSIS generation and launch/dialog smoke testing remain controller release steps.
 - Opaque legacy `updated_at` values still cannot recover their original historical save instant; migration 5's documented fallback remains unchanged.
+
+## 2026-08-01 final edge addendum
+
+Reviewed HEAD: `5377c1a`
+
+Implementation commits:
+
+- `1c99800` — `fix: recover empty legacy metadata`
+- `f0bb621` — `fix: refresh stale problem drafts`
+
+### Final edge fixes
+
+1. `Database::open` treats an existing but empty `schema_meta` table as legacy version 1, then runs the existing idempotent migration-1 reconciliation. The public-open regression proves that current schema access is restored while an unrelated table and row remain intact.
+2. Course recency now normalizes legacy epoch-millisecond activity and RFC 3339 activity before taking the maximum and ordering course summaries. The regression covers both the displayed `updatedAt` value and cross-course ordering.
+3. A problem field-save conflict reloads the latest document and version token while preserving the unsaved draft. The next explicit retry uses the refreshed token; same-version and reload-failure paths retain the transient retry message.
+
+### TDD evidence
+
+- The empty-metadata public-open test first failed with `Sql(QueryReturnedNoRows)`.
+- The mixed-timestamp course-recency test first placed the RFC-only course ahead of the truly newer mixed-format course.
+- The optimistic-conflict test first failed because the editor did not report that it had reloaded the latest document. During that red run, `vi.clearAllMocks()` also exposed a test isolation leak from an unconsumed one-shot mock; changing the suite setup to `vi.resetAllMocks()` left exactly the intended red assertion.
+- Focused green results: complete Rust suite 52 tests passed; `src/features/problems/problems.test.tsx` 6 tests passed, including transient retry and conflict reload/retry paths.
+
+### Fresh final-edge verification matrix
+
+- `pnpm test`
+  - Exit 0; 19 test files and 98 tests passed.
+- `pnpm lint`
+  - Exit 0; ESLint completed with `--max-warnings=0`.
+- `pnpm typecheck`
+  - Exit 0; `tsc --noEmit` completed without diagnostics.
+- `pnpm build`
+  - Exit 0; TypeScript plus Vite production build completed, 1610 modules transformed.
+- GNU-host `cargo fmt --check`
+  - Exit 0; no formatting diff.
+- GNU-host `cargo test`
+  - Exit 0; 52 Rust tests passed, plus zero-test main/doc targets passed.
+- GNU-host `cargo clippy --all-targets -- -D warnings`
+  - Exit 0; completed with warnings denied.
+- `git diff --check 8031a1e316ab0af4d644c4a0f02c0e84ba4d1c4a..HEAD`
+  - Exit 0 before this report-only commit.
+- `pnpm tauri build --no-bundle --target x86_64-pc-windows-gnu`
+  - Exit 0; its frontend production build completed and the optimized application was written to `src-tauri/target/x86_64-pc-windows-gnu/release/cuoti-zhiku.exe`.
+  - `--no-bundle` was used deliberately; no NSIS installer was built.
+
+### Remaining handoff risks
+
+- Final NSIS generation and launch/dialog smoke testing remain controller release steps.
+- Opaque legacy `updated_at` values still cannot recover their original historical save instant; migration 5's documented fallback remains unchanged.
