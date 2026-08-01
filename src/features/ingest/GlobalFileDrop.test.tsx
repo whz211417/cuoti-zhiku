@@ -90,8 +90,8 @@ test('keeps guidance current on over then hides it on leave', async () => {
   render(<GlobalFileDrop courseId={null} onImported={vi.fn()} onOpenInbox={vi.fn()} />);
   await waitFor(() => expect(subscribeToWindowFileDrop).toHaveBeenCalledOnce());
 
-  act(() => emitDrop({ type: 'enter', paths: ['C:\\one.pdf'] }));
-  act(() => emitDrop({ type: 'over', paths: ['C:\\one.pdf', 'C:\\two.png'] }));
+  act(() => emitDrop({ type: 'enter', paths: ['C:\\one.pdf', 'C:\\two.png'] }));
+  act(() => emitDrop({ type: 'over', paths: [] }));
   expect(screen.getByText('准备导入 2 个文件')).toBeVisible();
   act(() => emitDrop({ type: 'leave', paths: [] }));
   expect(screen.getByLabelText('拖放文件导入')).toHaveAttribute('aria-hidden', 'true');

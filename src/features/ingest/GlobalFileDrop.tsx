@@ -35,11 +35,15 @@ export function GlobalFileDrop({
     let stop: (() => void) | undefined;
     const handleWindowDrop = (event: WindowFileDrop) => {
       if (!active) return;
-      if (event.type === 'enter' || event.type === 'over') {
+      if (event.type === 'enter') {
         if (!importingRef.current) {
           setPaths(event.paths);
           setPhase('ready');
         }
+        return;
+      }
+      if (event.type === 'over') {
+        if (!importingRef.current) setPhase('ready');
         return;
       }
       if (event.type === 'leave') {
