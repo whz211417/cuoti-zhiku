@@ -26,6 +26,7 @@ use crate::{
 };
 
 static NEXT_RECORD_ID: AtomicU64 = AtomicU64::new(1);
+const CURRENT_SCHEMA_VERSION: i64 = 6;
 
 #[derive(Debug, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
@@ -144,69 +145,8 @@ impl Database {
     pub fn open(root: &Path) -> DatabaseResult<Self> {
         std::fs::create_dir_all(root)?;
         let mut connection = Connection::open(root.join("library.sqlite3"))?;
-        connection.execute_batch(
-            "PRAGMA foreign_keys = ON; PRAGMA journal_mode = WAL; PRAGMA busy_timeout = 5000;",
-        )?;
-        let has_schema_meta = connection.query_row(
-            "SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'schema_meta')",
-            [],
-            |row| row.get::<_, bool>(0),
-        )?;
-        if !has_schema_meta {
-            apply_migration(
-                &mut connection,
-                include_str!("../../migrations/0001_initial.sql"),
-                1,
-            )?;
-        }
-        let mut schema_version = connection
-            .query_row("SELECT version FROM schema_meta LIMIT 1", [], |row| {
-                row.get::<_, i64>(0)
-            })
-            .optional()?
-            .unwrap_or(1);
-        if schema_version == 1 {
-            apply_migration(
-                &mut connection,
-                include_str!("../../migrations/0001_initial.sql"),
-                1,
-            )?;
-        }
-        if schema_version < 2 {
-            apply_migration(
-                &mut connection,
-                include_str!("../../migrations/0002_problem_fields.sql"),
-                2,
-            )?;
-            schema_version = 2;
-        }
-        if schema_version < 3 {
-            apply_review_state_migration(&mut connection)?;
-            schema_version = 3;
-        }
-        if schema_version < 4 {
-            apply_migration(
-                &mut connection,
-                include_str!("../../migrations/0004_course_materials.sql"),
-                4,
-            )?;
-            schema_version = 4;
-        }
-        if schema_version < 5 {
-            apply_migration(
-                &mut connection,
-                include_str!("../../migrations/0005_problem_versions.sql"),
-                5,
-            )?;
-            schema_version = 5;
-        }
-        if schema_version < 6 {
-            apply_migration(
-                &mut connection,
-                include_str!("../../migrations/0006_course_kind.sql"),
-                6,
-            )?;
-        }
+        configure_connection(&connection)?;
+        migrate_to_current_schema(&mut connection)?;
 
         Ok(Self {
             connection: Mutex::new(connection),
@@ -387,7 +327,31 @@ impl Database {
                 row.get::<_, i64>(0)
             })
             .map_err(|_| DatabaseError::Conflict("选择的文件不是错题智库备份。".to_owned()))?;
-        if version != 6 {
+        if !(1..=CURRENT_SCHEMA_VERSION).contains(&version) {
+            return Err(DatabaseError::Conflict(
+                "备份版本与当前应用不兼容。".to_owned(),
+            ));
+        }
+
+        let mut candidate = Connection::open_in_memory()?;
+        {
+            let backup = rusqlite::backup::Backup::new(&source, &mut candidate)?;
+            backup.run_to_completion(64, std::time::Duration::from_millis(5), None)?;
+        }
+        configure_connection(&candidate)?;
+        migrate_to_current_schema(&mut candidate)?;
+        let candidate_integrity =
+            candidate.query_row("PRAGMA integrity_check", [], |row| row.get::<_, String>(0))?;
+        if candidate_integrity != "ok" {
+            return Err(DatabaseError::Conflict(
+                "选择的备份未通过完整性检查。".to_owned(),
+            ));
+        }
+        let candidate_version =
+            candidate.query_row("SELECT version FROM schema_meta LIMIT 1", [], |row| {
+                row.get::<_, i64>(0)
+            })?;
+        if candidate_version != CURRENT_SCHEMA_VERSION {
             return Err(DatabaseError::Conflict(
                 "备份版本与当前应用不兼容。".to_owned(),
             ));
@@ -395,12 +359,10 @@ impl Database {
 
         let mut destination = self.connection()?;
         {
-            let backup = rusqlite::backup::Backup::new(&source, &mut destination)?;
+            let backup = rusqlite::backup::Backup::new(&candidate, &mut destination)?;
             backup.run_to_completion(64, std::time::Duration::from_millis(5), None)?;
         }
-        destination.execute_batch(
-            "PRAGMA foreign_keys = ON; PRAGMA journal_mode = WAL; PRAGMA busy_timeout = 5000;",
-        )?;
+        configure_connection(&destination)?;
         Ok(())
     }
 
@@ -840,6 +802,77 @@ pub(crate) fn apply_migration(
     transaction.execute_batch(sql)?;
     transaction.execute("UPDATE schema_meta SET version = ?1", [target_version])?;
     transaction.commit()?;
+    Ok(())
+}
+
+fn configure_connection(connection: &Connection) -> DatabaseResult<()> {
+    connection.execute_batch(
+        "PRAGMA foreign_keys = ON; PRAGMA journal_mode = WAL; PRAGMA busy_timeout = 5000;",
+    )?;
+    Ok(())
+}
+
+fn migrate_to_current_schema(connection: &mut Connection) -> DatabaseResult<()> {
+    let has_schema_meta = connection.query_row(
+        "SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'schema_meta')",
+        [],
+        |row| row.get::<_, bool>(0),
+    )?;
+    if !has_schema_meta {
+        apply_migration(
+            connection,
+            include_str!("../../migrations/0001_initial.sql"),
+            1,
+        )?;
+    }
+    let mut schema_version = connection
+        .query_row("SELECT version FROM schema_meta LIMIT 1", [], |row| {
+            row.get::<_, i64>(0)
+        })
+        .optional()?
+        .unwrap_or(1);
+    if schema_version == 1 {
+        apply_migration(
+            connection,
+            include_str!("../../migrations/0001_initial.sql"),
+            1,
+        )?;
+    }
+    if schema_version < 2 {
+        apply_migration(
+            connection,
+            include_str!("../../migrations/0002_problem_fields.sql"),
+            2,
+        )?;
+        schema_version = 2;
+    }
+    if schema_version < 3 {
+        apply_review_state_migration(connection)?;
+        schema_version = 3;
+    }
+    if schema_version < 4 {
+        apply_migration(
+            connection,
+            include_str!("../../migrations/0004_course_materials.sql"),
+            4,
+        )?;
+        schema_version = 4;
+    }
+    if schema_version < 5 {
+        apply_migration(
+            connection,
+            include_str!("../../migrations/0005_problem_versions.sql"),
+            5,
+        )?;
+        schema_version = 5;
+    }
+    if schema_version < CURRENT_SCHEMA_VERSION {
+        apply_migration(
+            connection,
+            include_str!("../../migrations/0006_course_kind.sql"),
+            CURRENT_SCHEMA_VERSION,
+        )?;
+    }
     Ok(())
 }
 

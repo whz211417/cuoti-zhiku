@@ -1100,6 +1100,37 @@ fn restores_a_valid_snapshot_into_the_open_library() {
 }
 
 #[test]
+fn restores_a_version_five_snapshot_after_migrating_it_to_the_current_schema() {
+    let current_root = tempfile::tempdir().expect("current library root");
+    let source_root = tempfile::tempdir().expect("source library root");
+    let snapshot = source_root.path().join("library.sqlite3");
+    let current = Database::open(current_root.path()).expect("current database");
+    current
+        .create_course("Current course", "", "#777777", "school")
+        .expect("current course");
+    seed_schema_version(source_root.path(), 5);
+    let source = Connection::open(&snapshot).expect("version five snapshot");
+    source
+        .execute(
+            "INSERT INTO courses(id, name, term, color, created_at, updated_at)
+             VALUES ('legacy-course', 'Legacy course', '', '#CE8876', '2026-07-01', '2026-07-01')",
+            [],
+        )
+        .expect("legacy course");
+    drop(source);
+
+    current
+        .restore_from_snapshot(&snapshot)
+        .expect("migrated snapshot restore");
+    let courses = current.list_courses().expect("restored courses");
+
+    assert_eq!(current.schema_version().expect("current schema"), 6);
+    assert_eq!(courses.len(), 1);
+    assert_eq!(courses[0].name, "Legacy course");
+    assert_eq!(courses[0].kind, "school");
+}
+
+#[test]
 fn refuses_to_restore_a_file_that_is_not_a_valid_library() {
     let root = tempfile::tempdir().expect("library root");
     let invalid = root.path().join("invalid.sqlite3");
