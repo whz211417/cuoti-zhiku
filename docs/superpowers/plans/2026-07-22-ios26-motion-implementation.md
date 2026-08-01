@@ -181,4 +181,3 @@ Expected: all tests pass; build produces `dist/` successfully; lint exits 0.
 git add src/app/App.tsx src/app/App.test.tsx src/styles/global.css
 git commit -m "feat: refine restrained workspace motion"
 ```
-
