@@ -13,7 +13,10 @@ const { completeReview, getDueReviewProblems, localCalendarDate, searchLibraryMo
 }));
 
 vi.mock('../features/export/exportBooks', () => ({ saveProblemBook: vi.fn() }));
-vi.mock('../features/inbox/selectProblemFiles', () => ({ selectProblemFiles: vi.fn() }));
+vi.mock('../features/inbox/selectProblemFiles', () => ({
+  SUPPORTED_PROBLEM_EXTENSIONS: ['png', 'jpg', 'jpeg', 'webp', 'pdf', 'markdown', 'md', 'txt'],
+  selectProblemFiles: vi.fn(),
+}));
 vi.mock('../features/settings/AiSettings', () => ({ AiSettings: () => <div>AI 设置</div> }));
 vi.mock('../lib/dates', () => ({ localCalendarDate, timeGreeting: () => '早上好' }));
 vi.mock('../lib/preferences', () => ({

@@ -10,6 +10,7 @@ import { ArchiveLibrary } from '../features/archive/ArchiveLibrary';
 import { CourseSidebar } from '../features/courses/CourseSidebar';
 import { LearningDashboard } from '../features/dashboard/LearningDashboard';
 import { saveProblemBook, type BookKind } from '../features/export/exportBooks';
+import { GlobalFileDrop } from '../features/ingest/GlobalFileDrop';
 import { IngestDropzone } from '../features/inbox/IngestDropzone';
 import { selectProblemFiles } from '../features/inbox/selectProblemFiles';
 import { ProblemDocument } from '../features/problems/ProblemDocument';
@@ -284,6 +285,11 @@ export function App() {
 
   return (
     <main aria-label="错题智库" className="app-shell" role="application">
+      <GlobalFileDrop
+        courseId={selectedCourseId}
+        onImported={refreshOverview}
+        onOpenInbox={() => selectWorkspace('inbox')}
+      />
       <DynamicControlSurface as="aside" className="sidebar">
         <div className="brand-lockup">
           <span aria-hidden="true"><BookOpenCheck size={15} strokeWidth={2.2} /></span>
