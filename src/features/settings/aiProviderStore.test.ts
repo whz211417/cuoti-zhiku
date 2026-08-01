@@ -1,6 +1,6 @@
 import { beforeEach, expect, test, vi } from 'vitest';
 import { createPresetProvider } from './aiProviderCatalog';
-import { loadAiProviderState, saveAiProviderState } from './aiProviderStore';
+import { loadAiProviderState, normalizeAiProviderState, saveAiProviderState } from './aiProviderStore';
 
 const { storeGet, storeSet, storeSave, storeLoad } = vi.hoisted(() => ({
   storeGet: vi.fn(),
@@ -23,6 +23,15 @@ test('repairs an invalid active provider without inventing a key', async () => {
   storeGet.mockResolvedValue({ providers: [bailian], activeProviderId: 'missing' });
 
   await expect(loadAiProviderState()).resolves.toEqual({ providers: [bailian], activeProviderId: 'bailian' });
+});
+
+test('returns independent empty state arrays for separate corrupt values', () => {
+  const first = normalizeAiProviderState(undefined);
+  const second = normalizeAiProviderState(undefined);
+  first.providers.push(createPresetProvider('bailian'));
+
+  expect(second).toEqual({ providers: [], activeProviderId: null });
+  expect(first.providers).not.toBe(second.providers);
 });
 
 test('recovers corrupt and duplicate persisted entries as an empty or deduplicated non-sensitive state', async () => {

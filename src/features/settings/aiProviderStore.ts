@@ -8,10 +8,11 @@ import {
 
 const STORE_FILE = 'ai-providers.json';
 const STORE_KEY = 'state';
-const EMPTY_STATE: AiProviderState = { providers: [], activeProviderId: null };
 const MAX_TIMEOUT_SECONDS = 300;
 
 type UnknownRecord = Record<string, unknown>;
+
+const createEmptyState = (): AiProviderState => ({ providers: [], activeProviderId: null });
 
 const isRecord = (value: unknown): value is UnknownRecord =>
   typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -61,7 +62,7 @@ const normalizeProvider = (value: unknown): AiProviderConfig | null => {
 
 export const normalizeAiProviderState = (value: unknown): AiProviderState => {
   if (!isRecord(value) || !Array.isArray(value.providers)) {
-    return { ...EMPTY_STATE };
+    return createEmptyState();
   }
 
   const seenIds = new Set<string>();
