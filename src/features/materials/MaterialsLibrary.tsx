@@ -1,6 +1,6 @@
 import { open } from '@tauri-apps/plugin-dialog';
 import { BookMarked, FileUp, LockKeyhole, Save, Search } from 'lucide-react';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { importCourseMaterialFile, saveCourseMaterial, searchCourseMaterial, type MaterialSnippet } from '../../lib/tauri';
 
 export function MaterialsLibrary({
@@ -22,6 +22,9 @@ export function MaterialsLibrary({
   const [searchError, setSearchError] = useState(false);
   const [isImporting, setIsImporting] = useState(false);
   const processedInitialQueryRef = useRef<string | null>(null);
+  const activeCourseRef = useRef(courseId);
+  const requestGenerationRef = useRef(0);
+  const successfulSearchRef = useRef<string | null>(null);
 
   const save = async () => {
     if (!courseId || !filename.trim() || !content.trim()) return;
@@ -41,19 +44,48 @@ export function MaterialsLibrary({
   };
 
   const runSearch = useCallback(async (searchQuery: string) => {
-    if (!courseId || !searchQuery) return;
+    const normalizedQuery = searchQuery.trim();
+    if (!courseId || !normalizedQuery) return;
+    const searchKey = JSON.stringify([courseId, normalizedQuery]);
+    const requestGeneration = requestGenerationRef.current + 1;
+    requestGenerationRef.current = requestGeneration;
+    if (successfulSearchRef.current !== searchKey) setSnippets([]);
     setIsSearching(true);
     setSearchError(false);
     try {
-      setSnippets(await searchCourseMaterial(courseId, searchQuery));
+      const nextSnippets = await searchCourseMaterial(courseId, normalizedQuery);
+      if (
+        requestGenerationRef.current !== requestGeneration
+        || activeCourseRef.current !== courseId
+      ) return;
+      successfulSearchRef.current = searchKey;
+      setSnippets(nextSnippets);
     } catch {
-      setSearchError(true);
+      if (
+        requestGenerationRef.current === requestGeneration
+        && activeCourseRef.current === courseId
+      ) setSearchError(true);
     } finally {
-      setIsSearching(false);
+      if (
+        requestGenerationRef.current === requestGeneration
+        && activeCourseRef.current === courseId
+      ) setIsSearching(false);
     }
   }, [courseId]);
 
   const search = () => runSearch(query.trim());
+
+  useLayoutEffect(() => {
+    if (activeCourseRef.current === courseId) return;
+    activeCourseRef.current = courseId;
+    requestGenerationRef.current += 1;
+    successfulSearchRef.current = null;
+    processedInitialQueryRef.current = null;
+    setQuery('');
+    setSnippets([]);
+    setSearchError(false);
+    setIsSearching(false);
+  }, [courseId]);
 
   useEffect(() => {
     const nextQuery = initialQuery.trim();
@@ -69,6 +101,15 @@ export function MaterialsLibrary({
     setQuery(nextQuery);
     void runSearch(nextQuery);
   }, [courseId, initialQuery, runSearch]);
+
+  const updateQuery = (nextQuery: string) => {
+    const searchKey = courseId ? JSON.stringify([courseId, nextQuery.trim()]) : null;
+    requestGenerationRef.current += 1;
+    setQuery(nextQuery);
+    setIsSearching(false);
+    setSearchError(false);
+    if (successfulSearchRef.current !== searchKey) setSnippets([]);
+  };
 
   const importFile = async () => {
     if (!courseId) return;
@@ -143,7 +184,7 @@ export function MaterialsLibrary({
             <div className="materials-search-bar">
               <label className="sr-only" htmlFor="material-search">检索课程资料</label>
               <Search aria-hidden="true" size={15} />
-              <input id="material-search" onChange={(event) => setQuery(event.target.value)} placeholder="检索这门课的教材与讲义" value={query} />
+              <input id="material-search" onChange={(event) => updateQuery(event.target.value)} placeholder="检索这门课的教材与讲义" value={query} />
               <button disabled={isSearching || !query.trim()} onClick={() => void search()} type="button">{isSearching ? '正在检索…' : '检索'}</button>
             </div>
             {searchError ? (

@@ -377,6 +377,9 @@ input:not([type="radio"]):not([type="checkbox"]) { min-height: 44px; }
 .review-grade-error, .materials-search-error, .archive-error { display: flex; align-items: center; gap: 9px; margin-top: 12px; border: 1px solid rgb(201 52 47 / .18); border-radius: 10px; padding: 10px 12px; color: #b33a35; background: #fff8f7; font-size: 12px; }
 .review-grade-error span, .materials-search-error span, .archive-error span { min-width: 0; flex: 1; }
 .review-grade-error button, .materials-search-error button, .archive-error button { display: inline-flex; min-height: 36px; align-items: center; gap: 5px; border: 0; border-radius: 8px; padding: 0 9px; color: var(--blue); background: #eef6ff; font-size: 11px; font-weight: 650; }
+.field-save-error { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: 10px; border: 1px solid rgb(201 52 47 / .18); border-radius: 9px; padding: 9px 10px; color: #b33a35; background: #fff8f7; font-size: 12px; line-height: 1.5; }
+.field-save-error button, .review-load-error > button { display: inline-flex; min-height: 36px; flex: 0 0 auto; align-items: center; gap: 6px; border: 0; border-radius: 8px; padding: 0 11px; color: var(--blue); background: #eef6ff; font-size: 12px; font-weight: 650; }
+.review-load-error > button { margin: 18px auto 0; }
 
 .archive-library { display: grid; width: min(980px, 100%); max-width: 980px; gap: 22px; margin: 0 auto; }
 .problem-archive { border: 1px solid rgb(60 60 67 / .13); border-radius: 18px; padding: 26px; background: var(--paper); box-shadow: 0 12px 34px rgb(34 48 73 / .052); }

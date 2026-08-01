@@ -1,6 +1,6 @@
 import { useGSAP } from '@gsap/react';
 import { gsap } from 'gsap';
-import { Archive, BookOpenCheck, ChevronLeft, Inbox, LayoutDashboard, Search, Settings, ShieldCheck, Upload, X } from 'lucide-react';
+import { AlertCircle, Archive, BookOpenCheck, ChevronLeft, Inbox, LayoutDashboard, RefreshCw, Search, Settings, ShieldCheck, Upload, X } from 'lucide-react';
 import { type CSSProperties, useCallback, useEffect, useRef, useState } from 'react';
 import { DynamicControlSurface } from '../components/material/DynamicControlSurface';
 import { InspectorSurface } from '../components/material/InspectorSurface';
@@ -40,6 +40,7 @@ export function App() {
   const [refreshToken, setRefreshToken] = useState(0);
   const [reviewQueue, setReviewQueue] = useState<ReviewProblem[]>([]);
   const [isReviewLoading, setIsReviewLoading] = useState(false);
+  const [reviewLoadError, setReviewLoadError] = useState<string | null>(null);
   const [isGrading, setIsGrading] = useState(false);
   const [gradeError, setGradeError] = useState<string | null>(null);
   const [failedGrade, setFailedGrade] = useState<'forgot' | 'hard' | 'familiar' | 'mastered' | null>(null);
@@ -50,7 +51,11 @@ export function App() {
   const [isRestoring, setIsRestoring] = useState(false);
   const contentRef = useRef<HTMLDivElement>(null);
   const searchTriggerRef = useRef<HTMLButtonElement>(null);
+  const settingsTriggerRef = useRef<HTMLButtonElement>(null);
+  const settingsDialogRef = useRef<HTMLElement>(null);
+  const settingsRestoreFocusRef = useRef<HTMLElement | null>(null);
   const gradeInFlightRef = useRef(false);
+  const reviewRequestRef = useRef(0);
   const activeTitle = selectedProblemId ? { eyebrow: '本地资料库', title: '题目档案' } : workspaceTitles[workspace];
   const problemBackLabel = workspace === 'archive'
     ? '返回全部档案'
@@ -77,14 +82,86 @@ export function App() {
     searchTriggerRef.current?.focus();
   };
 
-  useEffect(() => {
-    if (workspace !== 'review') return;
+  const loadReviewQueue = useCallback(async () => {
+    const request = reviewRequestRef.current + 1;
+    reviewRequestRef.current = request;
     setIsReviewLoading(true);
+    setReviewQueue([]);
+    setReviewLoadError(null);
     setGradeError(null);
     setFailedGrade(null);
     const today = localCalendarDate();
-    void getDueReviewProblems(today).then(setReviewQueue).catch(() => setReviewQueue([])).finally(() => setIsReviewLoading(false));
-  }, [workspace]);
+    try {
+      const queue = await getDueReviewProblems(today);
+      if (reviewRequestRef.current === request) setReviewQueue(queue);
+    } catch {
+      if (reviewRequestRef.current === request) {
+        setReviewLoadError('复习队列暂时无法读取。请重试。');
+      }
+    } finally {
+      if (reviewRequestRef.current === request) setIsReviewLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (workspace !== 'review') {
+      reviewRequestRef.current += 1;
+      return;
+    }
+    void loadReviewQueue();
+    return () => {
+      reviewRequestRef.current += 1;
+    };
+  }, [loadReviewQueue, workspace]);
+
+  const closeSettings = useCallback(() => setIsSettingsOpen(false), []);
+
+  const openSettings = () => {
+    settingsRestoreFocusRef.current = document.activeElement instanceof HTMLElement
+      ? document.activeElement
+      : settingsTriggerRef.current;
+    setIsSettingsOpen(true);
+  };
+
+  useEffect(() => {
+    if (!isSettingsOpen) return;
+    const dialog = settingsDialogRef.current;
+    if (!dialog) return;
+    const focusableElements = () => Array.from(dialog.querySelectorAll<HTMLElement>(
+      'button:not([disabled]), input:not([disabled]), textarea:not([disabled]), select:not([disabled]), [href], [tabindex]:not([tabindex="-1"])',
+    ));
+    (focusableElements()[0] ?? dialog).focus();
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        closeSettings();
+        return;
+      }
+      if (event.key !== 'Tab') return;
+      const elements = focusableElements();
+      if (elements.length === 0) {
+        event.preventDefault();
+        dialog.focus();
+        return;
+      }
+      const first = elements[0];
+      const last = elements[elements.length - 1];
+      if (event.shiftKey && (document.activeElement === first || !dialog.contains(document.activeElement))) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && (document.activeElement === last || !dialog.contains(document.activeElement))) {
+        event.preventDefault();
+        first.focus();
+      }
+    };
+    document.addEventListener('keydown', handleKeyDown);
+    return () => {
+      document.removeEventListener('keydown', handleKeyDown);
+      settingsRestoreFocusRef.current?.focus();
+      settingsRestoreFocusRef.current = null;
+    };
+  }, [closeSettings, isSettingsOpen]);
 
   useEffect(() => {
     const openSearch = (event: KeyboardEvent) => {
@@ -247,7 +324,7 @@ export function App() {
           <div aria-label="工具" className="toolbar-actions">
             <button aria-label="投进题目" className="toolbar-button toolbar-ingest-action" disabled={isIngesting} onClick={() => void ingestProblemFiles()} type="button"><Upload aria-hidden="true" size={16} /><span>{isIngesting ? '正在导入…' : '投进题目'}</span></button>
             <button aria-label="全局搜索" className="toolbar-button icon-button" onClick={() => setIsSearchOpen(true)} ref={searchTriggerRef} type="button"><Search aria-hidden="true" size={17} /></button>
-            <button aria-label="设置" className="toolbar-button icon-button" onClick={() => setIsSettingsOpen(true)} type="button"><Settings aria-hidden="true" size={17} /></button>
+            <button aria-label="设置" className="toolbar-button icon-button" onClick={openSettings} ref={settingsTriggerRef} type="button"><Settings aria-hidden="true" size={17} /></button>
           </div>
         </DynamicControlSurface>
 
@@ -282,6 +359,13 @@ export function App() {
                 </ol>
               </section>
             </div>
+          ) : workspace === 'review' && reviewLoadError ? (
+            <section aria-label="复习队列读取失败" className="focus-empty review-load-error" role="alert">
+              <div className="focus-empty-icon"><AlertCircle aria-hidden="true" size={24} /></div>
+              <h2>复习队列暂时无法读取</h2>
+              <p>本地资料库没有返回复习题目。你的记录没有改变。</p>
+              <button onClick={() => void loadReviewQueue()} type="button"><RefreshCw aria-hidden="true" size={15} />重新读取复习队列</button>
+            </section>
           ) : workspace === 'review' && reviewQueue[0] ? (
             <ReviewReader
               explanation={reviewQueue[0].explanation}
@@ -321,13 +405,13 @@ export function App() {
         {isSettingsOpen ? (
           <div className="inspector-backdrop">
             <InspectorSurface>
-              <section aria-labelledby="preferences-title" aria-modal="true" className="preferences-inspector" role="dialog">
+              <section aria-labelledby="preferences-title" aria-modal="true" className="preferences-inspector" ref={settingsDialogRef} role="dialog" tabIndex={-1}>
                 <header className="preferences-header">
                   <div>
                     <p className="eyebrow">错题智库</p>
                     <h2 id="preferences-title">偏好设置</h2>
                   </div>
-                  <button aria-label="关闭设置" className="inspector-close" onClick={() => setIsSettingsOpen(false)} type="button"><X aria-hidden="true" size={17} /></button>
+                  <button aria-label="关闭设置" className="inspector-close" onClick={closeSettings} type="button"><X aria-hidden="true" size={17} /></button>
                 </header>
                 <div className="preference-row">
                   <div><strong>本地资料库</strong><span>题目、附件和记录只保存在此设备。</span></div>

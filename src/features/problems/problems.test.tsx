@@ -1,6 +1,6 @@
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { expect, test, vi } from 'vitest';
+import { beforeEach, expect, test, vi } from 'vitest';
 import { ProblemDocument } from './ProblemDocument';
 
 const { getProblemDocument, hasAiApiKey, runProblemAnalysis, saveProblemField } = vi.hoisted(() => ({
@@ -11,6 +11,8 @@ const { getProblemDocument, hasAiApiKey, runProblemAnalysis, saveProblemField } 
 }));
 
 vi.mock('../../lib/tauri', () => ({ getProblemDocument, hasAiApiKey, runProblemAnalysis, saveProblemField }));
+
+beforeEach(() => vi.clearAllMocks());
 
 test('renders a saved problem as a reading document', async () => {
   getProblemDocument.mockResolvedValue({
@@ -89,19 +91,41 @@ test('runs AI only after consent and accepts suggestions one field at a time', a
   expect(screen.getByText('政府购买增加会提高总需求。')).toBeVisible();
 });
 
-test('does not report a user field as saved when persistence fails', async () => {
+test('keeps the draft mounted and retries a user field after persistence fails', async () => {
   getProblemDocument.mockResolvedValue({ id: 'problem-failed', title: '', status: 'inbox', updatedAt: '2026-07-30T08:00:00Z', version: 'version-1', fields: [] });
-  saveProblemField.mockRejectedValue(new Error('version conflict'));
+  saveProblemField
+    .mockRejectedValueOnce(new Error('database busy'))
+    .mockResolvedValueOnce({
+      problemId: 'problem-failed',
+      kind: 'stem',
+      value: '不会被丢失的草稿',
+      updatedAt: '2026-07-30T08:01:00Z',
+      version: 'version-2',
+    });
   const onSaved = vi.fn();
   const user = userEvent.setup();
 
   render(<ProblemDocument onSaved={onSaved} problemId="problem-failed" />);
   await user.click(await screen.findByRole('button', { name: '补充题干' }));
-  await user.type(screen.getByLabelText('编辑题干'), '不会被保存');
+  await user.type(screen.getByLabelText('编辑题干'), '不会被丢失的草稿');
   await user.click(screen.getByRole('button', { name: '保存题干' }));
 
-  expect(await screen.findByRole('status')).toHaveTextContent('保存没有完成');
+  expect(await screen.findByRole('alert')).toHaveTextContent('保存没有完成');
+  expect(screen.getByRole('article', { name: '题目档案' })).toBeVisible();
+  expect(screen.getByLabelText('编辑题干')).toHaveValue('不会被丢失的草稿');
   expect(onSaved).not.toHaveBeenCalled();
+
+  await user.click(screen.getByRole('button', { name: '重试保存题干' }));
+
+  expect(saveProblemField).toHaveBeenCalledTimes(2);
+  expect(saveProblemField).toHaveBeenLastCalledWith(
+    'problem-failed',
+    'stem',
+    '不会被丢失的草稿',
+    'version-1',
+  );
+  expect(await screen.findByRole('heading', { name: '不会被丢失的草稿' })).toBeVisible();
+  expect(onSaved).toHaveBeenCalledOnce();
 });
 
 test('lets the learner explicitly choose deep analysis before sending', async () => {

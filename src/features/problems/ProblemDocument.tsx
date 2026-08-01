@@ -16,7 +16,8 @@ const labels = new Map(fieldOrder);
 
 export function ProblemDocument({ onSaved, problemId }: { onSaved?: () => void; problemId: string }) {
   const [document, setDocument] = useState<ProblemDocumentModel | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [saveError, setSaveError] = useState<string | null>(null);
   const [editingKind, setEditingKind] = useState<string | null>(null);
   const [draft, setDraft] = useState('');
   const [isSaving, setIsSaving] = useState(false);
@@ -27,22 +28,25 @@ export function ProblemDocument({ onSaved, problemId }: { onSaved?: () => void; 
 
   useEffect(() => {
     setDocument(null);
-    setError(null);
-    void getProblemDocument(problemId).then(setDocument).catch(() => setError('暂时无法打开这份题目档案。'));
+    setLoadError(null);
+    setSaveError(null);
+    setEditingKind(null);
+    setDraft('');
+    void getProblemDocument(problemId).then(setDocument).catch(() => setLoadError('暂时无法打开这份题目档案。'));
   }, [problemId]);
 
-  if (error) return <p className="document-notice" role="status">{error}</p>;
+  if (loadError) return <p className="document-notice" role="status">{loadError}</p>;
   if (!document) return <p className="document-notice">正在打开题目档案…</p>;
 
   const fields = new Map(document.fields.map((field) => [field.kind, field]));
   const beginEditing = (kind: string) => {
     setDraft(fields.get(kind)?.value ?? '');
     setEditingKind(kind);
-    setError(null);
+    setSaveError(null);
   };
   const save = async (kind: string) => {
     setIsSaving(true);
-    setError(null);
+    setSaveError(null);
     try {
       const saved = await saveProblemField(document.id, kind, draft, document.version);
       setDocument((current) => current ? {
@@ -52,9 +56,10 @@ export function ProblemDocument({ onSaved, problemId }: { onSaved?: () => void; 
         fields: [...current.fields.filter((field) => field.kind !== saved.kind), saved],
       } : current);
       setEditingKind(null);
+      setSaveError(null);
       onSaved?.();
     } catch {
-      setError('保存没有完成。题目可能已在另一处更新，请刷新后重试。');
+      setSaveError('保存没有完成。草稿仍在这里，请重试。');
     } finally {
       setIsSaving(false);
     }
@@ -134,9 +139,15 @@ export function ProblemDocument({ onSaved, problemId }: { onSaved?: () => void; 
                   <label className="sr-only" htmlFor={`field-${kind}`}>编辑{label}</label>
                   <textarea autoFocus id={`field-${kind}`} onChange={(event) => setDraft(event.target.value)} value={draft} />
                   <div className="field-editor-actions">
-                    <button onClick={() => setEditingKind(null)} type="button">取消</button>
+                    <button onClick={() => { setEditingKind(null); setSaveError(null); }} type="button">取消</button>
                     <button className="field-save" disabled={isSaving} onClick={() => void save(kind)} type="button">{isSaving ? '正在保存…' : `保存${label}`}</button>
                   </div>
+                  {saveError ? (
+                    <div className="field-save-error" role="alert">
+                      <span>{saveError}</span>
+                      <button disabled={isSaving} onClick={() => void save(kind)} type="button">{`重试保存${label}`}</button>
+                    </div>
+                  ) : null}
                 </div>
               ) : (
                 <button aria-label={`${field?.value ? '编辑' : '补充'}${label}`} className={field?.value ? 'document-value document-field-button' : 'document-placeholder document-field-button'} onClick={() => beginEditing(kind)} type="button">

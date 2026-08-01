@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, expect, test, vi } from 'vitest';
 import { saveProblemBook } from '../features/export/exportBooks';
@@ -16,6 +16,9 @@ vi.mock('../features/export/exportBooks', () => ({ saveProblemBook: vi.fn() }));
 vi.mock('../features/inbox/selectProblemFiles', () => ({ selectProblemFiles: vi.fn() }));
 vi.mock('../features/settings/AiSettings', () => ({ AiSettings: () => <div>AI 设置</div> }));
 vi.mock('../lib/dates', () => ({ localCalendarDate, timeGreeting: () => '早上好' }));
+vi.mock('../lib/preferences', () => ({
+  getMotionPreferences: () => ({ reduceMotion: true, reduceTransparency: false }),
+}));
 vi.mock('../lib/tauri', () => ({
   completeReview,
   getDueReviewProblems,
@@ -345,13 +348,29 @@ test('does not refresh after a failed review grade', async () => {
   expect(screen.getByRole('status', { name: '总览刷新令牌' })).toHaveTextContent('0');
 });
 
-test('opens the preferences inspector from the toolbar', async () => {
+test('traps focus in preferences, closes on Escape, and restores the settings trigger', async () => {
   const user = userEvent.setup();
   render(<App />);
 
-  await user.click(screen.getByRole('button', { name: '设置' }));
+  const settingsTrigger = screen.getByRole('button', { name: '设置' });
+  await user.click(settingsTrigger);
 
-  expect(screen.getByRole('dialog', { name: '偏好设置' })).toBeVisible();
+  const dialog = screen.getByRole('dialog', { name: '偏好设置' });
+  const dialogButtons = within(dialog).getAllByRole('button');
+  const firstButton = dialogButtons[0];
+  const lastButton = dialogButtons.at(-1)!;
+  await waitFor(() => expect(firstButton).toHaveFocus());
+
+  lastButton.focus();
+  fireEvent.keyDown(document, { key: 'Tab' });
+  expect(firstButton).toHaveFocus();
+  firstButton.focus();
+  fireEvent.keyDown(document, { key: 'Tab', shiftKey: true });
+  expect(lastButton).toHaveFocus();
+
+  await user.keyboard('{Escape}');
+  expect(screen.queryByRole('dialog', { name: '偏好设置' })).not.toBeInTheDocument();
+  expect(settingsTrigger).toHaveFocus();
 });
 
 test('exports the question book only after the user requests it from preferences', async () => {
@@ -415,6 +434,29 @@ test('keeps a rejected review visible and retries the same grade before advancin
   await user.click(screen.getByRole('button', { name: '重新保存评分' }));
   await waitFor(() => expect(completeReview).toHaveBeenCalledTimes(2));
   expect(await screen.findByText('今天没有待复习内容')).toBeVisible();
+});
+
+test('shows a distinct review load error and recovers through retry', async () => {
+  const user = userEvent.setup();
+  getDueReviewProblems
+    .mockRejectedValueOnce(new Error('database unavailable'))
+    .mockResolvedValueOnce([{
+      id: 'review-recovered',
+      stem: '恢复后的复习题',
+      ownAnswer: '',
+      standardAnswer: '',
+      explanation: '',
+    }]);
+  render(<App />);
+
+  await user.click(screen.getByRole('button', { name: '开始复习' }));
+
+  expect(await screen.findByRole('alert')).toHaveTextContent('复习队列暂时无法读取');
+  expect(screen.queryByText('今天没有待复习内容')).not.toBeInTheDocument();
+  await user.click(screen.getByRole('button', { name: '重新读取复习队列' }));
+
+  expect(await screen.findByText('恢复后的复习题')).toBeVisible();
+  expect(getDueReviewProblems).toHaveBeenCalledTimes(2);
 });
 
 test('shares dashboard recents with Spotlight and opens a recent problem', async () => {
