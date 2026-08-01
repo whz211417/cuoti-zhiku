@@ -277,6 +277,30 @@ test('StrictMode schedules one persisted missing-key repair for an active provid
   expect(saveAiProviderState).toHaveBeenCalledTimes(1);
 });
 
+test('keeps a missing-key provider inactive in this session when its repair cannot be persisted, then recovers the write queue', async () => {
+  const deepseek = {
+    id: 'deepseek', displayName: 'DeepSeek', baseUrl: 'https://api.deepseek.com', selectedModel: 'deepseek-v4-flash',
+    visionModel: null, supportsVision: false, requestTimeoutSeconds: 60, isEnabled: true, preset: 'deepseek' as const, allowInsecureLocalhost: false,
+  };
+  loadAiProviderState.mockResolvedValue({ providers: [deepseek], activeProviderId: 'deepseek' });
+  hasAiProviderKey.mockImplementation((id: string) => Promise.resolve(id !== 'deepseek'));
+  saveAiProviderState.mockRejectedValueOnce(new Error('disk write unavailable')).mockResolvedValue(undefined);
+  const user = userEvent.setup();
+  render(<AiProviderSettings />);
+
+  expect(await screen.findByText(/尚未选择当前 AI 平台/)).toBeVisible();
+  expect(screen.getByRole('button', { name: '设为当前' })).toBeDisabled();
+  expect(await screen.findByText('当前平台缺少 Key；本机状态更新失败。')).toBeVisible();
+
+  await user.click(screen.getByRole('button', { name: /OpenAI/ }));
+  await waitFor(() => expect(screen.getByRole('button', { name: '测试连接' })).toBeEnabled());
+  await user.click(screen.getByRole('button', { name: '测试连接' }));
+  await user.click(await screen.findByRole('button', { name: '设为当前' }));
+
+  await waitFor(() => expect(saveAiProviderState).toHaveBeenCalledTimes(2));
+  expect(screen.getByText(/当前使用：OpenAI/)).toBeVisible();
+});
+
 test('serializes automatic missing-key repair before a newer provider selection without overwriting it', async () => {
   let resolveHasDeepseek!: (value: boolean) => void;
   let resolveRepair!: () => void;

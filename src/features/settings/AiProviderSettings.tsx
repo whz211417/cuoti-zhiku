@@ -24,6 +24,7 @@ import { loadAiProviderState, saveAiProviderState } from './aiProviderStore';
 type Message = { kind: 'success' | 'error' | 'info'; message: string } | null;
 type KeyStatus = 'present' | 'absent' | 'unknown';
 type Selection = PresetAiProviderId | 'custom';
+type StoreMutationResult = { applied: boolean; next: AiProviderState | null };
 
 const fingerprint = (provider: AiProviderConfig) => JSON.stringify({
   id: provider.id,
@@ -80,18 +81,19 @@ export function AiProviderSettings() {
 
   const commitLocalState = (next: AiProviderState) => {
     stateRef.current = next;
-    setState(next);
+    if (aliveRef.current) setState(next);
   };
 
   const enqueueStoreMutation = (mutation: (latest: AiProviderState) => AiProviderState | null) => {
-    const run = async () => {
+    const run = async (): Promise<StoreMutationResult> => {
       const next = mutation(stateRef.current);
-      if (!next) return;
+      if (!next) return { applied: false, next: null };
       await saveAiProviderState(next);
       commitLocalState(next);
+      return { applied: true, next };
     };
     const queued = storeWriteQueueRef.current.then(run, run);
-    storeWriteQueueRef.current = queued.catch(() => undefined);
+    storeWriteQueueRef.current = queued.then(() => undefined, () => undefined);
     return queued;
   };
 
@@ -116,12 +118,18 @@ export function AiProviderSettings() {
       const hasKeyResult = await hasAiProviderKey(providerId);
       if (aliveRef.current && token === keyRequestRef.current[providerId]) {
         setKeyStatusById((previous) => ({ ...previous, [providerId]: hasKeyResult ? 'present' : 'absent' }));
-        if (!hasKeyResult) {
+        if (!hasKeyResult && stateRef.current.activeProviderId === providerId) {
+          const inactiveState = {
+            providers: stateRef.current.providers.map((provider) => provider.id === providerId ? { ...provider, isEnabled: false } : provider),
+            activeProviderId: null,
+          };
+          commitLocalState(inactiveState);
           void enqueueStoreMutation((latest) => {
+            if (latest.activeProviderId === null && latest.providers.some((provider) => provider.id === providerId && !provider.isEnabled)) return latest;
             if (latest.activeProviderId !== providerId) return null;
             return { providers: latest.providers.map((provider) => provider.id === providerId ? { ...provider, isEnabled: false } : provider), activeProviderId: null };
-          }).then(() => {
-            if (aliveRef.current && draftRef.current.id === providerId) setMessage({ kind: 'error', message: '当前平台缺少 Key，已在本次会话中停用。' });
+          }).then((result) => {
+            if (result.applied && aliveRef.current && draftRef.current.id === providerId) setMessage({ kind: 'error', message: '当前平台缺少 Key，已在本次会话中停用。' });
           }).catch(() => {
             if (aliveRef.current) setMessage({ kind: 'error', message: '当前平台缺少 Key；本机状态更新失败。' });
           });
@@ -221,7 +229,7 @@ export function AiProviderSettings() {
   const validDraft = isSafeEndpoint(draft) && Number.isInteger(draft.requestTimeoutSeconds) && draft.requestTimeoutSeconds >= 10 && draft.requestTimeoutSeconds <= 180
     && Boolean(draft.selectedModel.trim()) && (!draft.supportsVision || Boolean(draft.visionModel?.trim()));
   const canSaveConfig = loadState === 'ready' && !isWorking && validDraft && (!existing || !state.activeProviderId || state.activeProviderId !== draft.id || unchangedActive || freshSuccess);
-  const canSetCurrent = loadState === 'ready' && !isWorking && (unchangedActive || freshSuccess)
+  const canSetCurrent = loadState === 'ready' && !isWorking && keyStatus === 'present' && (unchangedActive || freshSuccess)
     && (draft.preset !== 'custom' || Boolean(existing));
   const canSaveKey = loadState === 'ready' && !isWorking && (draft.preset !== 'custom' || Boolean(existing));
   const canTest = loadState === 'ready' && !isWorking && validDraft && keyStatus !== 'unknown';
