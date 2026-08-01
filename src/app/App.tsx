@@ -60,6 +60,7 @@ export function App() {
   const settingsRestoreFocusRef = useRef<HTMLElement | null>(null);
   const gradeInFlightRef = useRef(false);
   const pendingMaterialPathRef = useRef<string | null>(null);
+  const materialPickerRequestRef = useRef(0);
   const reviewRequestRef = useRef(0);
   const activeTitle = selectedProblemId ? { eyebrow: '本地资料库', title: '题目档案' } : workspaceTitles[workspace];
   const problemBackLabel = workspace === 'archive'
@@ -230,16 +231,20 @@ export function App() {
 
   const requestMaterialImport = async () => {
     setMaterialImportError(null);
+    const request = materialPickerRequestRef.current + 1;
+    materialPickerRequestRef.current = request;
     pendingMaterialPathRef.current = null;
     const selectedCourseAtRequest = selectedCourseId;
     let path: string | null;
     try {
       path = await selectCourseMaterialFile();
     } catch {
+      if (materialPickerRequestRef.current !== request) return;
       pendingMaterialPathRef.current = null;
       setMaterialImportError('无法打开学习资料选择窗口，请稍后重试。');
       return;
     }
+    if (materialPickerRequestRef.current !== request) return;
     if (!path) {
       pendingMaterialPathRef.current = null;
       return;

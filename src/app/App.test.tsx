@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, expect, test, vi } from 'vitest';
 import { saveProblemBook } from '../features/export/exportBooks';
@@ -272,6 +272,40 @@ test('discards a pending material when the user cancels course creation', async 
   await user.click(screen.getByRole('button', { name: '创建课程' }));
 
   expect(importCourseMaterialFile).not.toHaveBeenCalled();
+});
+
+test('ignores an older picker resolution after a newer picker is cancelled', async () => {
+  let resolveOlder!: (path: string | null) => void;
+  const olderPicker = new Promise<string | null>((resolve) => { resolveOlder = resolve; });
+  const user = userEvent.setup();
+  vi.mocked(selectCourseMaterialFile)
+    .mockReturnValueOnce(olderPicker)
+    .mockResolvedValueOnce(null);
+  render(<App />);
+
+  await user.click(screen.getByRole('button', { name: '总览导入学习资料' }));
+  await user.click(screen.getByRole('button', { name: '总览导入学习资料' }));
+  await act(async () => { resolveOlder('C:/course/older.pdf'); });
+  await user.click(screen.getByRole('button', { name: '创建课程' }));
+
+  expect(importCourseMaterialFile).not.toHaveBeenCalled();
+});
+
+test('ignores an older picker rejection after a newer picker keeps a pending material', async () => {
+  let rejectOlder!: (error: Error) => void;
+  const olderPicker = new Promise<string | null>((_resolve, reject) => { rejectOlder = reject; });
+  const user = userEvent.setup();
+  vi.mocked(selectCourseMaterialFile)
+    .mockReturnValueOnce(olderPicker)
+    .mockResolvedValueOnce('C:/course/newer.pdf');
+  render(<App />);
+
+  await user.click(screen.getByRole('button', { name: '总览导入学习资料' }));
+  await user.click(screen.getByRole('button', { name: '总览导入学习资料' }));
+  await act(async () => { rejectOlder(new Error('older dialog failed')); });
+  await user.click(screen.getByRole('button', { name: '创建课程' }));
+
+  await waitFor(() => expect(importCourseMaterialFile).toHaveBeenCalledWith('course-created', 'C:/course/newer.pdf'));
 });
 
 test('opens on the learning overview and navigates from its primary review action', async () => {
