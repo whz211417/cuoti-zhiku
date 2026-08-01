@@ -16,9 +16,10 @@ pub fn create_course(
     name: String,
     term: String,
     color: String,
+    kind: String,
 ) -> Result<crate::db::database::Course, String> {
     state
         .database
-        .create_course(&name, &term, &color)
+        .create_course(&name, &term, &color, &kind)
         .map_err(|error| error.to_string())
 }

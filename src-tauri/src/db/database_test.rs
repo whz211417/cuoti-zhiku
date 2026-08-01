@@ -789,6 +789,22 @@ fn seed_schema_version(root: &std::path::Path, version: i64) {
             .execute("UPDATE schema_meta SET version = 3", [])
             .expect("schema version 3");
     }
+    if version >= 4 {
+        connection
+            .execute_batch(include_str!("../../migrations/0004_course_materials.sql"))
+            .expect("schema version 4 tables");
+        connection
+            .execute("UPDATE schema_meta SET version = 4", [])
+            .expect("schema version 4");
+    }
+    if version >= 5 {
+        connection
+            .execute_batch(include_str!("../../migrations/0005_problem_versions.sql"))
+            .expect("schema version 5 columns");
+        connection
+            .execute("UPDATE schema_meta SET version = 5", [])
+            .expect("schema version 5");
+    }
 }
 
 fn seed_version_two_problem(root: &std::path::Path) {
@@ -811,7 +827,7 @@ fn seed_version_two_problem(root: &std::path::Path) {
 }
 
 fn assert_recovered_review_schema(root: &std::path::Path, database: &Database) {
-    assert_eq!(database.schema_version().expect("current schema"), 5);
+    assert_eq!(database.schema_version().expect("current schema"), 6);
     let connection = Connection::open(root.join("library.sqlite3")).expect("recovered database");
     let recovered: (String, i64, Option<String>) = connection
         .query_row(
@@ -826,13 +842,27 @@ fn assert_recovered_review_schema(root: &std::path::Path, database: &Database) {
 
 #[test]
 fn migrates_supported_legacy_versions_to_the_current_schema() {
-    for starting_version in [1, 2, 3] {
+    for starting_version in [1, 2, 3, 4, 5] {
         let root = tempfile::tempdir().expect("legacy library root");
         seed_schema_version(root.path(), starting_version);
+        let connection =
+            Connection::open(root.path().join("library.sqlite3")).expect("legacy database");
+        connection
+            .execute(
+                "INSERT INTO courses(id, name, term, color, created_at, updated_at)
+                 VALUES ('legacy-course', 'Legacy course', '', '#CE8876', '2026-07-01', '2026-07-01')",
+                [],
+            )
+            .expect("legacy course");
+        drop(connection);
 
         let database = Database::open(root.path()).expect("migrate legacy library");
 
-        assert_eq!(database.schema_version().expect("current schema"), 5);
+        assert_eq!(database.schema_version().expect("current schema"), 6);
+        assert_eq!(
+            database.list_courses().expect("course list")[0].kind,
+            "school"
+        );
     }
 }
 
@@ -864,7 +894,7 @@ fn open_recovers_version_one_with_only_schema_metadata_and_preserves_unrelated_d
         )
         .expect("problems table lookup");
 
-    assert_eq!(database.schema_version().expect("current schema"), 5);
+    assert_eq!(database.schema_version().expect("current schema"), 6);
     assert_eq!(marker, "keep me");
     assert!(problems_exists);
 }
@@ -889,7 +919,7 @@ fn open_recovers_an_empty_schema_metadata_table_and_preserves_unrelated_data() {
         .query_row("SELECT value FROM legacy_marker", [], |row| row.get(0))
         .expect("unrelated legacy row");
 
-    assert_eq!(database.schema_version().expect("current schema"), 5);
+    assert_eq!(database.schema_version().expect("current schema"), 6);
     assert_eq!(marker, "keep empty-meta data");
 }
 
@@ -957,7 +987,7 @@ fn resumes_a_partially_applied_legacy_migration() {
         )
         .expect("field revisions table");
 
-    assert_eq!(database.schema_version().expect("current schema"), 5);
+    assert_eq!(database.schema_version().expect("current schema"), 6);
     assert_eq!(field_revisions_exists, 1);
 }
 
@@ -995,7 +1025,18 @@ fn opens_a_wal_database_with_foreign_keys_enabled() {
 
     assert!(database.foreign_keys_enabled().expect("foreign key status"));
     assert_eq!(database.journal_mode().expect("journal mode"), "wal");
-    assert_eq!(database.schema_version().expect("schema version"), 5);
+    assert_eq!(database.schema_version().expect("schema version"), 6);
+}
+
+#[test]
+fn migrates_existing_courses_to_school_kind() {
+    let root = tempfile::tempdir().unwrap();
+    let database = Database::open(root.path()).unwrap();
+    let course = database
+        .create_course("微积分", "", "#7895A5", "school")
+        .unwrap();
+    assert_eq!(course.kind, "school");
+    assert_eq!(database.schema_version().unwrap(), 6);
 }
 
 #[test]
@@ -1005,7 +1046,7 @@ fn reports_database_health_without_exposing_its_connection() {
 
     let health = database.health().expect("library health");
 
-    assert_eq!(health.schema_version, 5);
+    assert_eq!(health.schema_version, 6);
     assert!(health.foreign_keys_enabled);
     assert_eq!(health.journal_mode, "wal");
 }
@@ -1016,7 +1057,7 @@ fn writes_a_consistent_backup_to_a_new_destination() {
     let destination = root.path().join("错题智库备份.sqlite3");
     let database = Database::open(root.path()).expect("open library database");
     database
-        .create_course("宏观经济学", "", "#CE8876")
+        .create_course("宏观经济学", "", "#CE8876", "school")
         .expect("course");
 
     database
@@ -1041,11 +1082,11 @@ fn restores_a_valid_snapshot_into_the_open_library() {
     let snapshot = source_root.path().join("library-backup.sqlite3");
     let current = Database::open(current_root.path()).expect("current database");
     current
-        .create_course("旧课程", "", "#777777")
+        .create_course("旧课程", "", "#777777", "school")
         .expect("old course");
     let source = Database::open(source_root.path()).expect("source database");
     source
-        .create_course("宏观经济学", "", "#4A78A8")
+        .create_course("宏观经济学", "", "#4A78A8", "school")
         .expect("source course");
     source.create_backup(&snapshot).expect("source snapshot");
 

@@ -1,5 +1,5 @@
 import { FormEvent, useEffect, useState } from 'react';
-import { createCourse, getCourses, type Course } from '../../lib/tauri';
+import { createCourse, getCourses, type Course, type CourseKind } from '../../lib/tauri';
 
 export function CourseSidebar({
   onCourseCreated,
@@ -13,14 +13,16 @@ export function CourseSidebar({
   const [courses, setCourses] = useState<Course[]>([]);
   const [isAdding, setIsAdding] = useState(false);
   const [name, setName] = useState('');
+  const [kind, setKind] = useState<CourseKind>('school');
 
   useEffect(() => { void getCourses().then(setCourses).catch(() => undefined); }, []);
   const addCourse = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (!name.trim()) return;
-    const course = await createCourse(name, '', '#7895A5');
+    const course = await createCourse(name, '', '#7895A5', kind);
     setCourses((current) => [...current, course]);
     setName('');
+    setKind('school');
     setIsAdding(false);
     onSelectCourse(course.id);
     onCourseCreated?.();
@@ -41,6 +43,14 @@ export function CourseSidebar({
         <form className="course-create" onSubmit={(event) => void addCourse(event)}>
           <label className="sr-only" htmlFor="course-name">课程名称</label>
           <input autoFocus id="course-name" onChange={(event) => setName(event.target.value)} placeholder="例如：宏观经济学" value={name} />
+          <label className="sr-only" htmlFor="course-kind">课程类型</label>
+          <select id="course-kind" onChange={(event) => setKind(event.target.value as CourseKind)} value={kind}>
+            <option value="school">学校课程</option>
+            <option value="exam">考试</option>
+            <option value="language">语言</option>
+            <option value="certificate">证书</option>
+            <option value="other">其他</option>
+          </select>
           <button type="submit">添加</button>
         </form>
       ) : <button className="add-course" onClick={() => setIsAdding(true)} type="button">＋ 新建课程</button>}

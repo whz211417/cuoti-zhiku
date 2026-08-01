@@ -6,13 +6,23 @@ fn creates_and_lists_local_courses() {
     let database = Database::open(root.path()).expect("database");
 
     let created = database
-        .create_course("宏观经济学", "2026 春季", "#CE8876")
+        .create_course("宏观经济学", "2026 春季", "#CE8876", "school")
         .expect("course");
     let courses = database.list_courses().expect("course list");
 
     assert_eq!(courses.len(), 1);
     assert_eq!(courses[0].id, created.id);
     assert_eq!(courses[0].name, "宏观经济学");
+    assert_eq!(courses[0].kind, "school");
+}
+
+#[test]
+fn rejects_unknown_course_kind() {
+    let root = tempfile::tempdir().unwrap();
+    let database = Database::open(root.path()).unwrap();
+    assert!(database
+        .create_course("课程", "", "#7895A5", "unknown")
+        .is_err());
 }
 
 #[test]
@@ -20,7 +30,7 @@ fn stores_and_searches_material_snippets_within_one_course() {
     let root = tempfile::tempdir().expect("temporary library");
     let database = Database::open(root.path()).expect("database");
     let course = database
-        .create_course("宏观经济学", "2026 春季", "#CE8876")
+        .create_course("宏观经济学", "2026 春季", "#CE8876", "school")
         .expect("course");
 
     let material = database

@@ -21,11 +21,12 @@ export type InboxItem = {
   createdAt: string;
 };
 
-export type Course = { id: string; name: string; term: string; color: string };
+export type CourseKind = 'school' | 'exam' | 'language' | 'certificate' | 'other';
+export type Course = { id: string; name: string; term: string; color: string; kind: CourseKind };
 
 export const getCourses = () => invoke<Course[]>('get_courses');
-export const createCourse = (name: string, term: string, color: string) =>
-  invoke<Course>('create_course', { name, term, color });
+export const createCourse = (name: string, term: string, color: string, kind: CourseKind) =>
+  invoke<Course>('create_course', { name, term, color, kind });
 
 export type CourseMaterial = { id: string; courseId: string; filename: string };
 export type MaterialSnippet = { materialId: string; filename: string; excerpt: string };

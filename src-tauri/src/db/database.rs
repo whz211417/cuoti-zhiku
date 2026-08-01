@@ -58,6 +58,7 @@ pub struct Course {
     pub name: String,
     pub term: String,
     pub color: String,
+    pub kind: String,
 }
 
 #[derive(Debug, Serialize, PartialEq, Eq)]
@@ -128,6 +129,13 @@ impl From<rusqlite::Error> for DatabaseError {
 
 pub type DatabaseResult<T> = Result<T, DatabaseError>;
 
+fn validate_course_kind(kind: &str) -> DatabaseResult<&str> {
+    match kind {
+        "school" | "exam" | "language" | "certificate" | "other" => Ok(kind),
+        _ => Err(DatabaseError::Conflict("请选择有效的课程类型。".to_owned())),
+    }
+}
+
 pub struct Database {
     connection: Mutex<Connection>,
 }
@@ -189,6 +197,14 @@ impl Database {
                 &mut connection,
                 include_str!("../../migrations/0005_problem_versions.sql"),
                 5,
+            )?;
+            schema_version = 5;
+        }
+        if schema_version < 6 {
+            apply_migration(
+                &mut connection,
+                include_str!("../../migrations/0006_course_kind.sql"),
+                6,
             )?;
         }
 
@@ -371,7 +387,7 @@ impl Database {
                 row.get::<_, i64>(0)
             })
             .map_err(|_| DatabaseError::Conflict("选择的文件不是错题智库备份。".to_owned()))?;
-        if version != 5 {
+        if version != 6 {
             return Err(DatabaseError::Conflict(
                 "备份版本与当前应用不兼容。".to_owned(),
             ));
@@ -388,20 +404,27 @@ impl Database {
         Ok(())
     }
 
-    pub fn create_course(&self, name: &str, term: &str, color: &str) -> DatabaseResult<Course> {
+    pub fn create_course(
+        &self,
+        name: &str,
+        term: &str,
+        color: &str,
+        kind: &str,
+    ) -> DatabaseResult<Course> {
         let course = Course {
             id: record_id("course"),
             name: name.trim().to_owned(),
             term: term.trim().to_owned(),
             color: color.to_owned(),
+            kind: validate_course_kind(kind)?.to_owned(),
         };
         if course.name.is_empty() {
             return Err(DatabaseError::Conflict("课程名称不能为空。".to_owned()));
         }
         let created_at = timestamp();
         self.connection()?.execute(
-            "INSERT INTO courses(id, name, term, color, created_at, updated_at) VALUES (?1, ?2, ?3, ?4, ?5, ?5)",
-            params![&course.id, &course.name, &course.term, &course.color, created_at],
+            "INSERT INTO courses(id, name, term, color, kind, created_at, updated_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?6)",
+            params![&course.id, &course.name, &course.term, &course.color, &course.kind, created_at],
         )?;
         Ok(course)
     }
@@ -409,7 +432,7 @@ impl Database {
     pub fn list_courses(&self) -> DatabaseResult<Vec<Course>> {
         let connection = self.connection()?;
         let mut statement = connection.prepare(
-            "SELECT id, name, term, color FROM courses WHERE archived_at IS NULL ORDER BY created_at ASC",
+            "SELECT id, name, term, color, kind FROM courses WHERE archived_at IS NULL ORDER BY created_at ASC",
         )?;
         let rows = statement.query_map([], |row| {
             Ok(Course {
@@ -417,6 +440,7 @@ impl Database {
                 name: row.get(1)?,
                 term: row.get(2)?,
                 color: row.get(3)?,
+                kind: row.get(4)?,
             })
         })?;
         rows.collect::<Result<Vec<_>, _>>().map_err(Into::into)
@@ -505,7 +529,7 @@ impl Database {
         self.with_transaction(|transaction| {
             if course_id == "inbox-unassigned" {
                 transaction.execute(
-                    "INSERT OR IGNORE INTO courses(id, name, term, color, created_at, updated_at) VALUES (?1, ?2, '', ?3, ?4, ?4)",
+                    "INSERT OR IGNORE INTO courses(id, name, term, color, kind, created_at, updated_at) VALUES (?1, ?2, '', ?3, 'other', ?4, ?4)",
                     params![course_id, "未分类", "#8B7046", created_at],
                 )?;
             }
