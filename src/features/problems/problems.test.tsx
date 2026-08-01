@@ -12,7 +12,7 @@ const { getProblemDocument, hasAiApiKey, runProblemAnalysis, saveProblemField } 
 
 vi.mock('../../lib/tauri', () => ({ getProblemDocument, hasAiApiKey, runProblemAnalysis, saveProblemField }));
 
-beforeEach(() => vi.clearAllMocks());
+beforeEach(() => vi.resetAllMocks());
 
 test('renders a saved problem as a reading document', async () => {
   getProblemDocument.mockResolvedValue({
@@ -126,6 +126,57 @@ test('keeps the draft mounted and retries a user field after persistence fails',
   );
   expect(await screen.findByRole('heading', { name: '不会被丢失的草稿' })).toBeVisible();
   expect(onSaved).toHaveBeenCalledOnce();
+});
+
+test('reloads a stale document version without discarding the draft before retry', async () => {
+  getProblemDocument
+    .mockResolvedValueOnce({
+      id: 'problem-conflict',
+      title: '',
+      status: 'inbox',
+      updatedAt: '2026-07-30T08:00:00Z',
+      version: 'version-1',
+      fields: [{ kind: 'stem', value: '打开时的题干', updatedAt: '2026-07-30T08:00:00Z' }],
+    })
+    .mockResolvedValueOnce({
+      id: 'problem-conflict',
+      title: '',
+      status: 'inbox',
+      updatedAt: '2026-07-30T08:01:00Z',
+      version: 'version-2',
+      fields: [{ kind: 'stem', value: '另一处保存的题干', updatedAt: '2026-07-30T08:01:00Z' }],
+    });
+  saveProblemField
+    .mockRejectedValueOnce(new Error('stale document version'))
+    .mockResolvedValueOnce({
+      problemId: 'problem-conflict',
+      kind: 'stem',
+      value: '保留的本地草稿',
+      updatedAt: '2026-07-30T08:02:00Z',
+      version: 'version-3',
+    });
+  const user = userEvent.setup();
+
+  render(<ProblemDocument problemId="problem-conflict" />);
+  await user.click(await screen.findByRole('button', { name: '编辑题干' }));
+  const editor = screen.getByLabelText('编辑题干');
+  await user.clear(editor);
+  await user.type(editor, '保留的本地草稿');
+  await user.click(screen.getByRole('button', { name: '保存题干' }));
+
+  expect(await screen.findByRole('alert')).toHaveTextContent('已重新载入最新内容');
+  expect(getProblemDocument).toHaveBeenCalledTimes(2);
+  expect(screen.getByLabelText('编辑题干')).toHaveValue('保留的本地草稿');
+
+  await user.click(screen.getByRole('button', { name: '重试保存题干' }));
+
+  expect(saveProblemField).toHaveBeenLastCalledWith(
+    'problem-conflict',
+    'stem',
+    '保留的本地草稿',
+    'version-2',
+  );
+  expect(await screen.findByRole('heading', { name: '保留的本地草稿' })).toBeVisible();
 });
 
 test('lets the learner explicitly choose deep analysis before sending', async () => {

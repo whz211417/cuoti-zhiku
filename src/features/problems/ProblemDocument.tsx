@@ -59,7 +59,17 @@ export function ProblemDocument({ onSaved, problemId }: { onSaved?: () => void; 
       setSaveError(null);
       onSaved?.();
     } catch {
-      setSaveError('保存没有完成。草稿仍在这里，请重试。');
+      try {
+        const latestDocument = await getProblemDocument(document.id);
+        if (latestDocument.version !== document.version) {
+          setDocument(latestDocument);
+          setSaveError('题目已在另一处更新。已重新载入最新内容，草稿仍在这里，请重试。');
+        } else {
+          setSaveError('保存没有完成。草稿仍在这里，请重试。');
+        }
+      } catch {
+        setSaveError('保存没有完成。草稿仍在这里，请重试。');
+      }
     } finally {
       setIsSaving(false);
     }
