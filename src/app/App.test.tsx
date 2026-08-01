@@ -1,19 +1,21 @@
-import { render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, expect, test, vi } from 'vitest';
 import { saveProblemBook } from '../features/export/exportBooks';
 import { selectProblemFiles } from '../features/inbox/selectProblemFiles';
 import { App } from './App';
 
-const { completeReview, getDueReviewProblems, searchLibraryMock } = vi.hoisted(() => ({
+const { completeReview, getDueReviewProblems, localCalendarDate, searchLibraryMock } = vi.hoisted(() => ({
   completeReview: vi.fn(),
   getDueReviewProblems: vi.fn(),
+  localCalendarDate: vi.fn(() => '2026-07-30'),
   searchLibraryMock: vi.fn(),
 }));
 
 vi.mock('../features/export/exportBooks', () => ({ saveProblemBook: vi.fn() }));
 vi.mock('../features/inbox/selectProblemFiles', () => ({ selectProblemFiles: vi.fn() }));
 vi.mock('../features/settings/AiSettings', () => ({ AiSettings: () => <div>AI 设置</div> }));
+vi.mock('../lib/dates', () => ({ localCalendarDate, timeGreeting: () => '早上好' }));
 vi.mock('../lib/tauri', () => ({
   completeReview,
   getDueReviewProblems,
@@ -26,6 +28,7 @@ vi.mock('../features/dashboard/LearningDashboard', () => ({
     onOpenCourse,
     onOpenInbox,
     onOpenProblem,
+    onOverviewLoaded,
     onStartReview,
     refreshToken = 0,
   }: {
@@ -33,6 +36,11 @@ vi.mock('../features/dashboard/LearningDashboard', () => ({
     onOpenCourse: (id: string) => void;
     onOpenInbox: () => void;
     onOpenProblem: (id: string) => void;
+    onOverviewLoaded?: (overview: {
+      recentProblems: Array<{
+        id: string; courseId: string; courseName: string; title: string; fallbackFilename: string; status: string; updatedAt: string;
+      }>;
+    }) => void;
     onStartReview: () => void;
     refreshToken?: number;
   }) => (
@@ -43,6 +51,10 @@ vi.mock('../features/dashboard/LearningDashboard', () => ({
       <button onClick={onIngest} type="button">总览投进题目</button>
       <button onClick={() => onOpenCourse('course-dashboard')} type="button">打开课程摘要</button>
       <button onClick={() => onOpenProblem('problem-dashboard')} type="button">打开最近题目</button>
+      <button onClick={() => onOverviewLoaded?.({ recentProblems: [{
+        id: 'problem-spotlight', courseId: 'macro', courseName: '宏观经济学', title: 'Spotlight 最近题目',
+        fallbackFilename: '', status: 'active', updatedAt: '2026-07-31T08:00:00Z',
+      }] })} type="button">发布最近题目</button>
     </section>
   ),
 }));
@@ -114,10 +126,44 @@ vi.mock('../features/materials/MaterialsLibrary', () => ({
   ),
 }));
 
+vi.mock('../features/archive/ArchiveLibrary', () => ({
+  ArchiveLibrary: ({
+    courseId,
+    initialQuery = '',
+    onOpenProblem,
+    onSaved,
+  }: {
+    courseId: string | null;
+    initialQuery?: string;
+    onOpenProblem: (id: string) => void;
+    onSaved?: () => void;
+  }) => (
+    <section aria-label="全部档案浏览器">
+      <p>{`materials:${courseId ?? ''}:${initialQuery}`}</p>
+      <button onClick={() => onOpenProblem('problem-archive')} type="button">打开档案题目</button>
+      <button onClick={onSaved} type="button">保存课程资料</button>
+    </section>
+  ),
+}));
+
 vi.mock('../features/review/ReviewReader', () => ({
-  ReviewReader: ({ onGrade }: { onGrade: (grade: 'mastered') => void }) => (
+  ReviewReader: ({
+    gradeError,
+    isGrading,
+    onGrade,
+    onRetry,
+    stem,
+  }: {
+    gradeError?: string | null;
+    isGrading?: boolean;
+    onGrade: (grade: 'mastered') => void;
+    onRetry?: () => void;
+    stem?: string;
+  }) => (
     <section aria-label="专注复习">
-      <button onClick={() => onGrade('mastered')} type="button">完成评分</button>
+      <p>{stem}</p>
+      <button disabled={isGrading} onClick={() => onGrade('mastered')} type="button">完成评分</button>
+      {gradeError ? <div role="alert">{gradeError}<button onClick={onRetry} type="button">重新保存评分</button></div> : null}
     </section>
   ),
 }));
@@ -132,6 +178,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   getDueReviewProblems.mockResolvedValue([]);
   completeReview.mockResolvedValue(undefined);
+  localCalendarDate.mockReturnValue('2026-07-30');
   searchLibraryMock.mockResolvedValue([]);
 });
 
@@ -159,6 +206,18 @@ test('retains inbox, review and archive navigation in the sidebar', async () => 
 
   await user.click(screen.getByRole('button', { name: '全部档案' }));
   expect(screen.getByRole('heading', { name: '全部档案' })).toBeVisible();
+});
+
+test('returns from an archived problem to the archive with course materials intact', async () => {
+  const user = userEvent.setup();
+  render(<App />);
+
+  await user.click(screen.getByRole('button', { name: '全部档案' }));
+  await user.click(screen.getByRole('button', { name: '打开档案题目' }));
+  expect(await screen.findByText('problem:problem-archive')).toBeVisible();
+
+  await user.click(screen.getByRole('button', { name: '返回全部档案' }));
+  expect(screen.getByRole('region', { name: '全部档案浏览器' })).toBeVisible();
 });
 
 test('opens and cleans up global search from the toolbar and Ctrl+K', async () => {
@@ -305,4 +364,66 @@ test('exports the question book only after the user requests it from preferences
 
   expect(saveProblemBook).toHaveBeenCalledWith('questions');
   expect(await screen.findByText('已导出 2 道题目。')).toBeVisible();
+});
+
+test('uses one local calendar date for due querying and grading at China early morning', async () => {
+  localCalendarDate.mockReturnValue('2026-07-31');
+  const user = userEvent.setup();
+  getDueReviewProblems.mockResolvedValue([{ id: 'review-local-date', stem: 'local date stem', ownAnswer: '', standardAnswer: '', explanation: '' }]);
+  render(<App />);
+
+  await user.click(screen.getByRole('button', { name: '开始复习' }));
+  await waitFor(() => expect(getDueReviewProblems).toHaveBeenCalledWith('2026-07-31'));
+  await user.click(await screen.findByRole('button', { name: '完成评分' }));
+  await waitFor(() => expect(completeReview).toHaveBeenCalledWith('review-local-date', 'mastered', '2026-07-31'));
+});
+
+test('guards rapid repeated grading and advances exactly once after persistence succeeds', async () => {
+  let resolveGrade!: () => void;
+  completeReview.mockReturnValue(new Promise<void>((resolve) => { resolveGrade = resolve; }));
+  getDueReviewProblems.mockResolvedValue([
+    { id: 'review-first', stem: 'first review', ownAnswer: '', standardAnswer: '', explanation: '' },
+    { id: 'review-second', stem: 'second review', ownAnswer: '', standardAnswer: '', explanation: '' },
+  ]);
+  const user = userEvent.setup();
+  render(<App />);
+
+  await user.click(screen.getByRole('button', { name: '开始复习' }));
+  const grade = await screen.findByRole('button', { name: '完成评分' });
+  fireEvent.click(grade);
+  fireEvent.click(grade);
+
+  expect(completeReview).toHaveBeenCalledTimes(1);
+  expect(screen.getByText('first review')).toBeVisible();
+  expect(grade).toBeDisabled();
+  resolveGrade();
+  expect(await screen.findByText('second review')).toBeVisible();
+  expect(screen.queryByText('first review')).not.toBeInTheDocument();
+});
+
+test('keeps a rejected review visible and retries the same grade before advancing', async () => {
+  const user = userEvent.setup();
+  getDueReviewProblems.mockResolvedValue([{ id: 'review-retry', stem: 'retry review', ownAnswer: '', standardAnswer: '', explanation: '' }]);
+  completeReview.mockRejectedValueOnce(new Error('write failed')).mockResolvedValueOnce(undefined);
+  render(<App />);
+
+  await user.click(screen.getByRole('button', { name: '开始复习' }));
+  await user.click(await screen.findByRole('button', { name: '完成评分' }));
+
+  expect(await screen.findByRole('alert')).toHaveTextContent('评分没有保存');
+  expect(screen.getByText('retry review')).toBeVisible();
+  await user.click(screen.getByRole('button', { name: '重新保存评分' }));
+  await waitFor(() => expect(completeReview).toHaveBeenCalledTimes(2));
+  expect(await screen.findByText('今天没有待复习内容')).toBeVisible();
+});
+
+test('shares dashboard recents with Spotlight and opens a recent problem', async () => {
+  const user = userEvent.setup();
+  render(<App />);
+
+  await user.click(screen.getByRole('button', { name: '发布最近题目' }));
+  await user.click(screen.getByRole('button', { name: '全局搜索' }));
+  await user.click(screen.getByRole('button', { name: /Spotlight 最近题目/ }));
+
+  expect(await screen.findByText('problem:problem-spotlight')).toBeVisible();
 });

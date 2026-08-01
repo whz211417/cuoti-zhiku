@@ -163,6 +163,18 @@ test('opens a course and a recent problem from the overview', async () => {
   await user.click(screen.getByRole('button', { name: '打开 IS 曲线题目' }));
   expect(callbacks.onOpenCourse).toHaveBeenCalledWith('macro');
   expect(callbacks.onOpenProblem).toHaveBeenCalledWith('problem-1');
+  expect(screen.getByText('2026年7月30日更新')).toBeVisible();
+});
+
+test('shares the latest successful overview aggregate with its parent', async () => {
+  const onOverviewLoaded = vi.fn();
+  const overview = makeOverview();
+  getDashboardOverview.mockResolvedValue(overview);
+
+  render(<LearningDashboard {...callbacks} onOverviewLoaded={onOverviewLoaded} />);
+
+  await screen.findByRole('heading', { name: '3 道题等待复习' });
+  expect(onOverviewLoaded).toHaveBeenCalledWith(overview);
 });
 
 test('shows four courses first and can reveal and collapse the remainder', async () => {

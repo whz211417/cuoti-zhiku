@@ -38,3 +38,28 @@ test('hides the previous answer when the reader advances to a new question', asy
   expect(screen.queryByText('第二题答案')).not.toBeInTheDocument();
   expect(screen.getByRole('button', { name: '显示答案' })).toBeVisible();
 });
+
+test('disables every grade while persistence is in flight and exposes an inline retry after failure', async () => {
+  const user = userEvent.setup();
+  const onGrade = vi.fn();
+  const onRetry = vi.fn();
+  const view = render(<ReviewReader isGrading onGrade={onGrade} stem="测试题" />);
+
+  await user.click(screen.getByRole('button', { name: '显示答案' }));
+  const gradeButtons = screen.getAllByRole('button', { name: /忘记|困难|熟悉|掌握/ });
+  expect(gradeButtons).toHaveLength(4);
+  gradeButtons.forEach((button) => expect(button).toBeDisabled());
+
+  view.rerender(
+    <ReviewReader
+      gradeError="评分没有保存，请重试。"
+      onGrade={onGrade}
+      onRetry={onRetry}
+      stem="测试题"
+    />,
+  );
+
+  expect(screen.getByRole('alert')).toHaveTextContent('评分没有保存，请重试。');
+  await user.click(screen.getByRole('button', { name: '重新保存评分' }));
+  expect(onRetry).toHaveBeenCalledOnce();
+});

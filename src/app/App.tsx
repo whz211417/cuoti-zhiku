@@ -1,23 +1,24 @@
 import { useGSAP } from '@gsap/react';
 import { gsap } from 'gsap';
 import { Archive, BookOpenCheck, ChevronLeft, Inbox, LayoutDashboard, Search, Settings, ShieldCheck, Upload, X } from 'lucide-react';
-import { type CSSProperties, useEffect, useRef, useState } from 'react';
+import { type CSSProperties, useCallback, useEffect, useRef, useState } from 'react';
 import { DynamicControlSurface } from '../components/material/DynamicControlSurface';
 import { InspectorSurface } from '../components/material/InspectorSurface';
 import { createBackup } from '../features/backup/createBackup';
 import { restoreBackup } from '../features/backup/restoreBackup';
+import { ArchiveLibrary } from '../features/archive/ArchiveLibrary';
 import { CourseSidebar } from '../features/courses/CourseSidebar';
 import { LearningDashboard } from '../features/dashboard/LearningDashboard';
 import { saveProblemBook, type BookKind } from '../features/export/exportBooks';
 import { IngestDropzone } from '../features/inbox/IngestDropzone';
 import { selectProblemFiles } from '../features/inbox/selectProblemFiles';
-import { MaterialsLibrary } from '../features/materials/MaterialsLibrary';
 import { ProblemDocument } from '../features/problems/ProblemDocument';
 import { ReviewReader } from '../features/review/ReviewReader';
 import { CommandPalette } from '../features/search/CommandPalette';
 import { AiSettings } from '../features/settings/AiSettings';
+import { localCalendarDate, timeGreeting } from '../lib/dates';
 import { getMotionPreferences } from '../lib/preferences';
-import { completeReview, getDueReviewProblems, type ReviewProblem } from '../lib/tauri';
+import { completeReview, getDueReviewProblems, type DashboardOverview, type RecentProblem, type ReviewProblem } from '../lib/tauri';
 
 type Workspace = 'overview' | 'inbox' | 'review' | 'archive';
 
@@ -39,13 +40,23 @@ export function App() {
   const [refreshToken, setRefreshToken] = useState(0);
   const [reviewQueue, setReviewQueue] = useState<ReviewProblem[]>([]);
   const [isReviewLoading, setIsReviewLoading] = useState(false);
+  const [isGrading, setIsGrading] = useState(false);
+  const [gradeError, setGradeError] = useState<string | null>(null);
+  const [failedGrade, setFailedGrade] = useState<'forgot' | 'hard' | 'familiar' | 'mastered' | null>(null);
+  const [recentProblems, setRecentProblems] = useState<RecentProblem[]>([]);
   const [exportStatus, setExportStatus] = useState<string | null>(null);
   const [exportingBook, setExportingBook] = useState<BookKind | null>(null);
   const [isBackingUp, setIsBackingUp] = useState(false);
   const [isRestoring, setIsRestoring] = useState(false);
   const contentRef = useRef<HTMLDivElement>(null);
   const searchTriggerRef = useRef<HTMLButtonElement>(null);
+  const gradeInFlightRef = useRef(false);
   const activeTitle = selectedProblemId ? { eyebrow: '本地资料库', title: '题目档案' } : workspaceTitles[workspace];
+  const problemBackLabel = workspace === 'archive'
+    ? '返回全部档案'
+    : workspace === 'overview'
+      ? '返回学习总览'
+      : '返回收件箱';
   const activeNavIndex = selectedProblemId
     ? null
     : workspace === 'overview'
@@ -57,6 +68,9 @@ export function App() {
           : 3;
 
   const refreshOverview = () => setRefreshToken((token) => token + 1);
+  const rememberOverview = useCallback((overview: DashboardOverview) => {
+    setRecentProblems(overview.recentProblems);
+  }, []);
 
   const closeSearch = () => {
     setIsSearchOpen(false);
@@ -66,7 +80,9 @@ export function App() {
   useEffect(() => {
     if (workspace !== 'review') return;
     setIsReviewLoading(true);
-    const today = new Date().toISOString().slice(0, 10);
+    setGradeError(null);
+    setFailedGrade(null);
+    const today = localCalendarDate();
     void getDueReviewProblems(today).then(setReviewQueue).catch(() => setReviewQueue([])).finally(() => setIsReviewLoading(false));
   }, [workspace]);
 
@@ -82,14 +98,25 @@ export function App() {
   }, []);
 
   const gradeCurrentReview = async (grade: 'forgot' | 'hard' | 'familiar' | 'mastered') => {
+    if (gradeInFlightRef.current) return;
     const current = reviewQueue[0];
     if (!current) return;
+    gradeInFlightRef.current = true;
+    setIsGrading(true);
+    setGradeError(null);
+    setFailedGrade(null);
     try {
-      await completeReview(current.id, grade, new Date().toISOString().slice(0, 10));
-      setReviewQueue((currentQueue) => currentQueue.slice(1));
+      await completeReview(current.id, grade, localCalendarDate());
+      setReviewQueue((currentQueue) => (
+        currentQueue[0]?.id === current.id ? currentQueue.slice(1) : currentQueue
+      ));
       refreshOverview();
     } catch {
-      // Keep the current card in place so the learner can retry the local save.
+      setFailedGrade(grade);
+      setGradeError('评分没有保存，当前题目仍在这里。请重试。');
+    } finally {
+      gradeInFlightRef.current = false;
+      setIsGrading(false);
     }
   };
 
@@ -155,7 +182,6 @@ export function App() {
 
   const openProblem = (problemId: string) => {
     setMaterialInitialQuery('');
-    setWorkspace('inbox');
     setSelectedProblemId(problemId);
   };
 
@@ -216,6 +242,7 @@ export function App() {
           <div>
             <p className="eyebrow">{activeTitle.eyebrow}</p>
             <h1>{activeTitle.title}</h1>
+            {workspace === 'overview' && !selectedProblemId ? <p className="toolbar-greeting">{timeGreeting()}</p> : null}
           </div>
           <div aria-label="工具" className="toolbar-actions">
             <button aria-label="投进题目" className="toolbar-button toolbar-ingest-action" disabled={isIngesting} onClick={() => void ingestProblemFiles()} type="button"><Upload aria-hidden="true" size={16} /><span>{isIngesting ? '正在导入…' : '投进题目'}</span></button>
@@ -227,7 +254,7 @@ export function App() {
         <div ref={contentRef}>
           {selectedProblemId ? (
             <div className="document-stage">
-              <button className="back-to-inbox" onClick={() => setSelectedProblemId(null)} type="button"><ChevronLeft aria-hidden="true" size={17} />返回收件箱</button>
+              <button className="back-to-inbox" onClick={() => setSelectedProblemId(null)} type="button"><ChevronLeft aria-hidden="true" size={17} />{problemBackLabel}</button>
               <ProblemDocument onSaved={refreshOverview} problemId={selectedProblemId} />
             </div>
           ) : workspace === 'overview' ? (
@@ -237,6 +264,7 @@ export function App() {
                 onOpenCourse={openCourse}
                 onOpenInbox={() => selectWorkspace('inbox')}
                 onOpenProblem={openProblem}
+                onOverviewLoaded={rememberOverview}
                 onStartReview={() => selectWorkspace('review')}
                 refreshToken={refreshToken}
               />
@@ -255,7 +283,16 @@ export function App() {
               </section>
             </div>
           ) : workspace === 'review' && reviewQueue[0] ? (
-            <ReviewReader explanation={reviewQueue[0].explanation} onGrade={(grade) => void gradeCurrentReview(grade)} ownAnswer={reviewQueue[0].ownAnswer} standardAnswer={reviewQueue[0].standardAnswer} stem={reviewQueue[0].stem} />
+            <ReviewReader
+              explanation={reviewQueue[0].explanation}
+              gradeError={gradeError}
+              isGrading={isGrading}
+              onGrade={(grade) => void gradeCurrentReview(grade)}
+              onRetry={failedGrade ? () => void gradeCurrentReview(failedGrade) : undefined}
+              ownAnswer={reviewQueue[0].ownAnswer}
+              standardAnswer={reviewQueue[0].standardAnswer}
+              stem={reviewQueue[0].stem}
+            />
           ) : workspace === 'review' ? (
             <section className="focus-empty" aria-label="复习队列">
               <div className="focus-empty-icon"><BookOpenCheck aria-hidden="true" size={24} /></div>
@@ -263,7 +300,12 @@ export function App() {
               <p>{isReviewLoading ? '正在从本地资料库读取到期题目。' : '完成题目整理后，它会以专注阅读页的方式出现在这里。'}</p>
             </section>
           ) : (
-            <MaterialsLibrary courseId={selectedCourseId} initialQuery={materialInitialQuery} onSaved={refreshOverview} />
+            <ArchiveLibrary
+              courseId={selectedCourseId}
+              initialQuery={materialInitialQuery}
+              onOpenProblem={openProblem}
+              onSaved={refreshOverview}
+            />
           )}
         </div>
 
@@ -273,7 +315,7 @@ export function App() {
           onOpenMaterial={openMaterial}
           onOpenProblem={openProblem}
           open={isSearchOpen}
-          recentProblems={[]}
+          recentProblems={recentProblems}
         />
 
         {isSettingsOpen ? (

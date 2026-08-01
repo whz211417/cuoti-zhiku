@@ -44,10 +44,11 @@ export function ProblemDocument({ onSaved, problemId }: { onSaved?: () => void; 
     setIsSaving(true);
     setError(null);
     try {
-      const saved = await saveProblemField(document.id, kind, draft, document.updatedAt);
+      const saved = await saveProblemField(document.id, kind, draft, document.version);
       setDocument((current) => current ? {
         ...current,
         updatedAt: saved.updatedAt,
+        version: saved.version,
         fields: [...current.fields.filter((field) => field.kind !== saved.kind), saved],
       } : current);
       setEditingKind(null);
@@ -97,10 +98,11 @@ export function ProblemDocument({ onSaved, problemId }: { onSaved?: () => void; 
     setIsSaving(true);
     setAiError(null);
     try {
-      const saved = await saveProblemField(document.id, suggestion.kind, suggestion.value, document.updatedAt);
+      const saved = await saveProblemField(document.id, suggestion.kind, suggestion.value, document.version);
       setDocument((current) => current ? {
         ...current,
         updatedAt: saved.updatedAt,
+        version: saved.version,
         fields: [...current.fields.filter((field) => field.kind !== saved.kind), saved],
       } : current);
       rejectSuggestion(index);

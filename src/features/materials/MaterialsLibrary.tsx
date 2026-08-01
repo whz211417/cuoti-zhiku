@@ -1,6 +1,6 @@
 import { open } from '@tauri-apps/plugin-dialog';
 import { BookMarked, FileUp, LockKeyhole, Save, Search } from 'lucide-react';
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { importCourseMaterialFile, saveCourseMaterial, searchCourseMaterial, type MaterialSnippet } from '../../lib/tauri';
 
 export function MaterialsLibrary({
@@ -19,6 +19,7 @@ export function MaterialsLibrary({
   const [query, setQuery] = useState('');
   const [snippets, setSnippets] = useState<MaterialSnippet[]>([]);
   const [isSearching, setIsSearching] = useState(false);
+  const [searchError, setSearchError] = useState(false);
   const [isImporting, setIsImporting] = useState(false);
   const processedInitialQueryRef = useRef<string | null>(null);
 
@@ -39,20 +40,26 @@ export function MaterialsLibrary({
     }
   };
 
-  const search = async () => {
-    if (!courseId || !query.trim()) return;
+  const runSearch = useCallback(async (searchQuery: string) => {
+    if (!courseId || !searchQuery) return;
     setIsSearching(true);
+    setSearchError(false);
     try {
-      setSnippets(await searchCourseMaterial(courseId, query.trim()));
+      setSnippets(await searchCourseMaterial(courseId, searchQuery));
+    } catch {
+      setSearchError(true);
     } finally {
       setIsSearching(false);
     }
-  };
+  }, [courseId]);
+
+  const search = () => runSearch(query.trim());
 
   useEffect(() => {
     const nextQuery = initialQuery.trim();
     if (!courseId || !nextQuery) {
       processedInitialQueryRef.current = null;
+      setSearchError(false);
       return;
     }
     const searchKey = JSON.stringify([courseId, nextQuery]);
@@ -60,11 +67,8 @@ export function MaterialsLibrary({
     processedInitialQueryRef.current = searchKey;
 
     setQuery(nextQuery);
-    setIsSearching(true);
-    void searchCourseMaterial(courseId, nextQuery)
-      .then(setSnippets)
-      .finally(() => setIsSearching(false));
-  }, [courseId, initialQuery]);
+    void runSearch(nextQuery);
+  }, [courseId, initialQuery, runSearch]);
 
   const importFile = async () => {
     if (!courseId) return;
@@ -142,6 +146,12 @@ export function MaterialsLibrary({
               <input id="material-search" onChange={(event) => setQuery(event.target.value)} placeholder="检索这门课的教材与讲义" value={query} />
               <button disabled={isSearching || !query.trim()} onClick={() => void search()} type="button">{isSearching ? '正在检索…' : '检索'}</button>
             </div>
+            {searchError ? (
+              <div className="materials-search-error" role="alert">
+                <span>资料检索没有完成，仍为你保留上一次结果。</span>
+                <button disabled={isSearching} onClick={() => void runSearch(query.trim())} type="button">重试资料检索</button>
+              </div>
+            ) : null}
             {query && !isSearching && snippets.length === 0 ? <p className="materials-search-hint">输入关键词后，只会在当前课程已保存的材料中查找。</p> : null}
             <div className="materials-results">
               {snippets.map((snippet) => <article className="material-snippet" key={`${snippet.materialId}-${snippet.excerpt}`}><p>{snippet.filename}</p><div>{snippet.excerpt}</div></article>)}

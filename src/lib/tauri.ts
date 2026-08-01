@@ -88,6 +88,7 @@ export const getDashboardOverview = (today: string) =>
   invoke<DashboardOverview>('get_dashboard_overview', { today });
 export const searchLibrary = (query: string, limit = 12) =>
   invoke<LibrarySearchResult[]>('search_library', { query, limit });
+export const getAllProblems = () => invoke<RecentProblem[]>('get_all_problems');
 
 export type ProblemField = {
   kind: string;
@@ -100,15 +101,16 @@ export type ProblemDocument = {
   title: string;
   status: string;
   updatedAt: string;
+  version: string;
   fields: ProblemField[];
 };
 
 export const getProblemDocument = (problemId: string) =>
   invoke<ProblemDocument>('get_problem_document', { problemId });
 
-export const saveProblemField = (problemId: string, kind: string, value: string, expectedUpdatedAt: string) =>
-  invoke<{ problemId: string; kind: string; value: string; updatedAt: string }>('save_problem_field', {
-    problemId, kind, value, expectedUpdatedAt,
+export const saveProblemField = (problemId: string, kind: string, value: string, expectedVersion: string) =>
+  invoke<{ problemId: string; kind: string; value: string; updatedAt: string; version: string }>('save_problem_field', {
+    problemId, kind, value, expectedVersion,
   });
 
 export type AiFieldSuggestion = { kind: string; value: string };

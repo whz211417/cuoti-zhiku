@@ -1,6 +1,7 @@
 import { BookOpen, ChevronDown, ChevronUp } from 'lucide-react';
 import { useState, type CSSProperties } from 'react';
 import type { CourseSummary } from '../../lib/tauri';
+import { readableLocalUpdate } from '../../lib/dates';
 
 type CourseShelfProps = {
   courses: CourseSummary[];
@@ -49,6 +50,7 @@ export function CourseShelf({ courses, onOpenCourse }: CourseShelfProps) {
                 <span className="dashboard-course-copy">
                   <strong>{course.name}</strong>
                   <span>{course.problemCount} 道题 · {course.materialCount} 份资料</span>
+                  <small>{readableLocalUpdate(course.updatedAt)}</small>
                 </span>
                 <span className="dashboard-course-status">
                   <span>{course.dueCount} 待复习</span>

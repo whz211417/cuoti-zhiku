@@ -17,7 +17,8 @@ test('renders a saved problem as a reading document', async () => {
     id: 'problem-1',
     title: '',
     status: 'inbox',
-    updatedAt: 'version-2',
+    updatedAt: '2026-07-30T08:00:00Z',
+    version: 'version-2',
     fields: [
       { kind: 'stem', value: '财政扩张如何影响 IS 曲线？', updatedAt: 'version-2' },
       { kind: 'own_answer', value: '我认为 IS 会右移。', updatedAt: 'version-2' },
@@ -32,8 +33,8 @@ test('renders a saved problem as a reading document', async () => {
 });
 
 test('saves an added stem with the document version', async () => {
-  getProblemDocument.mockResolvedValue({ id: 'problem-2', title: '', status: 'inbox', updatedAt: 'version-1', fields: [] });
-  saveProblemField.mockResolvedValue({ problemId: 'problem-2', kind: 'stem', value: 'LM 曲线何时右移？', updatedAt: 'version-2' });
+  getProblemDocument.mockResolvedValue({ id: 'problem-2', title: '', status: 'inbox', updatedAt: '2026-07-30T08:00:00Z', version: 'version-1', fields: [] });
+  saveProblemField.mockResolvedValue({ problemId: 'problem-2', kind: 'stem', value: 'LM 曲线何时右移？', updatedAt: '2026-07-30T08:01:00Z', version: 'version-2' });
   const onSaved = vi.fn();
   const user = userEvent.setup();
 
@@ -52,7 +53,8 @@ test('runs AI only after consent and accepts suggestions one field at a time', a
     id: 'problem-ai',
     title: '',
     status: 'inbox',
-    updatedAt: 'version-1',
+    updatedAt: '2026-07-30T08:00:00Z',
+    version: 'version-1',
     fields: [{ kind: 'stem', value: '财政扩张如何影响 IS 曲线？', updatedAt: 'version-1' }],
   });
   hasAiApiKey.mockResolvedValue(true);
@@ -64,7 +66,8 @@ test('runs AI only after consent and accepts suggestions one field at a time', a
     problemId: 'problem-ai',
     kind: 'standard_answer',
     value: 'IS 曲线向右移动。',
-    updatedAt: 'version-2',
+    updatedAt: '2026-07-30T08:01:00Z',
+    version: 'version-2',
   });
   const onSaved = vi.fn();
   const user = userEvent.setup();
@@ -87,7 +90,7 @@ test('runs AI only after consent and accepts suggestions one field at a time', a
 });
 
 test('does not report a user field as saved when persistence fails', async () => {
-  getProblemDocument.mockResolvedValue({ id: 'problem-failed', title: '', status: 'inbox', updatedAt: 'version-1', fields: [] });
+  getProblemDocument.mockResolvedValue({ id: 'problem-failed', title: '', status: 'inbox', updatedAt: '2026-07-30T08:00:00Z', version: 'version-1', fields: [] });
   saveProblemField.mockRejectedValue(new Error('version conflict'));
   const onSaved = vi.fn();
   const user = userEvent.setup();
@@ -106,7 +109,8 @@ test('lets the learner explicitly choose deep analysis before sending', async ()
     id: 'problem-deep',
     title: '',
     status: 'inbox',
-    updatedAt: 'version-1',
+    updatedAt: '2026-07-30T08:00:00Z',
+    version: 'version-1',
     fields: [{ kind: 'stem', value: '解释流动性陷阱。', updatedAt: 'version-1' }],
   });
   hasAiApiKey.mockResolvedValue(true);

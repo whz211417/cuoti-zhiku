@@ -6,10 +6,22 @@ type ReviewReaderProps = {
   ownAnswer?: string;
   standardAnswer?: string;
   explanation?: string;
+  gradeError?: string | null;
+  isGrading?: boolean;
   onGrade?: (grade: 'forgot' | 'hard' | 'familiar' | 'mastered') => void;
+  onRetry?: () => void;
 };
 
-export function ReviewReader({ explanation, onGrade, ownAnswer, standardAnswer, stem }: ReviewReaderProps) {
+export function ReviewReader({
+  explanation,
+  gradeError,
+  isGrading = false,
+  onGrade,
+  onRetry,
+  ownAnswer,
+  standardAnswer,
+  stem,
+}: ReviewReaderProps) {
   const [isAnswerVisible, setIsAnswerVisible] = useState(false);
 
   useEffect(() => {
@@ -34,12 +46,22 @@ export function ReviewReader({ explanation, onGrade, ownAnswer, standardAnswer, 
           <div className="answer-reveal-heading"><Sparkles aria-hidden="true" size={14} /><span>现在开始对照与校正</span></div>
           <section><p>标准答案</p><div>{standardAnswer || '尚未补充标准答案'}</div></section>
           {explanation ? <section className="review-explanation"><p>解析</p><div>{explanation}</div></section> : null}
-          {onGrade ? <div aria-label="复习评分" className="review-grades">
-            <button onClick={() => onGrade('forgot')} type="button">忘记</button>
-            <button onClick={() => onGrade('hard')} type="button">困难</button>
-            <button onClick={() => onGrade('familiar')} type="button">熟悉</button>
-            <button onClick={() => onGrade('mastered')} type="button">掌握</button>
-          </div> : null}
+          {onGrade ? (
+            <>
+              <div aria-label="复习评分" aria-busy={isGrading} className="review-grades">
+                <button disabled={isGrading} onClick={() => onGrade('forgot')} type="button">忘记</button>
+                <button disabled={isGrading} onClick={() => onGrade('hard')} type="button">困难</button>
+                <button disabled={isGrading} onClick={() => onGrade('familiar')} type="button">熟悉</button>
+                <button disabled={isGrading} onClick={() => onGrade('mastered')} type="button">掌握</button>
+              </div>
+              {gradeError ? (
+                <div className="review-grade-error" role="alert">
+                  <span>{gradeError}</span>
+                  {onRetry ? <button onClick={onRetry} type="button">重新保存评分</button> : null}
+                </div>
+              ) : null}
+            </>
+          ) : null}
         </div>
       )}
     </article>

@@ -108,3 +108,39 @@ test('does not report a pasted material as saved when persistence fails', async 
   expect(await screen.findByText('保存没有完成，请稍后重试。')).toBeVisible();
   expect(onSaved).not.toHaveBeenCalled();
 });
+
+test('preserves prior results and offers retry when a manual search fails', async () => {
+  const user = userEvent.setup();
+  searchCourseMaterial
+    .mockResolvedValueOnce([{ materialId: 'material-1', filename: '旧结果.md', excerpt: '仍然可见的旧结果' }])
+    .mockRejectedValueOnce(new Error('database busy'))
+    .mockResolvedValueOnce([{ materialId: 'material-2', filename: '新结果.md', excerpt: '恢复后的新结果' }]);
+  render(<MaterialsLibrary courseId="macro" />);
+
+  const input = screen.getByLabelText('检索课程资料');
+  await user.type(input, '旧查询');
+  await user.click(screen.getByRole('button', { name: '检索' }));
+  expect(await screen.findByText('仍然可见的旧结果')).toBeVisible();
+
+  await user.clear(input);
+  await user.type(input, '新查询');
+  await user.click(screen.getByRole('button', { name: '检索' }));
+
+  expect(await screen.findByRole('alert')).toHaveTextContent('资料检索没有完成');
+  expect(screen.getByText('仍然可见的旧结果')).toBeVisible();
+  await user.click(screen.getByRole('button', { name: '重试资料检索' }));
+  expect(await screen.findByText('恢复后的新结果')).toBeVisible();
+});
+
+test('handles a rejected initial search and recovers through the inline retry', async () => {
+  const user = userEvent.setup();
+  searchCourseMaterial
+    .mockRejectedValueOnce(new Error('initial search failed'))
+    .mockResolvedValueOnce([{ materialId: 'material-3', filename: '恢复.md', excerpt: '初始检索恢复' }]);
+
+  render(<MaterialsLibrary courseId="macro" initialQuery="初始查询" />);
+
+  expect(await screen.findByRole('alert')).toHaveTextContent('资料检索没有完成');
+  await user.click(screen.getByRole('button', { name: '重试资料检索' }));
+  expect(await screen.findByText('初始检索恢复')).toBeVisible();
+});

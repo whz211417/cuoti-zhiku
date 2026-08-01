@@ -1,5 +1,6 @@
 import { AlertCircle, RefreshCw } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { localCalendarDate } from '../../lib/dates';
 import { getDashboardOverview, type DashboardOverview } from '../../lib/tauri';
 import { CourseShelf } from './CourseShelf';
 import { LearningSignals } from './LearningSignals';
@@ -12,15 +13,9 @@ type LearningDashboardProps = {
   onOpenCourse: (id: string) => void;
   onOpenInbox: () => void;
   onOpenProblem: (id: string) => void;
+  onOverviewLoaded?: (overview: DashboardOverview) => void;
   onStartReview: () => void;
 };
-
-function localToday(date = new Date()) {
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, '0');
-  const day = String(date.getDate()).padStart(2, '0');
-  return `${year}-${month}-${day}`;
-}
 
 function DashboardSkeleton() {
   return (
@@ -38,6 +33,7 @@ export function LearningDashboard({
   onOpenCourse,
   onOpenInbox,
   onOpenProblem,
+  onOverviewLoaded,
   onStartReview,
   refreshToken,
 }: LearningDashboardProps) {
@@ -52,14 +48,17 @@ export function LearningDashboard({
     setIsLoading(true);
     setError(false);
     try {
-      const nextOverview = await getDashboardOverview(localToday());
-      if (activeRequest.current === request) setOverview(nextOverview);
+      const nextOverview = await getDashboardOverview(localCalendarDate());
+      if (activeRequest.current === request) {
+        setOverview(nextOverview);
+        onOverviewLoaded?.(nextOverview);
+      }
     } catch {
       if (activeRequest.current === request) setError(true);
     } finally {
       if (activeRequest.current === request) setIsLoading(false);
     }
-  }, []);
+  }, [onOverviewLoaded]);
 
   useEffect(() => {
     void load();
