@@ -1,12 +1,11 @@
 type PointerRect = Pick<DOMRect, 'height' | 'left' | 'top' | 'width'>;
 
-export function normalizedPointerPosition(rect: PointerRect, clientX: number, clientY: number) {
-  const clamp = (value: number) => Math.min(100, Math.max(0, value));
-  const x = rect.width > 0 ? ((clientX - rect.left) / rect.width) * 100 : 50;
-  const y = rect.height > 0 ? ((clientY - rect.top) / rect.height) * 100 : 50;
+export function localPointerPosition(rect: PointerRect, clientX: number, clientY: number) {
+  const clamp = (value: number, maximum: number) => Math.min(maximum, Math.max(0, value));
+  const round = (value: number) => Math.round(value * 100) / 100;
 
   return {
-    x: clamp(Math.round(x * 100) / 100),
-    y: clamp(Math.round(y * 100) / 100),
+    x: rect.width > 0 ? round(clamp(clientX - rect.left, rect.width)) : 0,
+    y: rect.height > 0 ? round(clamp(clientY - rect.top, rect.height)) : 0,
   };
 }

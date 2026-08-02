@@ -9,7 +9,7 @@
 ## 已验证
 
 - `package.json`、`src-tauri/Cargo.toml`、`src-tauri/Cargo.lock` 与 `src-tauri/tauri.conf.json` 版本均为 `0.2.0`。
-- `npm.cmd test`：25 个测试文件、178 项测试全部通过，0 failed。
+- `npm.cmd test`：25 个测试文件、179 项测试全部通过，0 failed。
 - `npm.cmd run typecheck`：通过。
 - `npm.cmd run lint`：通过，0 warning。
 - `npm.cmd run build`：通过；Vite 转换 1623 个模块。
@@ -18,14 +18,15 @@
 - AI 安全复审：Critical 0、Important 0、Minor 0。
 - 数据库迁移、备份恢复、重复原件、课程资料片段、逐字段保存、复习计划、AI Provider 地址与凭据隔离均包含在上述 Rust 回归中。
 - 动态导航材质与临时浮层具有显式 `data-material` 语义；减少动态、减少透明度和系统深色外观均有 CSS 降级。
+- 鼠标高光使用宿主内局部像素坐标；每个动画帧重新读取布局矩形，侧栏与工具栏高光层均与宿主同尺寸，浏览器实测定位与鼠标一致。
 
 ## 发布产物
 
 - 构建命令：`npm.cmd run tauri:build -- --target x86_64-pc-windows-gnu`
 - Tauri CLI：`2.11.4`；Rust `tauri` crate：`2.11.5`
 - 安装包：`release/错题智库_0.2.0_x64-setup.exe`
-- 字节数：`7,825,355`
-- SHA-256：`CAD1BBCB627C80B0AF33960E7A177BF7EC07F6E4F9D82925E6E69CE89CB1D63B`
+- 字节数：`7,827,551`
+- SHA-256：`9A6809856C5AE3D36CEACDA52BC3CAD23C115D4D8472A649379DA7E1C8ED1FEE`
 - 安装器文件版本：`0.2.0`
 - 安装命令退出码：`0`
 - Windows 已登记版本：`0.2.0`

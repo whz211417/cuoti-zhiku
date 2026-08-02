@@ -8,7 +8,7 @@ import {
   useRef,
 } from 'react';
 import { getMotionPreferences } from '../../lib/preferences';
-import { normalizedPointerPosition } from './dynamicControlMath';
+import { localPointerPosition } from './dynamicControlMath';
 
 type SurfaceElement = 'aside' | 'div' | 'header';
 
@@ -19,18 +19,14 @@ type DynamicControlSurfaceProps = HTMLAttributes<HTMLElement> & {
 
 type MaterialStyle = CSSProperties & {
   '--glass-active': number;
-  '--glass-shift-x': string;
-  '--glass-shift-y': string;
-  '--glass-x': string;
-  '--glass-y': string;
+  '--glass-local-x': string;
+  '--glass-local-y': string;
 };
 
 const centerMaterialStyle: MaterialStyle = {
   '--glass-active': 0,
-  '--glass-shift-x': '0px',
-  '--glass-shift-y': '0px',
-  '--glass-x': '50%',
-  '--glass-y': '0%',
+  '--glass-local-x': '50%',
+  '--glass-local-y': '0px',
 };
 
 /**
@@ -49,7 +45,6 @@ export function DynamicControlSurface({
 }: DynamicControlSurfaceProps) {
   const surfaceRef = useRef<HTMLElement>(null);
   const frameRef = useRef<number | null>(null);
-  const rectRef = useRef<DOMRect | null>(null);
   const pointerRef = useRef<{ clientX: number; clientY: number; target: HTMLElement } | null>(null);
   const preferences = getMotionPreferences();
   const isStatic = preferences.reduceMotion || preferences.reduceTransparency;
@@ -58,13 +53,11 @@ export function DynamicControlSurface({
     if (frameRef.current !== null) window.cancelAnimationFrame(frameRef.current);
   }, []);
 
-  const updateMaterial = (x: number, y: number, active: number) => {
+  const updateMaterial = (x: number | string, y: number | string, active: number) => {
     const surface = surfaceRef.current;
     if (!surface) return;
-    surface.style.setProperty('--glass-x', `${x}%`);
-    surface.style.setProperty('--glass-y', `${y}%`);
-    surface.style.setProperty('--glass-shift-x', `${Math.round((x - 50) * 0.44 * 100) / 100}px`);
-    surface.style.setProperty('--glass-shift-y', `${Math.round((y - 50) * 0.28 * 100) / 100}px`);
+    surface.style.setProperty('--glass-local-x', typeof x === 'number' ? `${x}px` : x);
+    surface.style.setProperty('--glass-local-y', typeof y === 'number' ? `${y}px` : y);
     surface.style.setProperty('--glass-active', `${active}`);
   };
 
@@ -85,9 +78,8 @@ export function DynamicControlSurface({
         frameRef.current = null;
         return;
       }
-      const rect = rectRef.current ?? pointer.target.getBoundingClientRect();
-      rectRef.current = rect;
-      const point = normalizedPointerPosition(rect, pointer.clientX, pointer.clientY);
+      const rect = pointer.target.getBoundingClientRect();
+      const point = localPointerPosition(rect, pointer.clientX, pointer.clientY);
       updateMaterial(point.x, point.y, 1);
       frameRef.current = null;
     });
@@ -97,9 +89,8 @@ export function DynamicControlSurface({
     onPointerLeave?.(event);
     if (frameRef.current !== null) window.cancelAnimationFrame(frameRef.current);
     frameRef.current = null;
-    rectRef.current = null;
     pointerRef.current = null;
-    updateMaterial(50, 0, 0);
+    updateMaterial('50%', '0px', 0);
   };
 
   return createElement(

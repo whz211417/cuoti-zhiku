@@ -69,8 +69,8 @@ Windows x64 安装包由 Tauri NSIS 目标生成。
 ## 0.2.0 Windows 安装包
 
 - 文件：`release/错题智库_0.2.0_x64-setup.exe`
-- 大小：7,825,355 字节
-- SHA-256：`CAD1BBCB627C80B0AF33960E7A177BF7EC07F6E4F9D82925E6E69CE89CB1D63B`
+- 大小：7,827,551 字节
+- SHA-256：`9A6809856C5AE3D36CEACDA52BC3CAD23C115D4D8472A649379DA7E1C8ED1FEE`
 - 安装范围：当前 Windows 用户
 - 默认安装位置：`%LOCALAPPDATA%\Programs\cuoti-zhiku`
 
