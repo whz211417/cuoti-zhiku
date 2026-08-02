@@ -3,7 +3,10 @@ use std::{fmt, time::Duration};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-use super::{AiConnectionResult, AiFieldSuggestion, AiImage, AiProviderConfig, AnalysisMode};
+use super::{
+    AiConnectionResult, AiFieldSuggestion, AiImage, AiProviderConfig, AnalysisMode,
+    AuthorizedMaterial,
+};
 
 const MAX_RESPONSE_BYTES: u64 = 1024 * 1024;
 
@@ -121,14 +124,14 @@ impl AiProviderClient {
         &self,
         mode: AnalysisMode,
         existing_text: &str,
-        material_excerpts: &[String],
+        materials: &[AuthorizedMaterial],
         images: &[AiImage],
     ) -> Result<Vec<AiFieldSuggestion>, AiError> {
         let body = self
             .config
-            .analysis_request(mode, existing_text, material_excerpts, images)?;
+            .analysis_request(mode, existing_text, materials, images)?;
         let content = self.send(&body).await?;
-        parse_model_content(&content)
+        parse_model_content(&content, materials)
     }
 
     async fn send(&self, body: &Value) -> Result<String, AiError> {
@@ -244,17 +247,42 @@ struct ModelFields {
     #[serde(default)]
     knowledge_points: Vec<String>,
     #[serde(default)]
-    citations: Vec<Value>,
+    citations: Vec<ModelCitation>,
 }
 
-pub fn parse_model_content(content: &str) -> Result<Vec<AiFieldSuggestion>, AiError> {
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ModelCitation {
+    chunk_id: String,
+    quote: String,
+}
+
+pub fn parse_model_content(
+    content: &str,
+    authorized_materials: &[AuthorizedMaterial],
+) -> Result<Vec<AiFieldSuggestion>, AiError> {
     let fields: ModelFields =
         serde_json::from_str(content).map_err(|_| safe_error(AiErrorKind::Format))?;
-    if !fields.citations.is_empty() {
-        return Err(AiError::new(
-            AiErrorKind::Format,
-            "AI 返回了无法对应到本地片段的教材引用，已拒绝本次引用。",
-        ));
+    let mut verified_citations = Vec::new();
+    for citation in fields.citations {
+        let material = authorized_materials
+            .iter()
+            .find(|material| material.chunk_id == citation.chunk_id)
+            .ok_or_else(|| AiError::new(
+                AiErrorKind::Format,
+                "AI 返回了无法对应到本地片段的教材引用，已拒绝本次引用。",
+            ))?;
+        let quote = citation.quote.trim();
+        if quote.is_empty() || !material.excerpt.contains(quote) {
+            return Err(AiError::new(
+                AiErrorKind::Format,
+                "AI 返回的教材引文不在已授权原文中，已拒绝本次引用。",
+            ));
+        }
+        let rendered = format!("{}：{}", material.filename, quote);
+        if !verified_citations.contains(&rendered) {
+            verified_citations.push(rendered);
+        }
     }
     let mut suggestions = Vec::new();
     push_suggestion(&mut suggestions, "stem", fields.stem);
@@ -267,10 +295,17 @@ pub fn parse_model_content(content: &str) -> Result<Vec<AiFieldSuggestion>, AiEr
         .map(|value| value.trim().to_owned())
         .filter(|value| !value.is_empty())
         .collect::<Vec<_>>();
+    let mut notes = Vec::new();
     if !knowledge_points.is_empty() {
+        notes.push(format!("知识点：{}", knowledge_points.join("、")));
+    }
+    if !verified_citations.is_empty() {
+        notes.push(format!("教材依据：{}", verified_citations.join("；")));
+    }
+    if !notes.is_empty() {
         suggestions.push(AiFieldSuggestion {
             kind: "notes".to_owned(),
-            value: format!("知识点：{}", knowledge_points.join("、")),
+            value: notes.join("\n"),
         });
     }
     Ok(suggestions)

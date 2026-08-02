@@ -1,7 +1,7 @@
 {
   "name": "cuoti-zhiku",
   "private": true,
-  "version": "0.1.0",
+  "version": "0.2.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -34,7 +34,7 @@
   "devDependencies": {
     "@eslint/js": "^9.19.0",
     "@playwright/test": "^1.51.0",
-    "@tauri-apps/cli": "2.8.0",
+    "@tauri-apps/cli": "2.11.4",
     "@testing-library/jest-dom": "^6.6.3",
     "@testing-library/react": "^16.2.0",
     "@testing-library/user-event": "^14.6.1",

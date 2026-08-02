@@ -2,18 +2,50 @@ import { act, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, expect, test, vi } from 'vitest';
 import type { ProblemDocument as ProblemDocumentModel } from '../../lib/tauri';
+import type { AiProviderConfig } from '../settings/aiProviderCatalog';
 import { ProblemDocument } from './ProblemDocument';
 
-const { getProblemDocument, hasAiApiKey, runProblemAnalysis, saveProblemField } = vi.hoisted(() => ({
+const { getProblemDocument, hasAiProviderKey, loadAiProviderState, runProblemAnalysis, saveProblemField, searchCourseMaterial } = vi.hoisted(() => ({
   getProblemDocument: vi.fn(),
-  hasAiApiKey: vi.fn(),
+  hasAiProviderKey: vi.fn(),
+  loadAiProviderState: vi.fn(),
   runProblemAnalysis: vi.fn(),
   saveProblemField: vi.fn(),
+  searchCourseMaterial: vi.fn(),
 }));
 
-vi.mock('../../lib/tauri', () => ({ getProblemDocument, hasAiApiKey, runProblemAnalysis, saveProblemField }));
+vi.mock('../../lib/tauri', () => ({ getProblemDocument, hasAiProviderKey, runProblemAnalysis, saveProblemField, searchCourseMaterial }));
+vi.mock('../settings/aiProviderStore', () => ({ loadAiProviderState }));
 
-beforeEach(() => vi.resetAllMocks());
+const deepseekConfig: AiProviderConfig = {
+  id: 'deepseek',
+  displayName: 'DeepSeek',
+  baseUrl: 'https://api.deepseek.com',
+  selectedModel: 'deepseek-v4-flash',
+  visionModel: null,
+  supportsVision: false,
+  requestTimeoutSeconds: 60,
+  isEnabled: true,
+  preset: 'deepseek',
+  allowInsecureLocalhost: false,
+};
+const visionConfig: AiProviderConfig = {
+  ...deepseekConfig,
+  id: 'zhipu',
+  displayName: '智谱 AI',
+  baseUrl: 'https://open.bigmodel.cn/api/paas/v4',
+  selectedModel: 'glm-5.2',
+  visionModel: 'glm-4.5v',
+  supportsVision: true,
+  preset: 'zhipu',
+};
+
+beforeEach(() => {
+  vi.resetAllMocks();
+  loadAiProviderState.mockResolvedValue({ providers: [deepseekConfig], activeProviderId: 'deepseek' });
+  hasAiProviderKey.mockResolvedValue(true);
+  searchCourseMaterial.mockResolvedValue([]);
+});
 
 function deferred<T>() {
   let resolve!: (value: T | PromiseLike<T>) => void;
@@ -120,13 +152,14 @@ test('saves an added stem with the document version', async () => {
 test('runs AI only after consent and accepts suggestions one field at a time', async () => {
   getProblemDocument.mockResolvedValue({
     id: 'problem-ai',
+    courseId: 'macro',
+    hasImageAttachment: true,
     title: '',
     status: 'inbox',
     updatedAt: '2026-07-30T08:00:00Z',
     version: 'version-1',
     fields: [{ kind: 'stem', value: '财政扩张如何影响 IS 曲线？', updatedAt: 'version-1' }],
   });
-  hasAiApiKey.mockResolvedValue(true);
   runProblemAnalysis.mockResolvedValue([
     { kind: 'standard_answer', value: 'IS 曲线向右移动。' },
     { kind: 'explanation', value: '政府购买增加会提高总需求。' },
@@ -144,10 +177,14 @@ test('runs AI only after consent and accepts suggestions one field at a time', a
 
   await user.click(await screen.findByRole('button', { name: 'AI 辅助整理' }));
   expect(runProblemAnalysis).not.toHaveBeenCalled();
-  await user.click(screen.getByRole('button', { name: '确认发送给通义千问' }));
+  expect(screen.getByText('DeepSeek · deepseek-v4-flash')).toBeVisible();
+  expect(screen.getByText('题干：财政扩张如何影响 IS 曲线？')).toBeVisible();
+  expect(screen.getByText('有题图，本次不发送')).toBeVisible();
+  expect(screen.getByText('学习资料片段：0 段')).toBeVisible();
+  await user.click(screen.getByRole('button', { name: '仅本次发送' }));
   await user.click(await screen.findByRole('button', { name: '采纳标准答案' }));
 
-  expect(runProblemAnalysis).toHaveBeenCalledWith('problem-ai', 'flash');
+  expect(runProblemAnalysis).toHaveBeenCalledWith('problem-ai', 'flash', deepseekConfig, [], 'version-1', false);
   expect(saveProblemField).toHaveBeenCalledWith(
     'problem-ai',
     'standard_answer',
@@ -345,21 +382,315 @@ test('ignores a late conflict-refresh rejection in the next problem editor', asy
 test('lets the learner explicitly choose deep analysis before sending', async () => {
   getProblemDocument.mockResolvedValue({
     id: 'problem-deep',
+    courseId: 'macro',
     title: '',
     status: 'inbox',
     updatedAt: '2026-07-30T08:00:00Z',
     version: 'version-1',
     fields: [{ kind: 'stem', value: '解释流动性陷阱。', updatedAt: 'version-1' }],
   });
-  hasAiApiKey.mockResolvedValue(true);
   runProblemAnalysis.mockResolvedValue([]);
   const user = userEvent.setup();
   render(<ProblemDocument problemId="problem-deep" />);
 
   await user.click(await screen.findByRole('button', { name: 'AI 辅助整理' }));
-  expect(screen.getByText('若原件为题图，本次会一并发送')).toBeVisible();
+  expect(screen.getByText('不包含题图')).toBeVisible();
   await user.click(screen.getByRole('radio', { name: '深度分析' }));
-  await user.click(screen.getByRole('button', { name: '确认发送给通义千问' }));
+  await user.click(screen.getByRole('button', { name: '仅本次发送' }));
 
-  expect(runProblemAnalysis).toHaveBeenCalledWith('problem-deep', 'deep');
+  expect(runProblemAnalysis).toHaveBeenCalledWith('problem-deep', 'deep', deepseekConfig, [], 'version-1', false);
+});
+
+test('sends a question image only after explicit consent and shows the actual vision model', async () => {
+  loadAiProviderState.mockResolvedValue({ providers: [visionConfig], activeProviderId: 'zhipu' });
+  getProblemDocument.mockResolvedValue({
+    id: 'problem-image', courseId: 'macro', hasImageAttachment: true, title: '', status: 'inbox',
+    updatedAt: '2026-07-30', version: 'version-image', fields: [],
+  });
+  runProblemAnalysis.mockResolvedValue([]);
+  const user = userEvent.setup();
+  render(<ProblemDocument problemId="problem-image" />);
+  await user.click(await screen.findByRole('button', { name: 'AI 辅助整理' }));
+  const imageConsent = screen.getByRole('checkbox', { name: '本次发送题目原图' });
+  expect(imageConsent).not.toBeChecked();
+  expect(screen.getByText('智谱 AI · glm-5.2')).toBeVisible();
+  await user.click(imageConsent);
+  expect(screen.getByText('智谱 AI · glm-4.5v')).toBeVisible();
+  await user.click(screen.getByRole('button', { name: '仅本次发送' }));
+
+  expect(runProblemAnalysis).toHaveBeenCalledWith(
+    'problem-image', 'flash', visionConfig, [], 'version-image', true,
+  );
+});
+
+test('opens AI settings without changing the local record when no active provider exists', async () => {
+  getProblemDocument.mockResolvedValue({
+    id: 'problem-no-provider', courseId: 'macro', title: '', status: 'inbox',
+    updatedAt: '2026-07-30T08:00:00Z', version: 'version-1', fields: [],
+  });
+  loadAiProviderState.mockResolvedValue({ providers: [], activeProviderId: null });
+  const onOpenAiSettings = vi.fn();
+  const user = userEvent.setup();
+  render(<ProblemDocument onOpenAiSettings={onOpenAiSettings} problemId="problem-no-provider" />);
+
+  await user.click(await screen.findByRole('button', { name: 'AI 辅助整理' }));
+
+  expect(onOpenAiSettings).toHaveBeenCalledOnce();
+  expect(runProblemAnalysis).not.toHaveBeenCalled();
+  expect(saveProblemField).not.toHaveBeenCalled();
+});
+
+test('opens AI settings without sending when the active provider has no saved key', async () => {
+  getProblemDocument.mockResolvedValue({
+    id: 'problem-no-key', courseId: 'macro', title: '', status: 'inbox',
+    updatedAt: '2026-07-30T08:00:00Z', version: 'version-1', fields: [],
+  });
+  hasAiProviderKey.mockResolvedValue(false);
+  const onOpenAiSettings = vi.fn();
+  const user = userEvent.setup();
+  render(<ProblemDocument onOpenAiSettings={onOpenAiSettings} problemId="problem-no-key" />);
+
+  await user.click(await screen.findByRole('button', { name: 'AI 辅助整理' }));
+
+  expect(hasAiProviderKey).toHaveBeenCalledWith(deepseekConfig);
+  expect(onOpenAiSettings).toHaveBeenCalledOnce();
+  expect(runProblemAnalysis).not.toHaveBeenCalled();
+  expect(saveProblemField).not.toHaveBeenCalled();
+});
+
+test('sends only explicitly selected same-course material chunks in request order', async () => {
+  getProblemDocument.mockResolvedValue({
+    id: 'problem-materials', courseId: 'macro', title: '', status: 'inbox',
+    updatedAt: '2026-07-30T08:00:00Z', version: 'version-1',
+    fields: [{ kind: 'stem', value: '需求弹性是什么？', updatedAt: 'version-1' }],
+  });
+  searchCourseMaterial.mockResolvedValue([
+    { chunkId: 'm1-c1', materialId: 'm1', filename: '第一章.pdf', excerpt: '片段一' },
+    { chunkId: 'm1-c2', materialId: 'm1', filename: '第一章.pdf', excerpt: '片段二' },
+    { chunkId: 'm2-c1', materialId: 'm2', filename: '讲义.md', excerpt: '片段三' },
+  ]);
+  runProblemAnalysis.mockResolvedValue([]);
+  const user = userEvent.setup();
+  render(<ProblemDocument problemId="problem-materials" />);
+
+  await user.click(await screen.findByRole('button', { name: 'AI 辅助整理' }));
+  await user.type(screen.getByRole('searchbox', { name: '搜索本课程学习资料' }), '需求弹性');
+  await user.click(screen.getByRole('button', { name: '查找片段' }));
+  for (const excerpt of ['片段一', '片段二', '片段三']) {
+    await user.click(await screen.findByRole('checkbox', { name: excerpt }));
+  }
+  await user.clear(screen.getByRole('searchbox', { name: '搜索本课程学习资料' }));
+  expect(screen.getByRole('region', { name: '本次已选片段' })).toHaveTextContent('第一章.pdf');
+  expect(screen.getByRole('region', { name: '本次已选片段' })).toHaveTextContent('片段三');
+  expect(screen.getByText('片段三')).toBeVisible();
+  expect(screen.getByText('学习资料片段：3 段')).toBeVisible();
+  await user.click(screen.getByRole('button', { name: '仅本次发送' }));
+
+  expect(searchCourseMaterial).toHaveBeenCalledWith('macro', '需求弹性');
+  expect(runProblemAnalysis).toHaveBeenCalledWith(
+    'problem-materials', 'flash', deepseekConfig, ['m1-c1', 'm1-c2', 'm2-c1'], 'version-1', false,
+  );
+});
+
+test('does not allow more than three material snippets', async () => {
+  getProblemDocument.mockResolvedValue({
+    id: 'problem-limit', courseId: 'macro', title: '', status: 'inbox',
+    updatedAt: '2026-07-30T08:00:00Z', version: 'version-1',
+    fields: [{ kind: 'stem', value: '题干', updatedAt: 'version-1' }],
+  });
+  searchCourseMaterial.mockResolvedValue([1, 2, 3, 4].map((number) => ({
+    chunkId: `chunk-${number}`, materialId: 'm1', filename: '教材.pdf', excerpt: `片段${number}`,
+  })));
+  const user = userEvent.setup();
+  render(<ProblemDocument problemId="problem-limit" />);
+  await user.click(await screen.findByRole('button', { name: 'AI 辅助整理' }));
+  await user.type(screen.getByRole('searchbox', { name: '搜索本课程学习资料' }), '片段');
+  await user.click(screen.getByRole('button', { name: '查找片段' }));
+  for (const excerpt of ['片段1', '片段2', '片段3']) await user.click(await screen.findByRole('checkbox', { name: excerpt }));
+
+  expect(screen.getByRole('checkbox', { name: '片段4' })).toBeDisabled();
+});
+
+test('ignores a late AI response after another problem is selected', async () => {
+  const response = deferred<{ kind: string; value: string }[]>();
+  getProblemDocument.mockImplementation((id: string) => Promise.resolve({
+    id, courseId: 'macro', title: '', status: 'inbox', updatedAt: '2026-07-30', version: 'v1',
+    fields: [{ kind: 'stem', value: id === 'p1' ? '题目一' : '题目二', updatedAt: 'v1' }],
+  }));
+  runProblemAnalysis.mockReturnValue(response.promise);
+  const user = userEvent.setup();
+  const { rerender } = render(<ProblemDocument problemId="p1" />);
+  await user.click(await screen.findByRole('button', { name: 'AI 辅助整理' }));
+  await user.click(screen.getByRole('button', { name: '仅本次发送' }));
+
+  rerender(<ProblemDocument problemId="p2" />);
+  await act(async () => response.resolve([{ kind: 'stem', value: '迟到的旧建议' }]));
+
+  expect(await screen.findByRole('heading', { name: '题目二' })).toBeVisible();
+  expect(screen.queryByDisplayValue('迟到的旧建议')).not.toBeInTheDocument();
+});
+
+test('discards a late AI response when the active provider model changes', async () => {
+  const response = deferred<{ kind: string; value: string }[]>();
+  const changedProvider = { ...deepseekConfig, selectedModel: 'deepseek-v4-pro' };
+  loadAiProviderState
+    .mockResolvedValueOnce({ providers: [deepseekConfig], activeProviderId: 'deepseek' })
+    .mockResolvedValueOnce({ providers: [changedProvider], activeProviderId: 'deepseek' });
+  getProblemDocument.mockResolvedValue({
+    id: 'problem-provider-change', courseId: 'macro', title: '', status: 'inbox',
+    updatedAt: '2026-07-30', version: 'v1',
+    fields: [{ kind: 'stem', value: '题干', updatedAt: 'v1' }],
+  });
+  runProblemAnalysis.mockReturnValue(response.promise);
+  const user = userEvent.setup();
+  render(<ProblemDocument problemId="problem-provider-change" />);
+  await user.click(await screen.findByRole('button', { name: 'AI 辅助整理' }));
+  await user.click(screen.getByRole('button', { name: '仅本次发送' }));
+  await act(async () => response.resolve([{ kind: 'stem', value: '旧模型建议' }]));
+
+  expect(screen.queryByDisplayValue('旧模型建议')).not.toBeInTheDocument();
+  expect(await screen.findByText('AI 平台配置已改变，请核对后重新发送。')).toBeVisible();
+});
+
+test('ignores a late material search after the query changes', async () => {
+  const searchResponse = deferred<Array<{ chunkId: string; materialId: string; filename: string; excerpt: string }>>();
+  searchCourseMaterial.mockReturnValue(searchResponse.promise);
+  getProblemDocument.mockResolvedValue({
+    id: 'problem-search-race', courseId: 'macro', title: '', status: 'inbox',
+    updatedAt: '2026-07-30', version: 'v1', fields: [{ kind: 'stem', value: '题干', updatedAt: 'v1' }],
+  });
+  const user = userEvent.setup();
+  render(<ProblemDocument problemId="problem-search-race" />);
+  await user.click(await screen.findByRole('button', { name: 'AI 辅助整理' }));
+  const input = screen.getByRole('searchbox', { name: '搜索本课程学习资料' });
+  await user.type(input, '旧查询');
+  await user.click(screen.getByRole('button', { name: '查找片段' }));
+  await user.clear(input);
+  await user.type(input, '新查询');
+  await act(async () => searchResponse.resolve([
+    { chunkId: 'old-chunk', materialId: 'old', filename: '旧资料.md', excerpt: '迟到的旧片段' },
+  ]));
+
+  expect(screen.queryByText('迟到的旧片段')).not.toBeInTheDocument();
+  expect(screen.getByRole('button', { name: '查找片段' })).toBeEnabled();
+});
+
+test('ignores a late AI response after the review dialog closes', async () => {
+  const response = deferred<{ kind: string; value: string }[]>();
+  getProblemDocument.mockResolvedValue({
+    id: 'problem-close', courseId: 'macro', title: '', status: 'inbox', updatedAt: '2026-07-30', version: 'v1',
+    fields: [{ kind: 'stem', value: '题干', updatedAt: 'v1' }],
+  });
+  runProblemAnalysis.mockReturnValue(response.promise);
+  const user = userEvent.setup();
+  render(<ProblemDocument problemId="problem-close" />);
+  await user.click(await screen.findByRole('button', { name: 'AI 辅助整理' }));
+  await user.click(screen.getByRole('button', { name: '仅本次发送' }));
+  await user.click(screen.getByRole('button', { name: '关闭 AI 审核' }));
+  await act(async () => response.resolve([{ kind: 'stem', value: '关闭后的建议' }]));
+
+  expect(screen.queryByRole('dialog', { name: 'AI 建议审核' })).not.toBeInTheDocument();
+  expect(screen.queryByDisplayValue('关闭后的建议')).not.toBeInTheDocument();
+});
+
+test('shows a string rejection from the native AI command', async () => {
+  getProblemDocument.mockResolvedValue({
+    id: 'problem-error', courseId: 'macro', title: '', status: 'inbox', updatedAt: '2026-07-30', version: 'v1',
+    fields: [{ kind: 'stem', value: '题干', updatedAt: 'v1' }],
+  });
+  runProblemAnalysis.mockRejectedValue('AI 账户额度不足或计费不可用，请检查余额。');
+  const user = userEvent.setup();
+  render(<ProblemDocument problemId="problem-error" />);
+  await user.click(await screen.findByRole('button', { name: 'AI 辅助整理' }));
+  await user.click(screen.getByRole('button', { name: '仅本次发送' }));
+
+  expect(await screen.findByText('AI 账户额度不足或计费不可用，请检查余额。')).toBeVisible();
+});
+
+test('traps focus in the modal, closes with Escape, and restores the AI trigger', async () => {
+  getProblemDocument.mockResolvedValue({
+    id: 'problem-focus', courseId: 'macro', title: '', status: 'inbox', updatedAt: '2026-07-30', version: 'v1',
+    fields: [{ kind: 'stem', value: '题干', updatedAt: 'v1' }],
+  });
+  const user = userEvent.setup();
+  render(<ProblemDocument problemId="problem-focus" />);
+  const trigger = await screen.findByRole('button', { name: 'AI 辅助整理' });
+  await user.click(trigger);
+  const close = screen.getByRole('button', { name: '关闭 AI 审核' });
+  const send = screen.getByRole('button', { name: '仅本次发送' });
+  expect(close).toHaveFocus();
+  await user.tab({ shift: true });
+  expect(send).toHaveFocus();
+  await user.tab();
+  expect(close).toHaveFocus();
+  await user.keyboard('{Escape}');
+
+  expect(screen.queryByRole('dialog', { name: 'AI 建议审核' })).not.toBeInTheDocument();
+  expect(trigger).toHaveFocus();
+});
+
+test('keeps image sending disabled for a text-only provider while allowing the text request', async () => {
+  getProblemDocument.mockResolvedValue({
+    id: 'problem-text-only', courseId: 'macro', hasImageAttachment: true, title: '', status: 'inbox',
+    updatedAt: '2026-07-30', version: 'v1',
+    fields: [{ kind: 'stem', value: '只发送文字的题干', updatedAt: 'v1' }],
+  });
+  runProblemAnalysis.mockResolvedValue([]);
+  const user = userEvent.setup();
+  render(<ProblemDocument problemId="problem-text-only" />);
+
+  await user.click(await screen.findByRole('button', { name: 'AI 辅助整理' }));
+  expect(screen.getByRole('checkbox', { name: '本次发送题目原图' })).toBeDisabled();
+  expect(screen.getByText('当前平台不支持题图；仍可只发送文字')).toBeVisible();
+  await user.click(screen.getByRole('button', { name: '仅本次发送' }));
+
+  expect(runProblemAnalysis).toHaveBeenCalledWith(
+    'problem-text-only', 'flash', deepseekConfig, [], 'v1', false,
+  );
+});
+
+test('locks every suggestion control while one accepted field is saving', async () => {
+  const save = deferred<{ problemId: string; kind: string; value: string; updatedAt: string; version: string }>();
+  getProblemDocument.mockResolvedValue({
+    id: 'problem-lock', courseId: 'macro', title: '', status: 'inbox', updatedAt: '2026-07-30', version: 'v1',
+    fields: [{ kind: 'stem', value: '题干', updatedAt: 'v1' }],
+  });
+  runProblemAnalysis.mockResolvedValue([
+    { kind: 'standard_answer', value: '答案' },
+    { kind: 'explanation', value: '解析' },
+  ]);
+  saveProblemField.mockReturnValue(save.promise);
+  const user = userEvent.setup();
+  render(<ProblemDocument problemId="problem-lock" />);
+
+  await user.click(await screen.findByRole('button', { name: 'AI 辅助整理' }));
+  await user.click(screen.getByRole('button', { name: '仅本次发送' }));
+  await user.click(await screen.findByRole('button', { name: '采纳标准答案' }));
+
+  expect(screen.getByRole('textbox', { name: '编辑 AI 解析建议' })).toBeDisabled();
+  expect(screen.getAllByRole('button', { name: '拒绝' }).every((button) => button.hasAttribute('disabled'))).toBe(true);
+  expect(screen.getByRole('button', { name: '采纳解析' })).toBeDisabled();
+});
+
+test('does not merge an accepted suggestion after switching problems', async () => {
+  const saved = deferred<{ problemId: string; kind: string; value: string; updatedAt: string; version: string }>();
+  getProblemDocument.mockImplementation((id: string) => Promise.resolve({
+    id, courseId: 'macro', title: '', status: 'inbox', updatedAt: '2026-07-30', version: 'v1',
+    fields: [{ kind: 'stem', value: id === 'accept-a' ? '题目 A' : '题目 B', updatedAt: 'v1' }],
+  }));
+  runProblemAnalysis.mockResolvedValue([{ kind: 'standard_answer', value: '题目 A 的建议答案' }]);
+  saveProblemField.mockReturnValue(saved.promise);
+  const user = userEvent.setup();
+  const view = render(<ProblemDocument problemId="accept-a" />);
+  await user.click(await screen.findByRole('button', { name: 'AI 辅助整理' }));
+  await user.click(screen.getByRole('button', { name: '仅本次发送' }));
+  await user.click(await screen.findByRole('button', { name: '采纳标准答案' }));
+
+  view.rerender(<ProblemDocument problemId="accept-b" />);
+  await act(async () => saved.resolve({
+    problemId: 'accept-a', kind: 'standard_answer', value: '题目 A 的建议答案', updatedAt: '2026-07-31', version: 'v2',
+  }));
+
+  expect(await screen.findByRole('heading', { name: '题目 B' })).toBeVisible();
+  expect(screen.queryByText('题目 A 的建议答案')).not.toBeInTheDocument();
 });

@@ -549,6 +549,7 @@ fn malformed_success_response_becomes_a_safe_format_error() {
 fn parses_review_fields_and_rejects_unverifiable_citations() {
     let suggestions = parse_model_content(
         r#"{"stem":"题目","standard_answer":"答案","explanation":"解析","mistake_reason":"错因","knowledge_points":["IS 曲线"],"citations":[]}"#,
+        &[],
     )
     .unwrap();
     assert!(suggestions
@@ -558,9 +559,45 @@ fn parses_review_fields_and_rejects_unverifiable_citations() {
 
     let error = parse_model_content(
         r#"{"stem":"题目","knowledge_points":[],"citations":[{"source":"伪造教材"}]}"#,
+        &[],
     )
     .unwrap_err();
     assert_eq!(error.kind(), AiErrorKind::Format);
+}
+
+#[test]
+fn accepts_only_authorized_verbatim_material_citations() {
+    let materials = vec![super::AuthorizedMaterial {
+        chunk_id: "chunk-1".to_owned(),
+        filename: "宏观经济学讲义.md".to_owned(),
+        excerpt: "货币供给增加会使 LM 曲线向右移动。".to_owned(),
+    }];
+    let suggestions = parse_model_content(
+        r#"{"stem":null,"standard_answer":null,"explanation":"解释","mistake_reason":null,"knowledge_points":[],"citations":[{"chunk_id":"chunk-1","quote":"LM 曲线向右移动"}]}"#,
+        &materials,
+    )
+    .expect("verified citation");
+    assert!(suggestions.iter().any(|suggestion| {
+        suggestion.kind == "notes"
+            && suggestion.value.contains("宏观经济学讲义.md")
+            && suggestion.value.contains("LM 曲线向右移动")
+    }));
+
+    for invalid in [
+        r#"{"knowledge_points":[],"citations":[{"chunk_id":"unknown","quote":"LM 曲线向右移动"}]}"#,
+        r#"{"knowledge_points":[],"citations":[{"chunk_id":"chunk-1","quote":"伪造的教材原文"}]}"#,
+    ] {
+        assert_eq!(parse_model_content(invalid, &materials).unwrap_err().kind(), AiErrorKind::Format);
+    }
+    assert_eq!(
+        parse_model_content(
+            r#"{"knowledge_points":[],"citations":[{"chunk_id":"chunk-1","quote":"LM 曲线向右移动"}]}"#,
+            &[],
+        )
+        .unwrap_err()
+        .kind(),
+        AiErrorKind::Format
+    );
 }
 
 #[test]
@@ -582,4 +619,143 @@ fn deserializes_camel_case_config_without_accepting_credentials() {
     let mut with_embedded_key = value;
     with_embedded_key["apiKey"] = json!("must-not-cross-native-config");
     assert!(serde_json::from_value::<AiProviderConfig>(with_embedded_key).is_err());
+}
+
+#[test]
+fn binds_authorization_to_the_native_provider_destination_and_models() {
+    let original = config("https://trusted.example/v1".to_owned());
+    let fingerprint = original.authorization_fingerprint().unwrap();
+
+    let mut changed_model = original.clone();
+    changed_model.selected_model = "model-y".to_owned();
+    assert_ne!(fingerprint, changed_model.authorization_fingerprint().unwrap());
+
+    let mut changed_vision_model = original.clone();
+    changed_vision_model.vision_model = Some("vision-y".to_owned());
+    assert_ne!(fingerprint, changed_vision_model.authorization_fingerprint().unwrap());
+
+    let mut changed_endpoint = original.clone();
+    changed_endpoint.base_url = "https://other.example/v1".to_owned();
+    assert_ne!(fingerprint, changed_endpoint.authorization_fingerprint().unwrap());
+
+    let mut changed_provider = original;
+    changed_provider.id = "custom-other".to_owned();
+    assert_ne!(fingerprint, changed_provider.authorization_fingerprint().unwrap());
+}
+
+#[test]
+fn rejects_noncanonical_endpoints_for_builtin_provider_ids() {
+    let mut builtin = config("https://attacker.example/v1".to_owned());
+    builtin.id = "deepseek".to_owned();
+    assert!(builtin.validate().is_err());
+
+    builtin.base_url = "https://api.deepseek.com".to_owned();
+    assert_eq!(
+        builtin.validate().unwrap(),
+        "https://api.deepseek.com/chat/completions"
+    );
+}
+
+#[test]
+fn prepares_pure_image_requests_and_rejects_invalid_scope_before_credentials() {
+    use crate::domain::problems::ProblemDocument;
+    use std::cell::Cell;
+
+    let document = ProblemDocument {
+        id: "problem-image".to_owned(),
+        course_id: "macro".to_owned(),
+        has_image_attachment: true,
+        title: String::new(),
+        status: "inbox".to_owned(),
+        updated_at: "2026-08-02".to_owned(),
+        version: "version-1".to_owned(),
+        fields: Vec::new(),
+    };
+    let mut vision_config = config("http://127.0.0.1:1234".to_owned());
+    vision_config.supports_vision = true;
+    vision_config.vision_model = Some("vision-model".to_owned());
+    let credential_reads = Cell::new(0);
+    let prepared = super::prepare_analysis(
+        &document,
+        &vision_config,
+        "version-1",
+        true,
+        |_| Ok(()),
+        || Ok(Vec::new()),
+        |_, _| {
+            credential_reads.set(credential_reads.get() + 1);
+            Ok("test-key".to_owned())
+        },
+    )
+    .expect("pure image request is valid");
+    assert!(prepared.existing_text.is_empty());
+    assert_eq!(credential_reads.get(), 1);
+
+    for (candidate, expected_version, include_image) in [
+        (vision_config.clone(), "stale-version", true),
+        (vision_config.clone(), "version-1", false),
+        ({ let mut value = vision_config.clone(); value.base_url = "https://attacker.example/?key=secret".to_owned(); value }, "version-1", true),
+        ({ let mut value = vision_config.clone(); value.supports_vision = false; value.vision_model = None; value }, "version-1", true),
+    ] {
+        credential_reads.set(0);
+        assert!(super::prepare_analysis(
+            &document,
+            &candidate,
+            expected_version,
+            include_image,
+            |_| Ok(()),
+            || Ok(Vec::new()),
+            |_, _| { credential_reads.set(credential_reads.get() + 1); Ok("test-key".to_owned()) },
+        ).is_err());
+        assert_eq!(credential_reads.get(), 0);
+    }
+}
+
+#[test]
+fn rejects_illegal_material_before_reading_a_credential() {
+    use crate::domain::problems::{ProblemDocument, ProblemField};
+    use std::cell::Cell;
+    let document = ProblemDocument {
+        id: "problem-material".to_owned(), course_id: "macro".to_owned(), has_image_attachment: false,
+        title: String::new(), status: "inbox".to_owned(), updated_at: "2026-08-02".to_owned(), version: "v1".to_owned(),
+        fields: vec![ProblemField { kind: "stem".to_owned(), value: "题干".to_owned(), updated_at: "v1".to_owned() }],
+    };
+    let credential_reads = Cell::new(0);
+    let result = super::prepare_analysis(
+        &document,
+        &config("http://127.0.0.1:1234".to_owned()),
+        "v1",
+        false,
+        |_| Ok(()),
+        || Err("所选教材片段不属于当前课程".to_owned()),
+        |_, _| { credential_reads.set(credential_reads.get() + 1); Ok("test-key".to_owned()) },
+    );
+    assert!(result.unwrap_err().contains("当前课程"));
+    assert_eq!(credential_reads.get(), 0);
+}
+
+#[test]
+fn rejects_a_noncurrent_config_before_material_or_credential_access() {
+    use crate::domain::problems::{ProblemDocument, ProblemField};
+    use std::cell::Cell;
+
+    let document = ProblemDocument {
+        id: "problem-current".to_owned(), course_id: "macro".to_owned(), has_image_attachment: false,
+        title: String::new(), status: "inbox".to_owned(), updated_at: "2026-08-02".to_owned(), version: "v1".to_owned(),
+        fields: vec![ProblemField { kind: "stem".to_owned(), value: "题干".to_owned(), updated_at: "v1".to_owned() }],
+    };
+    let materials_loaded = Cell::new(0);
+    let credential_reads = Cell::new(0);
+    let result = super::prepare_analysis(
+        &document,
+        &config("https://trusted.example/v1".to_owned()),
+        "v1",
+        false,
+        |_| Err("当前配置未在本机激活".to_owned()),
+        || { materials_loaded.set(materials_loaded.get() + 1); Ok(Vec::new()) },
+        |_, _| { credential_reads.set(credential_reads.get() + 1); Ok("test-key".to_owned()) },
+    );
+    assert!(result.unwrap_err().contains("未在本机激活"));
+    assert_eq!(materials_loaded.get(), 0);
+    assert_eq!(credential_reads.get(), 0);
 }

@@ -1,8 +1,9 @@
 use reqwest::Url;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
+use sha2::{Digest, Sha256};
 
-use super::AiError;
+use super::{AiError, AuthorizedMaterial};
 
 const COMPLETIONS_SUFFIX: &str = "/chat/completions";
 
@@ -58,18 +59,55 @@ impl AiProviderConfig {
         if !(10..=180).contains(&self.request_timeout_seconds) {
             return Err(AiError::configuration("请求超时必须设置为 10 到 180 秒。"));
         }
-        normalize_endpoint(&self.base_url, self.allow_insecure_localhost)
+        let endpoint = normalize_endpoint(&self.base_url, self.allow_insecure_localhost)?;
+        if let Some(canonical) = canonical_builtin_endpoint(&self.id) {
+            if endpoint != canonical {
+                return Err(AiError::configuration(
+                    "内置 AI 平台只能使用应用内置的官方接口地址；如需自定义地址，请新建自定义平台。",
+                ));
+            }
+        }
+        Ok(endpoint)
+    }
+
+    pub fn authorization_fingerprint(&self) -> Result<String, AiError> {
+        let endpoint = self.validate()?;
+        let fields = [
+            self.id.as_str(),
+            endpoint.as_str(),
+            self.selected_model.trim(),
+            self.vision_model.as_deref().map(str::trim).unwrap_or(""),
+            if self.supports_vision { "vision" } else { "text" },
+        ];
+        let mut hasher = Sha256::new();
+        for field in fields {
+            hasher.update(field.len().to_le_bytes());
+            hasher.update(field.as_bytes());
+        }
+        Ok(format!("{:x}", hasher.finalize()))
     }
 
     pub fn analysis_request(
         &self,
         mode: AnalysisMode,
         existing_text: &str,
-        material_excerpts: &[String],
+        materials: &[AuthorizedMaterial],
         images: &[AiImage],
     ) -> Result<Value, AiError> {
         self.validate()?;
-        let model = if images.is_empty() {
+        let model = self.analysis_model(!images.is_empty())?;
+        Ok(build_analysis_request_body(
+            model,
+            mode,
+            existing_text,
+            materials,
+            images,
+        ))
+    }
+
+    pub fn analysis_model(&self, include_image: bool) -> Result<&str, AiError> {
+        self.validate()?;
+        let model = if !include_image {
             self.selected_model.trim()
         } else {
             if !self.supports_vision {
@@ -87,13 +125,18 @@ impl AiProviderConfig {
                     )
                 })?
         };
-        Ok(build_analysis_request_body(
-            model,
-            mode,
-            existing_text,
-            material_excerpts,
-            images,
-        ))
+        Ok(model)
+    }
+}
+
+fn canonical_builtin_endpoint(provider_id: &str) -> Option<&'static str> {
+    match provider_id {
+        "bailian" => Some("https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions"),
+        "deepseek" => Some("https://api.deepseek.com/chat/completions"),
+        "zhipu" => Some("https://open.bigmodel.cn/api/paas/v4/chat/completions"),
+        "moonshot" => Some("https://api.moonshot.cn/v1/chat/completions"),
+        "openai" => Some("https://api.openai.com/v1/chat/completions"),
+        _ => None,
     }
 }
 
@@ -198,14 +241,14 @@ pub fn build_probe_request_body(model: &str) -> Value {
 pub fn build_request_body(
     model: &str,
     existing_text: &str,
-    material_excerpts: &[String],
+    materials: &[AuthorizedMaterial],
     images: &[AiImage],
 ) -> Value {
     build_analysis_request_body(
         model,
         AnalysisMode::Flash,
         existing_text,
-        material_excerpts,
+        materials,
         images,
     )
 }
@@ -214,16 +257,18 @@ pub fn build_analysis_request_body(
     model: &str,
     mode: AnalysisMode,
     existing_text: &str,
-    material_excerpts: &[String],
+    materials: &[AuthorizedMaterial],
     images: &[AiImage],
 ) -> Value {
-    let materials = if material_excerpts.is_empty() {
+    let materials = if materials.is_empty() {
         "本次没有提供教材片段；citations 必须返回空数组。".to_owned()
     } else {
-        material_excerpts
+        materials
             .iter()
-            .enumerate()
-            .map(|(index, excerpt)| format!("[本地片段 {}]\n{}", index + 1, excerpt))
+            .map(|material| format!(
+                "[chunk_id: {}]\n来源：{}\n正文：{}",
+                material.chunk_id, material.filename, material.excerpt
+            ))
             .collect::<Vec<_>>()
             .join("\n\n")
     };
@@ -252,7 +297,7 @@ pub fn build_analysis_request_body(
             json!({
                 "role": "system",
                 "content": format!(
-                    "你是中文学习题目整理助手。{}只输出 JSON，不要 Markdown。不得捏造教材依据。字段必须为 stem、standard_answer、explanation、mistake_reason、knowledge_points、citations；不确定内容使用 null。没有提供教材片段时 citations 必须为空数组。",
+                    "你是中文学习题目整理助手。{}只输出 JSON，不要 Markdown。不得捏造教材依据。字段必须为 stem、standard_answer、explanation、mistake_reason、knowledge_points、citations；citations 只能是 {{\"chunk_id\":\"给定 ID\",\"quote\":\"该片段中的逐字原文\"}} 数组；不确定内容使用 null。没有提供教材片段时 citations 必须为空数组。",
                     mode_instruction
                 )
             }),

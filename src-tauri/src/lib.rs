@@ -40,6 +40,8 @@ pub fn run() {
             commands::ai::get_ai_credential_migration_status,
             commands::ai::retry_ai_credential_migration,
             commands::ai::test_ai_provider,
+            commands::ai::activate_ai_provider,
+            commands::ai::is_ai_provider_active,
             commands::ai::run_problem_analysis,
             commands::backup::create_library_backup,
             commands::backup::restore_library_backup,

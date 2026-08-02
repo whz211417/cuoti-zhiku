@@ -32,7 +32,7 @@ test('stores pasted course material locally before making it searchable', async 
 
 test('shows only locally matched snippets for the selected course', async () => {
   const user = userEvent.setup();
-  searchCourseMaterial.mockResolvedValue([{ materialId: 'material-1', filename: 'IS-LM 讲义.md', excerpt: '货币供给增加会使 LM 曲线向右移动。' }]);
+  searchCourseMaterial.mockResolvedValue([{ chunkId: 'chunk-1', materialId: 'material-1', filename: 'IS-LM 讲义.md', excerpt: '货币供给增加会使 LM 曲线向右移动。' }]);
   render(<MaterialsLibrary courseId="macro" />);
 
   await user.type(screen.getByLabelText('检索课程资料'), 'LM 曲线');
@@ -112,9 +112,9 @@ test('does not report a pasted material as saved when persistence fails', async 
 test('preserves prior results and offers retry when the same course query fails', async () => {
   const user = userEvent.setup();
   searchCourseMaterial
-    .mockResolvedValueOnce([{ materialId: 'material-1', filename: '旧结果.md', excerpt: '仍然可见的旧结果' }])
+    .mockResolvedValueOnce([{ chunkId: 'chunk-old', materialId: 'material-1', filename: '旧结果.md', excerpt: '仍然可见的旧结果' }])
     .mockRejectedValueOnce(new Error('database busy'))
-    .mockResolvedValueOnce([{ materialId: 'material-2', filename: '新结果.md', excerpt: '恢复后的新结果' }]);
+    .mockResolvedValueOnce([{ chunkId: 'chunk-new', materialId: 'material-2', filename: '新结果.md', excerpt: '恢复后的新结果' }]);
   render(<MaterialsLibrary courseId="macro" />);
 
   const input = screen.getByLabelText('检索课程资料');
@@ -132,7 +132,7 @@ test('preserves prior results and offers retry when the same course query fails'
 
 test('clears search state immediately when the active course changes', async () => {
   searchCourseMaterial.mockResolvedValue([
-    { materialId: 'macro-material', filename: '宏观.md', excerpt: '宏观课程结果' },
+    { chunkId: 'macro-chunk', materialId: 'macro-material', filename: '宏观.md', excerpt: '宏观课程结果' },
   ]);
   const view = render(<MaterialsLibrary courseId="macro" initialQuery="IS 曲线" />);
 
@@ -147,8 +147,8 @@ test('clears search state immediately when the active course changes', async () 
 });
 
 test('ignores out-of-order responses from an older course or query', async () => {
-  let resolveOlder!: (value: Array<{ materialId: string; filename: string; excerpt: string }>) => void;
-  let resolveNewer!: (value: Array<{ materialId: string; filename: string; excerpt: string }>) => void;
+  let resolveOlder!: (value: Array<{ chunkId: string; materialId: string; filename: string; excerpt: string }>) => void;
+  let resolveNewer!: (value: Array<{ chunkId: string; materialId: string; filename: string; excerpt: string }>) => void;
   searchCourseMaterial
     .mockReturnValueOnce(new Promise((resolve) => { resolveOlder = resolve; }))
     .mockReturnValueOnce(new Promise((resolve) => { resolveNewer = resolve; }));
@@ -158,12 +158,12 @@ test('ignores out-of-order responses from an older course or query', async () =>
   view.rerender(<MaterialsLibrary courseId="micro" initialQuery="新查询" />);
   await waitFor(() => expect(searchCourseMaterial).toHaveBeenCalledWith('micro', '新查询'));
   await act(async () => resolveNewer([
-    { materialId: 'newer', filename: '微观.md', excerpt: '新课程的新结果' },
+    { chunkId: 'newer-chunk', materialId: 'newer', filename: '微观.md', excerpt: '新课程的新结果' },
   ]));
   expect(await screen.findByText('新课程的新结果')).toBeVisible();
 
   await act(async () => resolveOlder([
-    { materialId: 'older', filename: '宏观.md', excerpt: '不应覆盖的新结果' },
+    { chunkId: 'older-chunk', materialId: 'older', filename: '宏观.md', excerpt: '不应覆盖的新结果' },
   ]));
   expect(screen.getByText('新课程的新结果')).toBeVisible();
   expect(screen.queryByText('不应覆盖的新结果')).not.toBeInTheDocument();
@@ -173,7 +173,7 @@ test('handles a rejected initial search and recovers through the inline retry', 
   const user = userEvent.setup();
   searchCourseMaterial
     .mockRejectedValueOnce(new Error('initial search failed'))
-    .mockResolvedValueOnce([{ materialId: 'material-3', filename: '恢复.md', excerpt: '初始检索恢复' }]);
+    .mockResolvedValueOnce([{ chunkId: 'chunk-3', materialId: 'material-3', filename: '恢复.md', excerpt: '初始检索恢复' }]);
 
   render(<MaterialsLibrary courseId="macro" initialQuery="初始查询" />);
 

@@ -90,6 +90,7 @@ pub struct CourseMaterial {
 #[derive(Debug, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct MaterialSnippet {
+    pub chunk_id: String,
     pub material_id: String,
     pub filename: String,
     pub excerpt: String,
@@ -453,7 +454,7 @@ impl Database {
         }
         let connection = self.connection()?;
         let mut statement = connection.prepare(
-            "SELECT material.id, material.filename, chunk.content
+            "SELECT chunk.id, material.id, material.filename, chunk.content
              FROM material_chunks chunk
              JOIN course_materials material ON material.id = chunk.material_id
              WHERE material.course_id = ?1 AND instr(chunk.content, ?2) > 0
@@ -463,12 +464,76 @@ impl Database {
         let results =
             statement.query_map(params![course_id, query, limit.min(12) as i64], |row| {
                 Ok(MaterialSnippet {
-                    material_id: row.get(0)?,
-                    filename: row.get(1)?,
-                    excerpt: row.get(2)?,
+                    chunk_id: row.get(0)?,
+                    material_id: row.get(1)?,
+                    filename: row.get(2)?,
+                    excerpt: row.get(3)?,
                 })
             })?;
         results.collect::<Result<Vec<_>, _>>().map_err(Into::into)
+    }
+
+    pub fn material_context_for_problem(
+        &self,
+        problem_id: &str,
+        chunk_ids: &[String],
+    ) -> DatabaseResult<Vec<MaterialSnippet>> {
+        if chunk_ids.len() > 3 {
+            return Err(DatabaseError::Conflict(
+                "每次最多选择 3 段课程资料。".to_owned(),
+            ));
+        }
+        if chunk_ids.iter().collect::<HashSet<_>>().len() != chunk_ids.len() {
+            return Err(DatabaseError::Conflict(
+                "教材片段选择中包含重复项目，请重新勾选。".to_owned(),
+            ));
+        }
+        if chunk_ids.is_empty() {
+            return Ok(Vec::new());
+        }
+
+        let connection = self.connection()?;
+        let problem_course_id = connection
+            .query_row(
+                "SELECT course_id FROM problems WHERE id = ?1",
+                [problem_id],
+                |row| row.get::<_, String>(0),
+            )
+            .optional()?
+            .ok_or_else(|| DatabaseError::Conflict("题目不存在，无法授权课程资料。".to_owned()))?;
+        let mut statement = connection.prepare(
+            "SELECT chunk.id, material.id, material.course_id, material.filename, chunk.content
+             FROM material_chunks chunk
+             JOIN course_materials material ON material.id = chunk.material_id
+             WHERE chunk.id = ?1",
+        )?;
+        let mut snippets = Vec::with_capacity(chunk_ids.len());
+        for chunk_id in chunk_ids {
+            let selected = statement
+                .query_row([chunk_id], |row| {
+                    Ok((
+                        row.get::<_, String>(0)?,
+                        row.get::<_, String>(1)?,
+                        row.get::<_, String>(2)?,
+                        row.get::<_, String>(3)?,
+                        row.get::<_, String>(4)?,
+                    ))
+                })
+                .optional()?
+                .ok_or_else(|| DatabaseError::Conflict("所选教材片段不存在或已被移除。".to_owned()))?;
+            if selected.2 != problem_course_id {
+                return Err(DatabaseError::Conflict(
+                    "所选教材片段不属于当前课程，已停止本次请求。".to_owned(),
+                ));
+            }
+            snippets.push(MaterialSnippet {
+                chunk_id: selected.0,
+                material_id: selected.1,
+                filename: selected.3,
+                excerpt: selected.4,
+            });
+        }
+        Ok(snippets)
     }
 
     pub fn record_inbox_item(
@@ -605,8 +670,15 @@ impl Database {
 
     pub fn get_problem_document(&self, problem_id: &str) -> DatabaseResult<ProblemDocument> {
         let connection = self.connection()?;
-        let (id, title, status, updated_at, version) = connection.query_row(
-            "SELECT id, title, status, updated_at, version FROM problems WHERE id = ?1",
+        let (id, course_id, has_image_attachment, title, status, updated_at, version) = connection.query_row(
+            "SELECT p.id, p.course_id,
+                    EXISTS(
+                        SELECT 1 FROM inbox_items item
+                        JOIN attachments attachment ON attachment.id = item.attachment_id
+                        WHERE item.problem_id = p.id AND attachment.mime_type LIKE 'image/%'
+                    ),
+                    p.title, p.status, p.updated_at, p.version
+             FROM problems p WHERE p.id = ?1",
             [problem_id],
             |row| {
                 Ok((
@@ -615,6 +687,8 @@ impl Database {
                     row.get(2)?,
                     row.get(3)?,
                     row.get(4)?,
+                    row.get(5)?,
+                    row.get(6)?,
                 ))
             },
         )?;
@@ -635,6 +709,8 @@ impl Database {
             .collect::<Result<Vec<_>, _>>()?;
         Ok(ProblemDocument {
             id,
+            course_id,
+            has_image_attachment,
             title,
             status,
             updated_at,

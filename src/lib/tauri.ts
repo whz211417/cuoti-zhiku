@@ -16,12 +16,12 @@ export const restoreLibraryBackup = (source: string) => invoke<string>('restore_
 export const hasAiApiKey = () => invoke<boolean>('has_ai_api_key');
 export const saveAiApiKey = (apiKey: string) => invoke<void>('save_ai_api_key', { apiKey });
 export const clearAiApiKey = () => invoke<void>('clear_ai_api_key');
-export const hasAiProviderKey = (providerId: string) =>
-  invoke<boolean>('has_ai_provider_key', { providerId });
-export const saveAiProviderKey = (providerId: string, apiKey: string) =>
-  invoke<void>('save_ai_provider_key', { providerId, apiKey });
-export const clearAiProviderKey = (providerId: string) =>
-  invoke<void>('clear_ai_provider_key', { providerId });
+export const hasAiProviderKey = (config: AiProviderConfig) =>
+  invoke<boolean>('has_ai_provider_key', { config: toNativeAiProviderConfig(config) });
+export const saveAiProviderKey = (config: AiProviderConfig, apiKey: string) =>
+  invoke<void>('save_ai_provider_key', { config: toNativeAiProviderConfig(config), apiKey });
+export const clearAiProviderKey = (config: AiProviderConfig) =>
+  invoke<void>('clear_ai_provider_key', { config: toNativeAiProviderConfig(config) });
 export type AiCredentialMigrationStatus = 'ready' | 'not_needed' | 'migrated' | 'conflict' | 'failed';
 export const getAiCredentialMigrationStatus = () =>
   invoke<AiCredentialMigrationStatus>('get_ai_credential_migration_status');
@@ -44,7 +44,7 @@ export const createCourse = (name: string, term: string, color: string, kind: Co
   invoke<Course>('create_course', { name, term, color, kind });
 
 export type CourseMaterial = { id: string; courseId: string; filename: string };
-export type MaterialSnippet = { materialId: string; filename: string; excerpt: string };
+export type MaterialSnippet = { chunkId: string; materialId: string; filename: string; excerpt: string };
 export const importCourseMaterialFile = (courseId: string, path: string) =>
   invoke<CourseMaterial>('import_course_material_file', { courseId, path });
 export const saveCourseMaterial = (courseId: string, filename: string, content: string) =>
@@ -114,6 +114,8 @@ export type ProblemField = {
 
 export type ProblemDocument = {
   id: string;
+  courseId: string;
+  hasImageAttachment: boolean;
   title: string;
   status: string;
   updatedAt: string;
@@ -149,31 +151,29 @@ const toNativeAiProviderConfig = (config: AiProviderConfig): NativeAiProviderCon
   allowInsecureLocalhost: config.allowInsecureLocalhost,
 });
 
-// Temporary compatibility for the existing review surface until Task 8 owns provider selection.
-const legacyBailianConfig: AiProviderConfig = {
-  id: 'bailian',
-  displayName: '阿里云百炼',
-  baseUrl: 'https://dashscope.aliyuncs.com/compatible-mode/v1',
-  selectedModel: 'qwen3.6-flash',
-  visionModel: 'qwen3.6-flash',
-  supportsVision: true,
-  requestTimeoutSeconds: 60,
-  isEnabled: true,
-  preset: 'bailian',
-  allowInsecureLocalhost: false,
-};
-
 export const testAiProvider = (config: AiProviderConfig) =>
   invoke<AiConnectionResult>('test_ai_provider', { config: toNativeAiProviderConfig(config) });
+
+export const activateAiProvider = (config: AiProviderConfig) =>
+  invoke<void>('activate_ai_provider', { config: toNativeAiProviderConfig(config) });
+
+export const isAiProviderActive = (config: AiProviderConfig) =>
+  invoke<boolean>('is_ai_provider_active', { config: toNativeAiProviderConfig(config) });
 
 export const runProblemAnalysis = (
   problemId: string,
   mode: 'flash' | 'deep',
-  config: AiProviderConfig = legacyBailianConfig,
+  config: AiProviderConfig,
+  materialChunkIds: string[],
+  expectedVersion: string,
+  includeOriginalImage: boolean,
 ) => invoke<AiFieldSuggestion[]>('run_problem_analysis', {
   problemId,
   mode,
   config: toNativeAiProviderConfig(config),
+  materialChunkIds,
+  expectedVersion,
+  includeOriginalImage,
 });
 
 export const importFiles = (paths: string[], courseId?: string) =>

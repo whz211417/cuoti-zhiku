@@ -49,6 +49,8 @@ pub struct ProblemField {
 #[serde(rename_all = "camelCase")]
 pub struct ProblemDocument {
     pub id: String,
+    pub course_id: String,
+    pub has_image_attachment: bool,
     pub title: String,
     pub status: String,
     pub updated_at: String,

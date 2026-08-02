@@ -7,6 +7,7 @@ src-tauri/target/
 coverage/
 playwright-report/
 test-results/
+release/*.exe
 *.log
 .env
 .env.*

@@ -195,7 +195,7 @@ export function MaterialsLibrary({
             ) : null}
             {query && !isSearching && snippets.length === 0 ? <p className="materials-search-hint">输入关键词后，只会在当前课程已保存的材料中查找。</p> : null}
             <div className="materials-results">
-              {snippets.map((snippet) => <article className="material-snippet" key={`${snippet.materialId}-${snippet.excerpt}`}><p>{snippet.filename}</p><div>{snippet.excerpt}</div></article>)}
+              {snippets.map((snippet) => <article className="material-snippet" key={snippet.chunkId}><p>{snippet.filename}</p><div>{snippet.excerpt}</div></article>)}
             </div>
           </section>
         </div>

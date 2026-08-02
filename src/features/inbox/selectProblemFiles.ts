@@ -6,7 +6,7 @@ export const SUPPORTED_PROBLEM_EXTENSIONS = ['png', 'jpg', 'jpeg', 'webp', 'pdf'
 export async function selectProblemFiles(courseId: string | null) {
   const selection = await open({
     multiple: true,
-    filters: [{ name: '题目与资料', extensions: SUPPORTED_PROBLEM_EXTENSIONS }],
+    filters: [{ name: '题目与资料', extensions: [...SUPPORTED_PROBLEM_EXTENSIONS] }],
   });
   const paths = Array.isArray(selection) ? selection : selection ? [selection] : [];
   return paths.length > 0 ? importFiles(paths, courseId ?? undefined) : [];

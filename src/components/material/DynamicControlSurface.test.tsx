@@ -64,6 +64,7 @@ test('updates material coordinates outside the React render cycle', () => {
   expect(requestFrameSpy).toHaveBeenCalledTimes(1);
   expect(rectSpy).toHaveBeenCalledTimes(1);
   expect(surface.querySelector('.dynamic-glass-light')).toBeInTheDocument();
+  expect(surface).toHaveAttribute('data-material', 'navigation');
 
   fireEvent.pointerLeave(surface);
   expect(surface.style.getPropertyValue('--glass-active')).toBe('0');

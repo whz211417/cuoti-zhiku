@@ -88,6 +88,94 @@ fn insert_library_material(
 }
 
 #[test]
+fn material_search_exposes_stable_chunk_ids() {
+    let (root, database) = dashboard_database();
+    let connection = dashboard_connection(&root);
+    insert_library_course(&connection, "macro", "宏观经济学", "2026-07-30");
+    insert_library_material(
+        &connection,
+        "macro-notes",
+        "macro",
+        "IS-LM 讲义.md",
+        "2026-07-30",
+        &["货币供给增加使 LM 曲线右移"],
+    );
+    drop(connection);
+
+    let snippets = database
+        .search_course_material("macro", "LM 曲线", 6)
+        .expect("search material snippets");
+
+    assert_eq!(snippets.len(), 1);
+    assert_eq!(snippets[0].chunk_id, "macro-notes-chunk-0");
+}
+
+#[test]
+fn material_context_for_problem_preserves_explicit_order() {
+    let (root, database) = dashboard_database();
+    let connection = dashboard_connection(&root);
+    insert_library_course(&connection, "macro", "宏观经济学", "2026-07-30");
+    insert_dashboard_problem(
+        &connection,
+        "problem-macro",
+        "macro",
+        "active",
+        "IS-LM",
+        None,
+        "2026-07-30",
+        None,
+    );
+    insert_library_material(
+        &connection,
+        "macro-notes",
+        "macro",
+        "IS-LM 讲义.md",
+        "2026-07-30",
+        &["片段一", "片段二"],
+    );
+    drop(connection);
+
+    let snippets = database
+        .material_context_for_problem(
+            "problem-macro",
+            &["macro-notes-chunk-1".to_owned(), "macro-notes-chunk-0".to_owned()],
+        )
+        .expect("validate selected chunks");
+
+    assert_eq!(snippets.iter().map(|item| item.chunk_id.as_str()).collect::<Vec<_>>(), vec!["macro-notes-chunk-1", "macro-notes-chunk-0"]);
+    assert_eq!(snippets.iter().map(|item| item.excerpt.as_str()).collect::<Vec<_>>(), vec!["片段二", "片段一"]);
+}
+
+#[test]
+fn material_context_for_problem_rejects_unknown_cross_course_and_more_than_three_chunks() {
+    let (root, database) = dashboard_database();
+    let connection = dashboard_connection(&root);
+    insert_library_course(&connection, "macro", "宏观经济学", "2026-07-30");
+    insert_library_course(&connection, "micro", "微观经济学", "2026-07-30");
+    insert_dashboard_problem(&connection, "problem-macro", "macro", "active", "IS-LM", None, "2026-07-30", None);
+    insert_library_material(&connection, "micro-notes", "micro", "微观讲义.md", "2026-07-30", &["跨课程片段"]);
+    drop(connection);
+
+    let unknown = database.material_context_for_problem("problem-macro", &["missing".to_owned()]);
+    assert!(matches!(unknown, Err(DatabaseError::Conflict(message)) if message.contains("不存在")));
+
+    let cross_course = database.material_context_for_problem("problem-macro", &["micro-notes-chunk-0".to_owned()]);
+    assert!(matches!(cross_course, Err(DatabaseError::Conflict(message)) if message.contains("当前课程")));
+
+    let too_many = database.material_context_for_problem(
+        "problem-macro",
+        &["a".to_owned(), "b".to_owned(), "c".to_owned(), "d".to_owned()],
+    );
+    assert!(matches!(too_many, Err(DatabaseError::Conflict(message)) if message.contains("最多选择 3 段")));
+
+    let duplicate = database.material_context_for_problem(
+        "problem-macro",
+        &["micro-notes-chunk-0".to_owned(), "micro-notes-chunk-0".to_owned()],
+    );
+    assert!(matches!(duplicate, Err(DatabaseError::Conflict(message)) if message.contains("重复")));
+}
+
+#[test]
 fn library_search_finds_problem_course_and_material_for_is_lm() {
     let (root, database) = dashboard_database();
     let connection = dashboard_connection(&root);

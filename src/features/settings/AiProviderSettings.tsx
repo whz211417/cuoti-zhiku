@@ -2,9 +2,11 @@
 import { AlertTriangle, Check, ChevronRight, CircleAlert, Plus, RefreshCw } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import {
+  activateAiProvider,
   clearAiProviderKey,
   getAiCredentialMigrationStatus,
   hasAiProviderKey,
+  isAiProviderActive,
   retryAiCredentialMigration,
   saveAiProviderKey,
   testAiProvider,
@@ -111,14 +113,15 @@ export function AiProviderSettings() {
     keyRequestRef.current[providerId] = (keyRequestRef.current[providerId] ?? 0) + 1;
   };
 
-  const refreshKeyStatus = async (providerId: string) => {
+  const refreshKeyStatus = async (provider: AiProviderConfig, repairMissingActive = false) => {
+    const providerId = provider.id;
     const token = (keyRequestRef.current[providerId] ?? 0) + 1;
     keyRequestRef.current[providerId] = token;
     try {
-      const hasKeyResult = await hasAiProviderKey(providerId);
+      const hasKeyResult = await hasAiProviderKey(provider);
       if (aliveRef.current && token === keyRequestRef.current[providerId]) {
         setKeyStatusById((previous) => ({ ...previous, [providerId]: hasKeyResult ? 'present' : 'absent' }));
-        if (!hasKeyResult && stateRef.current.activeProviderId === providerId) {
+        if (!hasKeyResult && repairMissingActive && stateRef.current.activeProviderId === providerId) {
           const inactiveState = {
             providers: stateRef.current.providers.map((provider) => provider.id === providerId ? { ...provider, isEnabled: false } : provider),
             activeProviderId: null,
@@ -150,8 +153,17 @@ export function AiProviderSettings() {
     setLoadState('loading');
     setMessage(null);
     try {
-      const loaded = await loadAiProviderState();
+      let loaded = await loadAiProviderState();
       if (!aliveRef.current || token !== loadRequestRef.current) return;
+        const nativeActive = loaded.providers.find((provider) => provider.id === loaded.activeProviderId) ?? null;
+        if (nativeActive && !await isAiProviderActive(nativeActive)) {
+          loaded = {
+            providers: loaded.providers.map((provider) => ({ ...provider, isEnabled: false })),
+            activeProviderId: null,
+          };
+          await saveAiProviderState(loaded);
+          if (!aliveRef.current || token !== loadRequestRef.current) return;
+        }
         const initialSelection = loaded.activeProviderId && AI_PROVIDER_PRESETS.some((preset) => preset.id === loaded.activeProviderId)
           ? loaded.activeProviderId as PresetAiProviderId
           : loaded.providers.find((provider) => provider.preset === 'custom') ? 'custom' : 'bailian';
@@ -163,7 +175,16 @@ export function AiProviderSettings() {
         draftRef.current = initialDraft;
         setDraft(initialDraft);
         setLoadState('ready');
-        for (const id of new Set([...AI_PROVIDER_PRESETS.map((preset) => preset.id), ...loaded.providers.map((provider) => provider.id)])) void refreshKeyStatus(id);
+        const savedActive = loaded.providers.find((provider) => provider.id === loaded.activeProviderId) ?? null;
+        for (const provider of [
+          ...AI_PROVIDER_PRESETS.map((preset) => providerForSelection(loaded, preset.id, initialCustom)),
+          ...loaded.providers.filter((provider) => provider.preset === 'custom'),
+        ]) {
+          const isSavedActive = Boolean(savedActive
+            && provider.id === savedActive.id
+            && fingerprint(provider) === fingerprint(savedActive));
+          void refreshKeyStatus(provider, isSavedActive);
+        }
     } catch (error) {
       if (aliveRef.current && token === loadRequestRef.current) {
         setLoadState('error');
@@ -192,7 +213,7 @@ export function AiProviderSettings() {
     setDraft(nextDraft);
     if (next === 'custom' && !customDraft) setCustomDraft(nextDraft);
     setMessage(null);
-    void refreshKeyStatus(nextDraft.id);
+    void refreshKeyStatus(nextDraft);
   };
 
   const updateDraft = (next: AiProviderConfig) => {
@@ -201,6 +222,8 @@ export function AiProviderSettings() {
     setDraft(next);
     if (next.preset === 'custom') setCustomDraft(next);
     setMessage(null);
+    setKeyStatusById((previous) => ({ ...previous, [next.id]: 'unknown' }));
+    void refreshKeyStatus(next);
   };
 
   const persist = async (provider: AiProviderConfig, makeCurrent: boolean, successMessage?: string) => {
@@ -252,21 +275,69 @@ export function AiProviderSettings() {
 
   const saveKey = async (apiKey: string) => {
     const providerId = draft.id;
+    const activeBeforeSave = stateRef.current.providers.find((provider) => provider.id === stateRef.current.activeProviderId) ?? null;
     if (!canSaveKey || workRef.current) return;
     const generation = invalidateConnection();
     invalidateKeyStatus(providerId);
     workRef.current = true;
     setIsWorking(true);
+    let keySaved = false;
     try {
-      await saveAiProviderKey(providerId, apiKey);
+      await saveAiProviderKey({ ...draft }, apiKey);
+      keySaved = true;
       if (aliveRef.current) {
         setKeyStatusById((previous) => ({ ...previous, [providerId]: 'present' }));
       }
+      let deactivatedCurrent = false;
+      if (activeBeforeSave && !await isAiProviderActive(activeBeforeSave)) {
+        const next = {
+          providers: stateRef.current.providers.map((provider) => ({ ...provider, isEnabled: false })),
+          activeProviderId: null,
+        };
+        if (aliveRef.current) commitLocalState(next);
+        await enqueueStoreMutation((latest) => latest.activeProviderId === null
+          ? latest
+          : {
+              providers: latest.providers.map((provider) => ({ ...provider, isEnabled: false })),
+              activeProviderId: null,
+            });
+        deactivatedCurrent = true;
+      }
       if (aliveRef.current && draftRef.current.id === providerId && generation === connectionGenerationRef.current) {
-        setMessage({ kind: 'success', message: 'Key 已保存到 Windows 凭据管理器。' });
+        setMessage({
+          kind: 'success',
+          message: deactivatedCurrent
+            ? 'Key 已安全替换；请重新测试并设为当前后再使用。'
+            : 'Key 已保存到 Windows 凭据管理器。',
+        });
       }
     } catch (error) {
-      if (aliveRef.current && draftRef.current.id === providerId && generation === connectionGenerationRef.current) setMessage({ kind: 'error', message: getErrorMessage(error, 'Key 未能保存。请确认 Windows 凭据管理器可用。') });
+      if (keySaved && activeBeforeSave) {
+        const safeState = {
+          providers: stateRef.current.providers.map((provider) => ({ ...provider, isEnabled: false })),
+          activeProviderId: null,
+        };
+        if (aliveRef.current) commitLocalState(safeState);
+        try {
+          await enqueueStoreMutation((latest) => latest.activeProviderId === null
+            ? latest
+            : {
+                providers: latest.providers.map((provider) => ({ ...provider, isEnabled: false })),
+                activeProviderId: null,
+              });
+        } catch {
+          // The native authorization is already revoked. A later settings load
+          // rechecks the native authority and retries this non-secret Store repair.
+        }
+      }
+      if (aliveRef.current && draftRef.current.id === providerId && generation === connectionGenerationRef.current) {
+        setMessage({
+          kind: 'error',
+          message: keySaved
+            ? `Key 已替换且原生授权已撤销，但当前平台状态未能写回；下次打开设置会再次校正。${getErrorMessage(error, '') ? `（${getErrorMessage(error, '')}）` : ''}`
+            : getErrorMessage(error, 'Key 未能保存。请确认 Windows 凭据管理器可用。'),
+        });
+      }
       throw error;
     } finally {
       workRef.current = false;
@@ -279,13 +350,14 @@ export function AiProviderSettings() {
     if (workRef.current) return;
     const generation = invalidateConnection();
     invalidateKeyStatus(providerId);
-    const wasActive = stateRef.current.activeProviderId === providerId;
+    const activeBeforeClear = stateRef.current.providers.find((provider) => provider.id === stateRef.current.activeProviderId) ?? null;
     workRef.current = true;
     setIsWorking(true);
     try {
-      await clearAiProviderKey(providerId);
+      await clearAiProviderKey({ ...draft });
       if (aliveRef.current) setKeyStatusById((previous) => ({ ...previous, [providerId]: 'absent' }));
-      if (wasActive) {
+      const clearedActive = Boolean(activeBeforeClear && !await isAiProviderActive(activeBeforeClear));
+      if (clearedActive) {
         const next = { providers: stateRef.current.providers.map((provider) => provider.id === providerId ? { ...provider, isEnabled: false } : provider), activeProviderId: null };
         if (aliveRef.current) commitLocalState(next);
         try {
@@ -341,9 +413,22 @@ export function AiProviderSettings() {
     workRef.current = true;
     setIsWorking(true);
     setMessage(null);
+    const previousState = stateRef.current;
     try {
       const saved = { ...draft, isEnabled: true };
-      await persist(saved, true, '已设为当前 AI 平台。');
+      await persist(saved, true);
+      try {
+        await activateAiProvider(saved);
+      } catch (activationError) {
+        try {
+          await enqueueStoreMutation(() => previousState);
+        } catch {
+          commitLocalState(previousState);
+          throw new Error('原生激活未完成，且磁盘配置回滚失败；当前会话已恢复原选择，请重新打开设置校正。');
+        }
+        throw activationError;
+      }
+      if (aliveRef.current) setMessage({ kind: 'success', message: '已设为当前 AI 平台。' });
     } catch (error) {
       if (aliveRef.current) setMessage({ kind: 'error', message: getErrorMessage(error, '无法更新当前 AI 平台；原有选择保持不变。') });
     } finally {

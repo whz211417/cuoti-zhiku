@@ -107,6 +107,7 @@ export function DynamicControlSurface({
     {
       ...rest,
       className: `dynamic-control-surface${isStatic ? ' is-static' : ''}${className ? ` ${className}` : ''}`,
+      'data-material': 'navigation',
       onPointerLeave: handlePointerLeave,
       onPointerMove: handlePointerMove,
       ref: surfaceRef,

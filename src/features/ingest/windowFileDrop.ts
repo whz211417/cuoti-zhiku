@@ -1,4 +1,5 @@
-import { getCurrentWindow, type UnlistenFn } from '@tauri-apps/api/window';
+import type { UnlistenFn } from '@tauri-apps/api/event';
+import { getCurrentWindow } from '@tauri-apps/api/window';
 
 export type WindowFileDrop = {
   type: 'enter' | 'over' | 'drop' | 'leave';
