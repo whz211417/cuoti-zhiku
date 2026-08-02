@@ -134,13 +134,25 @@ h1 { font-size: clamp(34px, 4vw, 46px); line-height: 1.07; }.toolbar-actions { d
 .workbench { position: relative; isolation: isolate; }
 .workbench::before { position: fixed; z-index: -1; inset: 0 0 auto 250px; height: 420px; content: ""; pointer-events: none; background: radial-gradient(ellipse 62% 52% at 48% 0%, rgb(216 230 250 / .45), transparent 72%); }
 .dynamic-control-surface { position: relative; isolation: isolate; }
-.dynamic-glass-light { position: absolute; z-index: 0; inset: 0; border-radius: inherit; pointer-events: none; opacity: calc(var(--glass-active) * .28); background: radial-gradient(circle 110px at var(--glass-local-x) var(--glass-local-y), rgb(255 255 255 / .82), rgb(196 224 255 / .15) 45%, transparent 74%); transition: opacity 220ms var(--motion-spring); will-change: opacity; }
+.dynamic-glass-light {
+  position: absolute;
+  z-index: 0;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  opacity: calc(var(--glass-active) * .18);
+  background:
+    radial-gradient(circle 54px at calc(var(--glass-local-x) - 16px) calc(var(--glass-local-y) - 12px), rgb(255 255 255 / .68), rgb(255 255 255 / .16) 42%, transparent 82%),
+    radial-gradient(circle 96px at calc(var(--glass-local-x) + 22px) calc(var(--glass-local-y) + 14px), rgb(135 188 255 / .28), rgb(153 202 255 / .09) 48%, transparent 84%);
+  filter: blur(14px) saturate(118%);
+  transition: opacity 240ms var(--motion-spring);
+  will-change: opacity;
+}
 .dynamic-control-surface > :not(.dynamic-glass-light) { position: relative; z-index: 1; }
 .brand-lockup span { background: linear-gradient(145deg, #292a2f, #111216); box-shadow: inset 0 1px 0 rgb(255 255 255 / .18), 0 5px 12px rgb(18 22 31 / .18); }
 .sidebar::after { position: absolute; inset: 0 0 auto; height: 168px; content: ""; pointer-events: none; background: linear-gradient(180deg, rgb(255 255 255 / .22), transparent); }
 .brand-lockup, .library-nav, .sidebar-section, .local-note { position: relative; z-index: 1; }
 .sidebar { overflow: hidden; background: linear-gradient(155deg, rgb(248 249 252 / .77), rgb(230 234 241 / .61)); border-right-color: rgb(255 255 255 / .72); box-shadow: inset -1px 0 0 rgb(255 255 255 / .38), 12px 0 42px rgb(42 56 84 / .055); backdrop-filter: blur(30px) saturate(165%) contrast(1.02); }
-.sidebar .dynamic-glass-light { inset: 0; background: radial-gradient(ellipse 90px 150px at var(--glass-local-x) var(--glass-local-y), rgb(255 255 255 / .72), rgb(190 220 255 / .14) 45%, transparent 74%); }
 .library-nav { --nav-row-step: 36px; position: relative; }
 .nav-selection-lens { position: absolute; z-index: 0; top: 0; right: 0; left: 0; height: 34px; border: 1px solid rgb(255 255 255 / .78); border-radius: 10px; pointer-events: none; opacity: 1; background: linear-gradient(135deg, rgb(255 255 255 / .86), rgb(238 245 255 / .52)); box-shadow: inset 0 1px 0 rgb(255 255 255 / .96), inset 0 -1px 0 rgb(122 155 197 / .08), 0 8px 20px rgb(51 72 108 / .11), 0 1px 2px rgb(39 56 82 / .06); backdrop-filter: blur(19px) saturate(175%); transform: translate3d(0, calc(var(--nav-index) * var(--nav-row-step)), 0); transition: transform 440ms var(--motion-spring), opacity 180ms ease-out; will-change: transform; }
 .library-nav.has-no-selection .nav-selection-lens { opacity: 0; }
@@ -149,7 +161,6 @@ h1 { font-size: clamp(34px, 4vw, 46px); line-height: 1.07; }.toolbar-actions { d
 .nav-item, .course-row, .add-course { border-radius: 9px; }
 .course-row:hover, .add-course:hover, .course-row.is-selected { background: rgb(255 255 255 / .63); box-shadow: inset 0 1px 0 rgb(255 255 255 / .6); }
 .toolbar { position: sticky; z-index: 4; top: 18px; overflow: hidden; min-height: 76px; margin-bottom: 46px; padding: 14px 15px 14px 20px; border-color: rgb(255 255 255 / .78); border-radius: 22px; background: linear-gradient(140deg, rgb(255 255 255 / .7), rgb(238 245 255 / .34) 55%, rgb(255 255 255 / .46)); box-shadow: inset 0 1px 0 rgb(255 255 255 / .94), inset 0 -1px 0 rgb(96 126 164 / .07), 0 18px 48px rgb(37 55 88 / .105), 0 2px 7px rgb(37 55 88 / .05); backdrop-filter: blur(29px) saturate(180%) contrast(1.035); }
-.toolbar .dynamic-glass-light { inset: 0; background: radial-gradient(ellipse 180px 74px at var(--glass-local-x) var(--glass-local-y), rgb(255 255 255 / .84), rgb(190 222 255 / .16) 44%, transparent 74%); }
 .toolbar h1 { font-size: clamp(31px, 3.35vw, 42px); }
 .toolbar-actions { padding-top: 2px; }
 .toolbar-button { position: relative; overflow: hidden; border-color: rgb(255 255 255 / .88); border-radius: 11px; background: linear-gradient(145deg, rgb(255 255 255 / .75), rgb(239 246 255 / .4)); box-shadow: inset 0 1px 0 #fff, inset 0 -1px 0 rgb(105 137 177 / .08), 0 5px 14px rgb(45 64 94 / .09); }
@@ -592,8 +603,8 @@ input:not([type="radio"]):not([type="checkbox"]) { min-height: 44px; }
 .toolbar-button { min-width: 44px; min-height: 44px; border-radius: 13px; }
 .toolbar-ingest-action { padding: 0 15px; }
 .dynamic-control-surface[data-material="navigation"] .dynamic-glass-light {
-  opacity: calc(var(--glass-active) * .32);
-  transition: opacity 220ms var(--motion-spring);
+  opacity: calc(var(--glass-active) * .2);
+  transition: opacity 240ms var(--motion-spring);
 }
 
 .dashboard-content { gap: 26px 28px; }
