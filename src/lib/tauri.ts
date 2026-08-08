@@ -11,7 +11,8 @@ export type LibraryHealth = {
 };
 
 export const getLibraryHealth = () => invoke<LibraryHealth>('get_library_health');
-export const createLibraryBackup = (destination: string) => invoke<void>('create_library_backup', { destination });
+export type CompleteBackupReport = { originalCount: number; totalBytes: number };
+export const createLibraryBackup = (destination: string) => invoke<CompleteBackupReport>('create_library_backup', { destination });
 export const restoreLibraryBackup = (source: string) => invoke<string>('restore_library_backup', { source });
 export const hasAiApiKey = () => invoke<boolean>('has_ai_api_key');
 export const saveAiApiKey = (apiKey: string) => invoke<void>('save_ai_api_key', { apiKey });

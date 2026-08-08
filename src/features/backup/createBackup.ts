@@ -1,9 +1,8 @@
 import { save } from '@tauri-apps/plugin-dialog';
-import { createLibraryBackup } from '../../lib/tauri';
+import { createLibraryBackup, type CompleteBackupReport } from '../../lib/tauri';
 
-export async function createBackup(): Promise<boolean> {
-  const destination = await save({ defaultPath: '错题智库-本地备份.sqlite3', filters: [{ name: 'SQLite 备份', extensions: ['sqlite3'] }] });
-  if (!destination) return false;
-  await createLibraryBackup(destination);
-  return true;
+export async function createBackup(): Promise<CompleteBackupReport | null> {
+  const destination = await save({ defaultPath: '错题智库-完整备份.czkbackup', filters: [{ name: '错题智库完整备份', extensions: ['czkbackup'] }] });
+  if (!destination) return null;
+  return createLibraryBackup(destination);
 }

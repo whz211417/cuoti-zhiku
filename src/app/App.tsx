@@ -295,7 +295,8 @@ export function App() {
   const backUpLibrary = async () => {
     setIsBackingUp(true);
     try {
-      if (await createBackup()) setExportStatus('本地备份已创建。');
+      const result = await createBackup();
+      if (result) setExportStatus(`完整备份已创建，已收录 ${result.originalCount} 份原件。`);
     } catch {
       setExportStatus('备份没有完成。请确认目标文件名尚未存在后重试。');
     } finally {
@@ -507,7 +508,7 @@ export function App() {
                 </div>
                 <div className="preference-row preference-obsidian"><ObsidianSettings courseId={selectedCourseId} /></div>
                 <div className="preference-row preference-export">
-                  <div><strong>本地资料库备份</strong><span>生成 SQLite 一致性快照；恢复前会另行确认，不会静默覆盖当前资料。</span></div>
+                  <div><strong>完整本地备份</strong><span>单文件保存题目、课程、复习记录和全部原件，并逐项校验；仍可恢复旧 SQLite 快照。</span></div>
                   <div className="export-actions">
                     <button disabled={isBackingUp || isRestoring} onClick={() => void backUpLibrary()} type="button">{isBackingUp ? '正在备份…' : '创建备份'}</button>
                     <button disabled={isBackingUp || isRestoring} onClick={() => void restoreLibrary()} type="button">{isRestoring ? '正在验证…' : '从备份恢复'}</button>
