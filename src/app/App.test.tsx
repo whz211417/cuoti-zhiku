@@ -26,6 +26,7 @@ vi.mock('../features/knowledge/KnowledgeNetwork', () => ({
   ),
 }));
 vi.mock('../features/settings/AiProviderSettings', () => ({ AiProviderSettings: () => <div>AI 设置</div> }));
+vi.mock('../features/settings/ObsidianSettings', () => ({ ObsidianSettings: () => <div>Obsidian 导出</div> }));
 vi.mock('../lib/dates', () => ({ localCalendarDate, timeGreeting: () => '早上好' }));
 vi.mock('../lib/preferences', () => ({
   getMotionPreferences: () => ({ reduceMotion: true, reduceTransparency: false }),

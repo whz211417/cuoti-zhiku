@@ -19,6 +19,7 @@ import { ProblemDocument } from '../features/problems/ProblemDocument';
 import { ReviewReader } from '../features/review/ReviewReader';
 import { CommandPalette } from '../features/search/CommandPalette';
 import { AiProviderSettings } from '../features/settings/AiProviderSettings';
+import { ObsidianSettings } from '../features/settings/ObsidianSettings';
 import { localCalendarDate, timeGreeting } from '../lib/dates';
 import { getMotionPreferences } from '../lib/preferences';
 import { completeReview, getDueReviewProblems, importCourseMaterialFile, type Course, type DashboardOverview, type RecentProblem, type ReviewProblem } from '../lib/tauri';
@@ -504,6 +505,7 @@ export function App() {
                     <button disabled={exportingBook !== null} onClick={() => void exportBook('answers')} type="button">{exportingBook === 'answers' ? '正在导出…' : '导出答案解析册'}</button>
                   </div>
                 </div>
+                <div className="preference-row preference-obsidian"><ObsidianSettings courseId={selectedCourseId} /></div>
                 <div className="preference-row preference-export">
                   <div><strong>本地资料库备份</strong><span>生成 SQLite 一致性快照；恢复前会另行确认，不会静默覆盖当前资料。</span></div>
                   <div className="export-actions">

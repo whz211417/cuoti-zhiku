@@ -138,6 +138,13 @@ export type KnowledgeGraph = {
   problems: KnowledgeProblem[];
   edges: KnowledgeEdge[];
 };
+export type ObsidianExportReport = {
+  written: number;
+  unchanged: number;
+  conflicts: number;
+  failed: number;
+  courseCanvasPath: string | null;
+};
 
 export const getInboxItems = () => invoke<InboxItem[]>('get_inbox_items');
 export const getDashboardOverview = (today: string) =>
@@ -147,6 +154,10 @@ export const searchLibrary = (query: string, limit = 12) =>
 export const getAllProblems = () => invoke<RecentProblem[]>('get_all_problems');
 export const getKnowledgeGraph = (courseId: string | null, today: string) =>
   invoke<KnowledgeGraph>('get_knowledge_graph', { courseId, today });
+export const exportObsidianVault = (destination: string, courseId: string | null, today: string) =>
+  invoke<ObsidianExportReport>('export_obsidian_vault', { destination, courseId, today });
+export const openObsidianCanvas = (canvasPath: string) =>
+  invoke<void>('open_obsidian_canvas', { canvasPath });
 
 export type ProblemField = {
   kind: string;

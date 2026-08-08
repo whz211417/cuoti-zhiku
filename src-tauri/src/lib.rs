@@ -54,6 +54,8 @@ pub fn run() {
             commands::inbox::get_inbox_items,
             commands::inbox::import_files,
             commands::knowledge::get_knowledge_graph,
+            commands::knowledge::export_obsidian_vault,
+            commands::knowledge::open_obsidian_canvas,
             commands::materials::import_course_material_file,
             commands::materials::save_course_material,
             commands::materials::search_course_material,

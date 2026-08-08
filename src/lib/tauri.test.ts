@@ -15,6 +15,8 @@ import {
   saveAiProviderKey,
   searchLibrary,
   testAiProvider,
+  exportObsidianVault,
+  openObsidianCanvas,
 } from './tauri';
 
 vi.mock('@tauri-apps/api/core', () => ({ invoke: vi.fn() }));
@@ -72,6 +74,20 @@ test('requests the course-scoped local knowledge graph', async () => {
   expect(invoke).toHaveBeenCalledWith('get_knowledge_graph', {
     courseId: 'macro',
     today: '2026-08-08',
+  });
+});
+
+test('exports and opens a managed Obsidian knowledge vault through native commands', async () => {
+  vi.mocked(invoke).mockResolvedValue({ written: 5, unchanged: 0, conflicts: 0, failed: 0, courseCanvasPath: 'C:/Vault/错题智库/宏观/课程知识网络.canvas' });
+
+  await exportObsidianVault('C:/Vault', 'macro', '2026-08-08');
+  expect(invoke).toHaveBeenCalledWith('export_obsidian_vault', {
+    destination: 'C:/Vault', courseId: 'macro', today: '2026-08-08',
+  });
+
+  await openObsidianCanvas('C:/Vault/错题智库/宏观/课程知识网络.canvas');
+  expect(invoke).toHaveBeenCalledWith('open_obsidian_canvas', {
+    canvasPath: 'C:/Vault/错题智库/宏观/课程知识网络.canvas',
   });
 });
 

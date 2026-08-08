@@ -99,6 +99,38 @@ pub struct MaterialSnippet {
     pub excerpt: String,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ObsidianExportCourse {
+    pub id: String,
+    pub name: String,
+    pub term: String,
+    pub color: String,
+    pub updated_at: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ObsidianExportAttachment {
+    pub filename: String,
+    pub relative_path: std::path::PathBuf,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ObsidianExportProblem {
+    pub id: String,
+    pub course_id: String,
+    pub title: String,
+    pub updated_at: String,
+    pub fields: HashMap<String, String>,
+    pub attachments: Vec<ObsidianExportAttachment>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ObsidianExportSnapshot {
+    pub courses: Vec<ObsidianExportCourse>,
+    pub problems: Vec<ObsidianExportProblem>,
+    pub graph: KnowledgeGraph,
+}
+
 #[derive(Debug)]
 pub enum DatabaseError {
     Io(std::io::Error),
@@ -441,6 +473,84 @@ impl Database {
             topics,
             problems,
             edges,
+        })
+    }
+
+    pub fn obsidian_export_snapshot(
+        &self,
+        course_id: Option<&str>,
+        today: &str,
+    ) -> DatabaseResult<ObsidianExportSnapshot> {
+        let graph = self.knowledge_graph(course_id, today)?;
+        let connection = self.connection()?;
+        let mut course_statement = connection.prepare(
+            "SELECT id, name, term, color, updated_at FROM courses
+             WHERE archived_at IS NULL AND (?1 IS NULL OR id = ?1)
+             ORDER BY created_at ASC",
+        )?;
+        let courses = course_statement
+            .query_map([course_id], |row| {
+                Ok(ObsidianExportCourse {
+                    id: row.get(0)?,
+                    name: row.get(1)?,
+                    term: row.get(2)?,
+                    color: row.get(3)?,
+                    updated_at: row.get(4)?,
+                })
+            })?
+            .collect::<Result<Vec<_>, _>>()?;
+
+        let mut problem_statement = connection.prepare(
+            "SELECT id, course_id, title, updated_at FROM problems
+             WHERE status <> 'trash' AND (?1 IS NULL OR course_id = ?1)
+             ORDER BY created_at ASC",
+        )?;
+        let problem_rows = problem_statement
+            .query_map([course_id], |row| {
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, String>(1)?,
+                    row.get::<_, String>(2)?,
+                    row.get::<_, String>(3)?,
+                ))
+            })?
+            .collect::<Result<Vec<_>, _>>()?;
+        let mut fields_statement = connection.prepare(
+            "SELECT kind, value FROM problem_fields WHERE problem_id = ?1",
+        )?;
+        let mut attachments_statement = connection.prepare(
+            "SELECT item.filename, attachment.relative_path
+             FROM inbox_items item
+             JOIN attachments attachment ON attachment.id = item.attachment_id
+             WHERE item.problem_id = ?1 ORDER BY item.created_at ASC",
+        )?;
+        let mut problems = Vec::with_capacity(problem_rows.len());
+        for (id, problem_course_id, title, updated_at) in problem_rows {
+            let fields = fields_statement
+                .query_map([&id], |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?)))?
+                .collect::<Result<HashMap<_, _>, _>>()?;
+            let attachments = attachments_statement
+                .query_map([&id], |row| {
+                    Ok(ObsidianExportAttachment {
+                        filename: row.get(0)?,
+                        relative_path: std::path::PathBuf::from(row.get::<_, String>(1)?),
+                    })
+                })?
+                .collect::<Result<Vec<_>, _>>()?;
+            problems.push(ObsidianExportProblem {
+                id,
+                course_id: problem_course_id,
+                title,
+                updated_at,
+                fields,
+                attachments,
+            });
+        }
+
+        Ok(ObsidianExportSnapshot {
+            courses,
+            problems,
+            graph,
         })
     }
 
