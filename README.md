@@ -68,12 +68,12 @@ pnpm test:rust
 
 Windows x64 安装包由 Tauri NSIS 目标生成。
 
-## 0.3.0 Windows 安装包
+## 0.3.1 Windows 安装包
 
-- 文件：`release/错题智库_0.3.0_x64-setup.exe`
-- 大小：7,863,155 字节
-- SHA-256：`B90FC9FDC92A563726A26CBCE76DD4648E865A24DC65F6BEC8886A9354AD762F`
+- 文件：`release/错题智库_0.3.1_x64-setup.exe`
+- 大小：7,921,182 字节
+- SHA-256：`A1FF72B287F265B00D20113D7D2E1D0B0082854CE53CB1CCCFBE1B5904B66C67`
 - 安装范围：当前 Windows 用户
-- 默认安装位置：`%LOCALAPPDATA%\Programs\cuoti-zhiku`
+- 默认安装位置：首次安装由安装器选择；升级时沿用已有位置
 
-该安装包未做商业代码签名。如 Windows 显示来源确认，请先核对以上 SHA-256。
+0.3.1 修复 GNU Windows 安装包遗漏 `WebView2Loader.dll` 的问题；0.3.0 安装包已停止使用。该安装包未做商业代码签名。如 Windows 显示来源确认，请先核对以上 SHA-256。

@@ -2,7 +2,7 @@
 
 ## 安装
 
-1. 运行 `错题智库_0.3.0_x64-setup.exe`。
+1. 运行 `错题智库_0.3.1_x64-setup.exe`。
 2. 当前测试包没有商业代码签名。若 Windows SmartScreen 显示提示，请先核对安装包来源与 SHA-256，再决定是否继续。
 3. 安装模式为当前 Windows 用户，不要求把资料上传到云端。
 
@@ -29,9 +29,9 @@
 发布方应同时提供与安装包对应的文件大小和 SHA-256。下载后可在 PowerShell 中校验；不要沿用其他构建或旧版本的哈希值。
 
 ```powershell
-Get-Item -LiteralPath '.\错题智库_0.3.0_x64-setup.exe' |
+Get-Item -LiteralPath '.\错题智库_0.3.1_x64-setup.exe' |
   Select-Object Name, Length, LastWriteTime
-Get-FileHash -LiteralPath '.\错题智库_0.3.0_x64-setup.exe' -Algorithm SHA256
+Get-FileHash -LiteralPath '.\错题智库_0.3.1_x64-setup.exe' -Algorithm SHA256
 ```
 
 ## 当前发布边界
