@@ -9,7 +9,8 @@ import { restoreBackup } from '../features/backup/restoreBackup';
 import { ArchiveLibrary } from '../features/archive/ArchiveLibrary';
 import { CourseSidebar } from '../features/courses/CourseSidebar';
 import { LearningDashboard } from '../features/dashboard/LearningDashboard';
-import { saveProblemBook, type BookKind } from '../features/export/exportBooks';
+import { saveProblemBook, type BookFormat, type BookKind } from '../features/export/exportBooks';
+import { ClipboardImageCapture } from '../features/ingest/ClipboardImageCapture';
 import { GlobalFileDrop } from '../features/ingest/GlobalFileDrop';
 import { IngestDropzone } from '../features/inbox/IngestDropzone';
 import { selectProblemFiles } from '../features/inbox/selectProblemFiles';
@@ -25,6 +26,20 @@ import { getMotionPreferences } from '../lib/preferences';
 import { completeReview, getDueReviewProblems, importCourseMaterialFile, type Course, type DashboardOverview, type RecentProblem, type ReviewProblem } from '../lib/tauri';
 
 type Workspace = 'overview' | 'inbox' | 'review' | 'knowledge' | 'archive';
+type ReviewGrade = 'forgot' | 'hard' | 'familiar' | 'mastered';
+type ReviewSession = {
+  initialCount: number;
+  completed: number;
+  grades: Record<ReviewGrade, number>;
+  nextReviewOn: string | null;
+};
+
+const emptyReviewSession = (initialCount: number): ReviewSession => ({
+  initialCount,
+  completed: 0,
+  grades: { forgot: 0, hard: 0, familiar: 0, mastered: 0 },
+  nextReviewOn: null,
+});
 
 const workspaceTitles: Record<Workspace, { eyebrow: string; title: string }> = {
   overview: { eyebrow: '学习节奏', title: '学习总览' },
@@ -51,6 +66,7 @@ export function App() {
   const [isGrading, setIsGrading] = useState(false);
   const [gradeError, setGradeError] = useState<string | null>(null);
   const [failedGrade, setFailedGrade] = useState<'forgot' | 'hard' | 'familiar' | 'mastered' | null>(null);
+  const [reviewSession, setReviewSession] = useState<ReviewSession | null>(null);
   const [recentProblems, setRecentProblems] = useState<RecentProblem[]>([]);
   const [exportStatus, setExportStatus] = useState<string | null>(null);
   const [exportingBook, setExportingBook] = useState<BookKind | null>(null);
@@ -103,10 +119,14 @@ export function App() {
     setReviewLoadError(null);
     setGradeError(null);
     setFailedGrade(null);
+    setReviewSession(null);
     const today = localCalendarDate();
     try {
       const queue = await getDueReviewProblems(today);
-      if (reviewRequestRef.current === request) setReviewQueue(queue);
+      if (reviewRequestRef.current === request) {
+        setReviewQueue(queue);
+        setReviewSession(emptyReviewSession(queue.length));
+      }
     } catch {
       if (reviewRequestRef.current === request) {
         setReviewLoadError('复习队列暂时无法读取。请重试。');
@@ -187,7 +207,7 @@ export function App() {
     return () => window.removeEventListener('keydown', openSearch);
   }, []);
 
-  const gradeCurrentReview = async (grade: 'forgot' | 'hard' | 'familiar' | 'mastered') => {
+  const gradeCurrentReview = async (grade: ReviewGrade) => {
     if (gradeInFlightRef.current) return;
     const current = reviewQueue[0];
     if (!current) return;
@@ -196,10 +216,22 @@ export function App() {
     setGradeError(null);
     setFailedGrade(null);
     try {
-      await completeReview(current.id, grade, localCalendarDate());
+      const schedule = await completeReview(current.id, grade, localCalendarDate());
       setReviewQueue((currentQueue) => (
         currentQueue[0]?.id === current.id ? currentQueue.slice(1) : currentQueue
       ));
+      setReviewSession((session) => {
+        const currentSession = session ?? emptyReviewSession(reviewQueue.length);
+        const nextReviewOn = schedule?.nextReviewOn;
+        return {
+          ...currentSession,
+          completed: currentSession.completed + 1,
+          grades: { ...currentSession.grades, [grade]: currentSession.grades[grade] + 1 },
+          nextReviewOn: nextReviewOn && (!currentSession.nextReviewOn || nextReviewOn < currentSession.nextReviewOn)
+            ? nextReviewOn
+            : currentSession.nextReviewOn,
+        };
+      });
       refreshOverview();
     } catch {
       setFailedGrade(grade);
@@ -279,11 +311,13 @@ export function App() {
     pendingMaterialPathRef.current = null;
   };
 
-  const exportBook = async (kind: BookKind) => {
+  const exportBook = async (kind: BookKind, format: BookFormat = 'markdown') => {
     setExportingBook(kind);
     setExportStatus(null);
     try {
-      const result = await saveProblemBook(kind);
+      const result = format === 'markdown'
+        ? await saveProblemBook(kind)
+        : await saveProblemBook(kind, format);
       if (!result.cancelled) setExportStatus(`已导出 ${result.problemCount} 道题目。`);
     } catch {
       setExportStatus('导出没有完成。请确认目标文件没有被其他程序占用后重试。');
@@ -353,6 +387,11 @@ export function App() {
   return (
     <main aria-label="错题智库" className="app-shell" role="application">
       <GlobalFileDrop
+        courseId={selectedCourseId}
+        onImported={refreshOverview}
+        onOpenInbox={() => selectWorkspace('inbox')}
+      />
+      <ClipboardImageCapture
         courseId={selectedCourseId}
         onImported={refreshOverview}
         onOpenInbox={() => selectWorkspace('inbox')}
@@ -456,6 +495,23 @@ export function App() {
               standardAnswer={reviewQueue[0].standardAnswer}
               stem={reviewQueue[0].stem}
             />
+          ) : workspace === 'review' && !isReviewLoading && reviewSession && reviewSession.completed > 0 ? (
+            <section className="review-summary" aria-label="本次复习总结">
+              <div className="review-summary__mark"><ShieldCheck aria-hidden="true" size={27} /></div>
+              <p className="eyebrow">本次复习已保存 · {reviewSession.completed}/{reviewSession.initialCount}</p>
+              <h2>完成 {reviewSession.completed} 道，今天收得很好。</h2>
+              <div className="review-summary__stats" aria-label="评分分布">
+                <span><strong>{reviewSession.grades.forgot}</strong><small>忘记</small></span>
+                <span><strong>{reviewSession.grades.hard}</strong><small>困难</small></span>
+                <span><strong>{reviewSession.grades.familiar}</strong><small>熟悉</small></span>
+                <span><strong>{reviewSession.grades.mastered}</strong><small>掌握</small></span>
+              </div>
+              <p>{reviewSession.nextReviewOn ? `最早下一次复习：${reviewSession.nextReviewOn}` : '新的复习日期已写入本地资料库。'}</p>
+              <div className="review-summary__actions">
+                <button onClick={() => selectWorkspace('overview')} type="button">返回学习总览</button>
+                <button onClick={() => selectWorkspace('knowledge')} type="button">查看知识网络</button>
+              </div>
+            </section>
           ) : workspace === 'review' ? (
             <section className="focus-empty" aria-label="复习队列">
               <div className="focus-empty-icon"><BookOpenCheck aria-hidden="true" size={24} /></div>
@@ -500,10 +556,12 @@ export function App() {
                 </div>
                 <div className="preference-row preference-ai"><AiProviderSettings /></div>
                 <div className="preference-row preference-export">
-                  <div><strong>导出本地题册</strong><span>选择位置后生成 Markdown；题目册不会包含标准答案。</span></div>
+                  <div><strong>导出本地题册</strong><span>Markdown 便于继续编辑；打印版针对 A4 排版，可直接保存 PDF。题目册绝不包含标准答案。</span></div>
                   <div className="export-actions">
-                    <button disabled={exportingBook !== null} onClick={() => void exportBook('questions')} type="button">{exportingBook === 'questions' ? '正在导出…' : '导出题目册'}</button>
-                    <button disabled={exportingBook !== null} onClick={() => void exportBook('answers')} type="button">{exportingBook === 'answers' ? '正在导出…' : '导出答案解析册'}</button>
+                    <button aria-label="导出题目册" disabled={exportingBook !== null} onClick={() => void exportBook('questions')} type="button">{exportingBook === 'questions' ? '正在导出…' : '题目 · Markdown'}</button>
+                    <button aria-label="导出答案解析册" disabled={exportingBook !== null} onClick={() => void exportBook('answers')} type="button">{exportingBook === 'answers' ? '正在导出…' : '解析 · Markdown'}</button>
+                    <button aria-label="导出可打印题目册" disabled={exportingBook !== null} onClick={() => void exportBook('questions', 'print')} type="button">题目 · 打印版</button>
+                    <button aria-label="导出可打印答案解析册" disabled={exportingBook !== null} onClick={() => void exportBook('answers', 'print')} type="button">解析 · 打印版</button>
                   </div>
                 </div>
                 <div className="preference-row preference-obsidian"><ObsidianSettings courseId={selectedCourseId} /></div>

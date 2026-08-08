@@ -3,7 +3,7 @@ import { beforeEach, expect, test, vi } from 'vitest';
 import { saveProblemBook } from './exportBooks';
 
 vi.mock('@tauri-apps/plugin-dialog', () => ({ save: vi.fn() }));
-vi.mock('../../lib/tauri', () => ({ exportProblemBook: vi.fn() }));
+vi.mock('../../lib/tauri', () => ({ exportProblemBook: vi.fn(), exportProblemBookHtml: vi.fn() }));
 
 beforeEach(() => vi.clearAllMocks());
 
@@ -23,4 +23,14 @@ test('does not export anything when the save dialog is cancelled', async () => {
 
   await expect(saveProblemBook('questions')).resolves.toEqual({ cancelled: true, problemCount: 0 });
   expect(exportProblemBook).not.toHaveBeenCalled();
+});
+
+test('exports an offline A4 HTML edition for printing', async () => {
+  vi.mocked(save).mockResolvedValue('C:/Users/test/Documents/题目册-打印版.html');
+  const { exportProblemBookHtml } = await import('../../lib/tauri');
+  vi.mocked(exportProblemBookHtml).mockResolvedValue({ markdown: '# 题目册', problemCount: 8 });
+
+  await expect(saveProblemBook('questions', 'print')).resolves.toEqual({ cancelled: false, problemCount: 8 });
+  expect(save).toHaveBeenCalledWith(expect.objectContaining({ defaultPath: '错题智库-题目册-打印版.html' }));
+  expect(exportProblemBookHtml).toHaveBeenCalledWith('C:/Users/test/Documents/题目册-打印版.html', false);
 });

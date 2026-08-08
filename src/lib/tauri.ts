@@ -232,6 +232,8 @@ export const runProblemAnalysis = (
 
 export const importFiles = (paths: string[], courseId?: string) =>
   invoke<ImportFileResult[]>('import_files', { paths, courseId });
+export const importClipboardImage = (dataBase64: string, mimeType: string, courseId?: string) =>
+  invoke<InboxItem>('import_clipboard_image', { dataBase64, mimeType, courseId });
 
 export type ReviewProblem = { id: string; stem: string; ownAnswer: string; standardAnswer: string; explanation: string };
 export const getDueReviewProblems = (today: string) => invoke<ReviewProblem[]>('get_due_review_problems', { today });
@@ -241,3 +243,5 @@ export const completeReview = (problemId: string, grade: string, reviewedOn: str
 export type ProblemBook = { markdown: string; problemCount: number };
 export const exportProblemBook = (destination: string, includeAnswers: boolean) =>
   invoke<ProblemBook>('export_problem_book', { destination, includeAnswers });
+export const exportProblemBookHtml = (destination: string, includeAnswers: boolean) =>
+  invoke<ProblemBook>('export_problem_book_html', { destination, includeAnswers });

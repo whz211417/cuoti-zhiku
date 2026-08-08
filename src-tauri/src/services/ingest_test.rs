@@ -2,7 +2,22 @@ use std::fs;
 
 use crate::db::database::Database;
 
-use super::ingest::import_original;
+use super::ingest::{import_original, import_original_bytes};
+
+#[test]
+fn stores_clipboard_image_bytes_with_the_same_content_addressing_rules() {
+    let temp = tempfile::tempdir().expect("temporary library");
+    let imported = import_original_bytes(b"clipboard-png", "png", &temp.path().join("originals"))
+        .expect("clipboard image");
+
+    assert_eq!(imported.mime_type, "image/png");
+    assert_eq!(imported.byte_size, 13);
+    assert!(temp
+        .path()
+        .join("originals")
+        .join(imported.relative_path)
+        .is_file());
+}
 
 #[test]
 fn stores_markdown_and_text_originals() {

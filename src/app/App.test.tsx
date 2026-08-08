@@ -481,6 +481,20 @@ test('does not refresh after a failed review grade', async () => {
   expect(screen.getByRole('status', { name: '总览刷新令牌' })).toHaveTextContent('0');
 });
 
+test('shows a saved session summary after grading the final due problem', async () => {
+  const user = userEvent.setup();
+  getDueReviewProblems.mockResolvedValue([{ id: 'review-summary', stem: 'summary stem', ownAnswer: '', standardAnswer: '', explanation: '' }]);
+  completeReview.mockResolvedValue({ intervalDays: 9, nextReviewOn: '2026-08-08' });
+  render(<App />);
+
+  await user.click(screen.getByRole('button', { name: '开始复习' }));
+  await user.click(await screen.findByRole('button', { name: '完成评分' }));
+
+  expect(await screen.findByRole('heading', { name: '完成 1 道，今天收得很好。' })).toBeVisible();
+  expect(screen.getByLabelText('评分分布')).toHaveTextContent('1掌握');
+  expect(screen.getByText('最早下一次复习：2026-08-08')).toBeVisible();
+});
+
 test('traps focus in preferences, closes on Escape, and restores the settings trigger', async () => {
   const user = userEvent.setup();
   render(<App />);
@@ -566,7 +580,7 @@ test('keeps a rejected review visible and retries the same grade before advancin
   expect(screen.getByText('retry review')).toBeVisible();
   await user.click(screen.getByRole('button', { name: '重新保存评分' }));
   await waitFor(() => expect(completeReview).toHaveBeenCalledTimes(2));
-  expect(await screen.findByText('今天没有待复习内容')).toBeVisible();
+  expect(await screen.findByRole('heading', { name: '完成 1 道，今天收得很好。' })).toBeVisible();
 });
 
 test('shows a distinct review load error and recovers through retry', async () => {

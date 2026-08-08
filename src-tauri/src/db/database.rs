@@ -515,9 +515,8 @@ impl Database {
                 ))
             })?
             .collect::<Result<Vec<_>, _>>()?;
-        let mut fields_statement = connection.prepare(
-            "SELECT kind, value FROM problem_fields WHERE problem_id = ?1",
-        )?;
+        let mut fields_statement =
+            connection.prepare("SELECT kind, value FROM problem_fields WHERE problem_id = ?1")?;
         let mut attachments_statement = connection.prepare(
             "SELECT item.filename, attachment.relative_path
              FROM inbox_items item
@@ -527,7 +526,9 @@ impl Database {
         let mut problems = Vec::with_capacity(problem_rows.len());
         for (id, problem_course_id, title, updated_at) in problem_rows {
             let fields = fields_statement
-                .query_map([&id], |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?)))?
+                .query_map([&id], |row| {
+                    Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+                })?
                 .collect::<Result<HashMap<_, _>, _>>()?;
             let attachments = attachments_statement
                 .query_map([&id], |row| {
@@ -1109,6 +1110,25 @@ impl Database {
         Ok(book)
     }
 
+    pub fn write_problem_book_html(
+        &self,
+        destination: &Path,
+        include_answers: bool,
+    ) -> DatabaseResult<ProblemBook> {
+        let book = self.export_problem_book(include_answers)?;
+        let filename = destination
+            .file_name()
+            .and_then(|name| name.to_str())
+            .filter(|name| !name.is_empty())
+            .ok_or_else(|| DatabaseError::Conflict("请选择有效的导出文件名。".to_owned()))?;
+        let temporary =
+            destination.with_file_name(format!(".{filename}.{}.partial", record_id("print")));
+        let html = printable_problem_book_html(&book.markdown);
+        std::fs::write(&temporary, html.as_bytes())?;
+        std::fs::rename(temporary, destination)?;
+        Ok(book)
+    }
+
     pub fn with_transaction<T>(
         &self,
         work: impl FnOnce(&Transaction<'_>) -> DatabaseResult<T>,
@@ -1381,6 +1401,47 @@ fn append_markdown_section(markdown: &mut String, title: &str, value: &str) {
     if !value.is_empty() {
         markdown.push_str(&format!("\n**{title}**\n\n{value}\n"));
     }
+}
+
+fn printable_problem_book_html(markdown: &str) -> String {
+    let mut body = String::new();
+    for line in markdown.lines() {
+        let trimmed = line.trim();
+        if trimmed.is_empty() {
+            continue;
+        }
+        let (tag, value, class_name) = if let Some(value) = trimmed.strip_prefix("### ") {
+            ("h3", value, "problem")
+        } else if let Some(value) = trimmed.strip_prefix("## ") {
+            ("h2", value, "course")
+        } else if let Some(value) = trimmed.strip_prefix("# ") {
+            ("h1", value, "title")
+        } else if let Some(value) = trimmed.strip_prefix("> ") {
+            ("p", value, "note")
+        } else if trimmed.starts_with("**") && trimmed.ends_with("**") && trimmed.len() > 4 {
+            ("h4", &trimmed[2..trimmed.len() - 2], "section")
+        } else {
+            ("p", trimmed, "content")
+        };
+        body.push_str(&format!(
+            "<{tag} class=\"{class_name}\">{}</{tag}>",
+            escape_html(value)
+        ));
+    }
+    format!(
+        r#"<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>错题智库 · 打印文稿</title><style>
+@page{{size:A4;margin:18mm 17mm 20mm}}*{{box-sizing:border-box}}body{{max-width:176mm;margin:0 auto;color:#1d1d1f;background:#fff;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;font-size:11pt;line-height:1.75}}.print{{position:fixed;right:22px;top:18px;border:0;border-radius:10px;padding:9px 14px;color:#fff;background:#1677ff;font-weight:650;box-shadow:0 6px 20px #1677ff33;cursor:pointer}}h1{{margin:14mm 0 4mm;font-size:28pt;letter-spacing:-.04em}}.note{{color:#6e6e73;border-bottom:1px solid #d2d2d7;padding-bottom:7mm}}h2{{margin:12mm 0 5mm;padding-top:4mm;border-top:1px solid #d2d2d7;font-size:18pt;break-after:avoid}}h3{{margin:7mm 0 3mm;font-size:13pt;line-height:1.5;break-after:avoid}}h4{{margin:4mm 0 1mm;color:#6e6e73;font-size:9pt;letter-spacing:.08em}}p{{margin:0 0 3mm;white-space:pre-wrap;overflow-wrap:anywhere}}.problem{{counter-increment:problem}}@media print{{.print{{display:none}}h2{{break-before:page}}h2:first-of-type{{break-before:auto}}body{{max-width:none}}}}@media (prefers-color-scheme:dark) and (not print){{body{{color:#f5f5f7;background:#1c1c1e}}.note,h4{{color:#aeaeb2}}h2,.note{{border-color:#48484a}}}}
+</style></head><body><button class="print" onclick="window.print()">打印 / 保存 PDF</button><main>{body}</main></body></html>"#
+    )
+}
+
+fn escape_html(value: &str) -> String {
+    value
+        .replace('&', "&amp;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
+        .replace('"', "&quot;")
+        .replace('\'', "&#39;")
 }
 
 fn split_material_chunks(content: &str, maximum_characters: usize) -> Vec<String> {

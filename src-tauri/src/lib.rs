@@ -53,6 +53,7 @@ pub fn run() {
             commands::dashboard::get_all_problems,
             commands::inbox::get_inbox_items,
             commands::inbox::import_files,
+            commands::inbox::import_clipboard_image,
             commands::knowledge::get_knowledge_graph,
             commands::knowledge::export_obsidian_vault,
             commands::knowledge::open_obsidian_canvas,
@@ -63,7 +64,8 @@ pub fn run() {
             commands::problems::save_problem_field,
             commands::problems::complete_review,
             commands::problems::get_due_review_problems,
-            commands::problems::export_problem_book
+            commands::problems::export_problem_book,
+            commands::problems::export_problem_book_html
         ])
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())

@@ -65,3 +65,15 @@ pub fn export_problem_book(
         .write_problem_book(std::path::Path::new(&destination), include_answers)
         .map_err(|error| error.to_string())
 }
+
+#[tauri::command]
+pub fn export_problem_book_html(
+    state: State<'_, AppState>,
+    destination: String,
+    include_answers: bool,
+) -> Result<crate::db::database::ProblemBook, String> {
+    state
+        .database
+        .write_problem_book_html(std::path::Path::new(&destination), include_answers)
+        .map_err(|error| error.to_string())
+}

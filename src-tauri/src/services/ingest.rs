@@ -45,6 +45,27 @@ pub fn import_original(
 ) -> Result<ImportedOriginal, IngestError> {
     let (extension, mime_type) = supported_file_type(source)?;
     let bytes = fs::read(source)?;
+    store_original_bytes(&bytes, &extension, &mime_type, originals_root)
+}
+
+pub fn import_original_bytes(
+    bytes: &[u8],
+    extension: &str,
+    originals_root: &Path,
+) -> Result<ImportedOriginal, IngestError> {
+    let normalized = extension.trim_start_matches('.').to_ascii_lowercase();
+    let mime_type = supported_extension(&normalized).ok_or_else(|| {
+        IngestError::UnsupportedFile(PathBuf::from(format!("clipboard.{normalized}")))
+    })?;
+    store_original_bytes(bytes, &normalized, mime_type, originals_root)
+}
+
+fn store_original_bytes(
+    bytes: &[u8],
+    extension: &str,
+    mime_type: &str,
+    originals_root: &Path,
+) -> Result<ImportedOriginal, IngestError> {
     let sha256 = format!("{:x}", Sha256::digest(&bytes));
     let relative_path = PathBuf::from(&sha256[0..2])
         .join(&sha256[2..4])
@@ -55,7 +76,7 @@ pub fn import_original(
         return Ok(ImportedOriginal {
             sha256,
             relative_path,
-            mime_type,
+            mime_type: mime_type.to_owned(),
             byte_size: bytes.len() as u64,
             duplicate: true,
         });
@@ -71,7 +92,7 @@ pub fn import_original(
         Ok(()) => Ok(ImportedOriginal {
             sha256,
             relative_path,
-            mime_type,
+            mime_type: mime_type.to_owned(),
             byte_size: fs::metadata(&destination)?.len(),
             duplicate: false,
         }),
@@ -80,7 +101,7 @@ pub fn import_original(
             Ok(ImportedOriginal {
                 sha256,
                 relative_path,
-                mime_type,
+                mime_type: mime_type.to_owned(),
                 byte_size: fs::metadata(&destination)?.len(),
                 duplicate: true,
             })
@@ -95,14 +116,19 @@ fn supported_file_type(source: &Path) -> Result<(String, String), IngestError> {
         .and_then(|value| value.to_str())
         .unwrap_or_default()
         .to_ascii_lowercase();
-    let mime_type = match extension.as_str() {
-        "png" => "image/png",
-        "jpg" | "jpeg" => "image/jpeg",
-        "webp" => "image/webp",
-        "pdf" => "application/pdf",
-        "md" | "markdown" => "text/markdown",
-        "txt" => "text/plain",
-        _ => return Err(IngestError::UnsupportedFile(source.to_path_buf())),
-    };
+    let mime_type = supported_extension(&extension)
+        .ok_or_else(|| IngestError::UnsupportedFile(source.to_path_buf()))?;
     Ok((extension, mime_type.to_owned()))
+}
+
+fn supported_extension(extension: &str) -> Option<&'static str> {
+    match extension {
+        "png" => Some("image/png"),
+        "jpg" | "jpeg" => Some("image/jpeg"),
+        "webp" => Some("image/webp"),
+        "pdf" => Some("application/pdf"),
+        "md" | "markdown" => Some("text/markdown"),
+        "txt" => Some("text/plain"),
+        _ => None,
+    }
 }

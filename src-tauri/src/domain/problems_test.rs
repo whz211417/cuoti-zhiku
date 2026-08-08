@@ -221,3 +221,44 @@ fn writes_a_completed_book_to_the_user_selected_destination() {
         exported.markdown
     );
 }
+
+#[test]
+fn writes_an_escaped_a4_print_book_without_leaking_answers() {
+    let temp = tempfile::tempdir().expect("temporary library");
+    let source = temp.path().join("print-export.png");
+    let destination = temp.path().join("题目册.html");
+    fs::write(&source, b"print export").expect("fixture source");
+    let database = Database::open(temp.path()).expect("database");
+    let original = import_original(&source, &temp.path().join("originals")).expect("original");
+    let inbox = database
+        .record_inbox_item("print-export.png", &original, None)
+        .expect("inbox item");
+    let version = database
+        .problem_version(&inbox.problem_id)
+        .expect("version");
+    let stem = database
+        .save_problem_field(
+            &inbox.problem_id,
+            ProblemFieldKind::Stem,
+            "比较 <供给> 与需求 & 均衡",
+            &version,
+        )
+        .expect("stem");
+    database
+        .save_problem_field(
+            &inbox.problem_id,
+            ProblemFieldKind::StandardAnswer,
+            "这段答案不能出现",
+            &stem.version,
+        )
+        .expect("answer");
+
+    let exported = database
+        .write_problem_book_html(&destination, false)
+        .expect("print book");
+    let html = fs::read_to_string(destination).expect("html");
+    assert_eq!(exported.problem_count, 1);
+    assert!(html.contains("@page"));
+    assert!(html.contains("比较 &lt;供给&gt; 与需求 &amp; 均衡"));
+    assert!(!html.contains("这段答案不能出现"));
+}
