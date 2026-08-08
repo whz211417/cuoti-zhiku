@@ -5,6 +5,7 @@ import {
   clearAiProviderKey,
   getAiCredentialMigrationStatus,
   getDashboardOverview,
+  getKnowledgeGraph,
   getLibraryHealth,
   hasAiProviderKey,
   isAiProviderActive,
@@ -61,6 +62,17 @@ test('requests the local dashboard and bounded search', async () => {
 
   await searchLibrary('IS-LM', 12);
   expect(invoke).toHaveBeenCalledWith('search_library', { query: 'IS-LM', limit: 12 });
+});
+
+test('requests the course-scoped local knowledge graph', async () => {
+  vi.mocked(invoke).mockResolvedValue({ courses: [], topics: [], problems: [], edges: [] });
+
+  await getKnowledgeGraph('macro', '2026-08-08');
+
+  expect(invoke).toHaveBeenCalledWith('get_knowledge_graph', {
+    courseId: 'macro',
+    today: '2026-08-08',
+  });
 });
 
 test('uses the bounded default search limit', async () => {

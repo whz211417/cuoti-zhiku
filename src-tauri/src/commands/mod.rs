@@ -4,5 +4,6 @@ pub mod courses;
 pub mod dashboard;
 pub mod health;
 pub mod inbox;
+pub mod knowledge;
 pub mod materials;
 pub mod problems;

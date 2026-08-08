@@ -53,6 +53,7 @@ pub fn run() {
             commands::dashboard::get_all_problems,
             commands::inbox::get_inbox_items,
             commands::inbox::import_files,
+            commands::knowledge::get_knowledge_graph,
             commands::materials::import_course_material_file,
             commands::materials::save_course_material,
             commands::materials::search_course_material,

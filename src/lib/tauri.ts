@@ -99,12 +99,54 @@ export type LibrarySearchResult = {
   updatedAt: string;
 };
 
+export type KnowledgeCourse = {
+  id: string;
+  name: string;
+  color: string;
+  topicCount: number;
+  problemCount: number;
+  dueCount: number;
+};
+export type KnowledgeProblem = {
+  id: string;
+  courseId: string;
+  title: string;
+  status: string;
+  due: boolean;
+  lastReviewedAt: string | null;
+};
+export type KnowledgeTopic = {
+  id: string;
+  courseId: string;
+  name: string;
+  problemCount: number;
+  dueCount: number;
+  masteryScore: number;
+  lastReviewedAt: string | null;
+  mistakeReasons: string[];
+  problemIds: string[];
+};
+export type KnowledgeEdge = {
+  id: string;
+  sourceId: string;
+  targetId: string;
+  kind: 'course_topic' | 'topic_problem';
+};
+export type KnowledgeGraph = {
+  courses: KnowledgeCourse[];
+  topics: KnowledgeTopic[];
+  problems: KnowledgeProblem[];
+  edges: KnowledgeEdge[];
+};
+
 export const getInboxItems = () => invoke<InboxItem[]>('get_inbox_items');
 export const getDashboardOverview = (today: string) =>
   invoke<DashboardOverview>('get_dashboard_overview', { today });
 export const searchLibrary = (query: string, limit = 12) =>
   invoke<LibrarySearchResult[]>('search_library', { query, limit });
 export const getAllProblems = () => invoke<RecentProblem[]>('get_all_problems');
+export const getKnowledgeGraph = (courseId: string | null, today: string) =>
+  invoke<KnowledgeGraph>('get_knowledge_graph', { courseId, today });
 
 export type ProblemField = {
   kind: string;
