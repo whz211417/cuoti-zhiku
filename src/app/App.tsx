@@ -1,6 +1,6 @@
 import { useGSAP } from '@gsap/react';
 import { gsap } from 'gsap';
-import { AlertCircle, Archive, BookOpenCheck, ChevronLeft, Inbox, LayoutDashboard, RefreshCw, Search, Settings, ShieldCheck, Upload, X } from 'lucide-react';
+import { AlertCircle, Archive, BookOpenCheck, ChevronLeft, Inbox, LayoutDashboard, Network, RefreshCw, Search, Settings, ShieldCheck, Upload, X } from 'lucide-react';
 import { type CSSProperties, useCallback, useEffect, useRef, useState } from 'react';
 import { DynamicControlSurface } from '../components/material/DynamicControlSurface';
 import { InspectorSurface } from '../components/material/InspectorSurface';
@@ -13,6 +13,7 @@ import { saveProblemBook, type BookKind } from '../features/export/exportBooks';
 import { GlobalFileDrop } from '../features/ingest/GlobalFileDrop';
 import { IngestDropzone } from '../features/inbox/IngestDropzone';
 import { selectProblemFiles } from '../features/inbox/selectProblemFiles';
+import { KnowledgeNetwork } from '../features/knowledge/KnowledgeNetwork';
 import { selectCourseMaterialFile } from '../features/materials/selectCourseMaterialFile';
 import { ProblemDocument } from '../features/problems/ProblemDocument';
 import { ReviewReader } from '../features/review/ReviewReader';
@@ -22,12 +23,13 @@ import { localCalendarDate, timeGreeting } from '../lib/dates';
 import { getMotionPreferences } from '../lib/preferences';
 import { completeReview, getDueReviewProblems, importCourseMaterialFile, type Course, type DashboardOverview, type RecentProblem, type ReviewProblem } from '../lib/tauri';
 
-type Workspace = 'overview' | 'inbox' | 'review' | 'archive';
+type Workspace = 'overview' | 'inbox' | 'review' | 'knowledge' | 'archive';
 
 const workspaceTitles: Record<Workspace, { eyebrow: string; title: string }> = {
   overview: { eyebrow: '学习节奏', title: '学习总览' },
   inbox: { eyebrow: '本地资料库', title: '待整理' },
   review: { eyebrow: '专注复习', title: '今日复习' },
+  knowledge: { eyebrow: '课程关系', title: '知识网络' },
   archive: { eyebrow: '个人档案', title: '全部档案' },
 };
 
@@ -65,6 +67,8 @@ export function App() {
   const activeTitle = selectedProblemId ? { eyebrow: '本地资料库', title: '题目档案' } : workspaceTitles[workspace];
   const problemBackLabel = workspace === 'archive'
     ? '返回全部档案'
+    : workspace === 'knowledge'
+      ? '返回知识网络'
     : workspace === 'overview'
       ? '返回学习总览'
       : '返回待整理';
@@ -76,7 +80,9 @@ export function App() {
         ? 1
         : workspace === 'review'
           ? 2
-          : 3;
+          : workspace === 'knowledge'
+            ? 3
+            : 4;
 
   const refreshOverview = () => setRefreshToken((token) => token + 1);
   const rememberOverview = useCallback((overview: DashboardOverview) => {
@@ -370,6 +376,9 @@ export function App() {
           <button aria-current={workspace === 'review' ? 'page' : undefined} className={`nav-item ${workspace === 'review' ? 'is-active' : ''}`} onClick={() => selectWorkspace('review')} type="button">
             <span><BookOpenCheck aria-hidden="true" size={16} />今日复习</span>
           </button>
+          <button aria-current={workspace === 'knowledge' ? 'page' : undefined} className={`nav-item ${workspace === 'knowledge' ? 'is-active' : ''}`} onClick={() => selectWorkspace('knowledge')} type="button">
+            <span><Network aria-hidden="true" size={16} />知识网络</span>
+          </button>
           <button aria-current={workspace === 'archive' ? 'page' : undefined} className={`nav-item ${workspace === 'archive' ? 'is-active' : ''}`} onClick={() => selectWorkspace('archive')} type="button">
             <span><Archive aria-hidden="true" size={16} />全部档案</span>
           </button>
@@ -451,6 +460,8 @@ export function App() {
               <h2>{isReviewLoading ? '正在准备复习题目' : '今天没有待复习内容'}</h2>
               <p>{isReviewLoading ? '正在从本地资料库读取到期题目。' : '完成题目整理后，它会以专注阅读页的方式出现在这里。'}</p>
             </section>
+          ) : workspace === 'knowledge' ? (
+            <KnowledgeNetwork courseId={selectedCourseId} onOpenProblem={openProblem} refreshToken={refreshToken} />
           ) : (
             <ArchiveLibrary
               courseId={selectedCourseId}

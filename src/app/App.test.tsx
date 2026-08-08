@@ -20,6 +20,11 @@ vi.mock('../features/inbox/selectProblemFiles', () => ({
   selectProblemFiles: vi.fn(),
 }));
 vi.mock('../features/materials/selectCourseMaterialFile', () => ({ selectCourseMaterialFile: vi.fn() }));
+vi.mock('../features/knowledge/KnowledgeNetwork', () => ({
+  KnowledgeNetwork: ({ onOpenProblem }: { onOpenProblem: (id: string) => void }) => (
+    <section aria-label="知识网络工作区"><button onClick={() => onOpenProblem('problem-knowledge')} type="button">打开知识点题目</button></section>
+  ),
+}));
 vi.mock('../features/settings/AiProviderSettings', () => ({ AiProviderSettings: () => <div>AI 设置</div> }));
 vi.mock('../lib/dates', () => ({ localCalendarDate, timeGreeting: () => '早上好' }));
 vi.mock('../lib/preferences', () => ({
@@ -320,7 +325,7 @@ test('opens on the learning overview and navigates from its primary review actio
   expect(screen.getByRole('heading', { name: '今日复习' })).toBeVisible();
 });
 
-test('retains inbox, review and archive navigation in the sidebar', async () => {
+test('retains inbox, review, knowledge and archive navigation in the sidebar', async () => {
   const user = userEvent.setup();
   render(<App />);
 
@@ -329,6 +334,10 @@ test('retains inbox, review and archive navigation in the sidebar', async () => 
 
   await user.click(screen.getByRole('button', { name: '今日复习' }));
   expect(screen.getByRole('heading', { name: '今日复习' })).toBeVisible();
+
+  await user.click(screen.getByRole('button', { name: '知识网络' }));
+  expect(screen.getByRole('heading', { name: '知识网络' })).toBeVisible();
+  expect(screen.getByRole('region', { name: '知识网络工作区' })).toBeVisible();
 
   await user.click(screen.getByRole('button', { name: '全部档案' }));
   expect(screen.getByRole('heading', { name: '全部档案' })).toBeVisible();
