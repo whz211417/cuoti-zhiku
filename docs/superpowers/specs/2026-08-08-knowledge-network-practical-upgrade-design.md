@@ -49,7 +49,7 @@ SQLite 与 Vault 都可修改，依靠版本和冲突合并保持一致。自由
 - `name`；
 - `problemCount`、`dueCount`；
 - `lastReviewedAt`；
-- `masteryScore`：根据最近复习等级和到期状态计算的 0–100 展示值；
+- `masteryScore`：根据现有的复习间隔、最近复习日期和是否到期计算的 0–100 展示值；当前资料库没有保存逐次评分历史，因此不虚构“忘记/困难”次数；
 - `mistakeReasons`：来自关联题目的已保存错因；
 - `problemIds`：用于打开关联档案。
 

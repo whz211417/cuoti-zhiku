@@ -1,4 +1,5 @@
 pub mod dashboard;
+pub mod knowledge;
 pub mod problems;
 pub mod review;
 

@@ -28,7 +28,7 @@
 - Test: `src-tauri/src/db/database_test.rs`
 
 **Interfaces:**
-- Produces: `KnowledgeGraph { courses: Vec<KnowledgeCourse>, topics: Vec<KnowledgeTopic>, edges: Vec<KnowledgeEdge> }`.
+- Produces: `KnowledgeGraph { courses: Vec<KnowledgeCourse>, topics: Vec<KnowledgeTopic>, problems: Vec<KnowledgeProblem>, edges: Vec<KnowledgeEdge> }`.
 - Produces: `Database::knowledge_graph(course_id: Option<&str>, today: &str) -> DatabaseResult<KnowledgeGraph>`.
 
 - [ ] **Step 1: Write failing aggregation tests**
@@ -70,11 +70,11 @@ pub struct KnowledgeTopic {
 }
 ```
 
-Define matching `KnowledgeCourse`, `KnowledgeEdge`, and `KnowledgeGraph`. Edge kinds are exactly `course_topic` and `topic_problem`.
+Define matching `KnowledgeCourse`, `KnowledgeProblem`, `KnowledgeEdge`, and `KnowledgeGraph`. Edge kinds are exactly `course_topic` and `topic_problem`.
 
 - [ ] **Step 4: Implement deterministic aggregation**
 
-Query course/problem/field/review data, feed every saved notes value through the existing `split_knowledge_topics`, normalize surrounding whitespace, preserve first-seen display spelling, and generate stable IDs from course ID plus a lowercase safe slug. Compute mastery as `100 - min(80, due_count * 25 + forgotten_or_hard_count * 15)` with a floor of 20 for topics that have problems; document this transparent display rule next to the function.
+Query course/problem/field/review data, feed every saved notes value through the existing `split_knowledge_topics`, normalize surrounding whitespace, preserve first-seen display spelling, and generate stable IDs from course ID plus a lowercase safe slug. The current database does not retain per-review grades, so compute a transparent display-only mastery value from `review_interval_days`, `last_reviewed_at`, and whether the next review is due: start at 45 after a recorded review (otherwise 30), add up to 50 points from the interval, subtract 25 when due, and clamp to 20–95.
 
 - [ ] **Step 5: Run database tests**
 

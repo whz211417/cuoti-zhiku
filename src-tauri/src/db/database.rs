@@ -19,6 +19,9 @@ use crate::{
             ActivityDay, CountedSignal, CourseSummary, DashboardOverview, LibrarySearchResult,
             RecentProblem,
         },
+        knowledge::{
+            KnowledgeCourse, KnowledgeEdge, KnowledgeGraph, KnowledgeProblem, KnowledgeTopic,
+        },
         problems::{ProblemDocument, ProblemField, ProblemFieldKind, SavedProblemField},
         review::{schedule_next, ReviewGrade, ReviewSchedule},
     },
@@ -299,6 +302,148 @@ impl Database {
         rows.collect::<Result<Vec<_>, _>>().map_err(Into::into)
     }
 
+    pub fn knowledge_graph(
+        &self,
+        course_id: Option<&str>,
+        today: &str,
+    ) -> DatabaseResult<KnowledgeGraph> {
+        NaiveDate::parse_from_str(today, "%Y-%m-%d")
+            .map_err(|_| DatabaseError::Conflict("today must use YYYY-MM-DD".into()))?;
+        let connection = self.connection()?;
+        let mut courses = query_knowledge_courses(&connection, course_id)?;
+        let course_indexes = courses
+            .iter()
+            .enumerate()
+            .map(|(index, course)| (course.id.clone(), index))
+            .collect::<HashMap<_, _>>();
+        let mut topic_indexes = HashMap::<(String, String), usize>::new();
+        let mut topics = Vec::<KnowledgeTopicAccumulator>::new();
+        let mut problems = Vec::<KnowledgeProblem>::new();
+        let mut edges = Vec::<KnowledgeEdge>::new();
+
+        let mut statement = connection.prepare(
+            "SELECT p.id, p.course_id, p.title, p.status, p.next_review_at,
+                    p.review_interval_days, p.last_reviewed_at,
+                    COALESCE(notes.value, ''), COALESCE(reason.value, '')
+             FROM problems p
+             LEFT JOIN problem_fields notes
+               ON notes.problem_id = p.id AND notes.kind = 'notes'
+             LEFT JOIN problem_fields reason
+               ON reason.problem_id = p.id AND reason.kind = 'mistake_reason'
+             WHERE p.status IN ('inbox', 'active')
+               AND (?1 IS NULL OR p.course_id = ?1)
+             ORDER BY p.updated_at DESC, p.id ASC",
+        )?;
+        let mut rows = statement.query([course_id])?;
+        while let Some(row) = rows.next()? {
+            let problem_id: String = row.get(0)?;
+            let problem_course_id: String = row.get(1)?;
+            if !course_indexes.contains_key(&problem_course_id) {
+                continue;
+            }
+            let notes: String = row.get(7)?;
+            let problem_topics = split_knowledge_topics(&notes);
+            if problem_topics.is_empty() {
+                continue;
+            }
+            let next_review_at: Option<String> = row.get(4)?;
+            let due = next_review_at.as_deref().map_or(true, |date| date <= today);
+            let review_interval_days: i64 = row.get(5)?;
+            let last_reviewed_at: Option<String> = row.get(6)?;
+            let mistake_reason = row.get::<_, String>(8)?.trim().to_owned();
+            let problem_title: String = row.get(2)?;
+            let problem = KnowledgeProblem {
+                id: problem_id.clone(),
+                course_id: problem_course_id.clone(),
+                title: if problem_title.trim().is_empty() {
+                    "未命名题目".to_owned()
+                } else {
+                    problem_title.trim().to_owned()
+                },
+                status: row.get(3)?,
+                due,
+                last_reviewed_at: last_reviewed_at.clone(),
+            };
+            problems.push(problem);
+            let course = &mut courses[*course_indexes
+                .get(&problem_course_id)
+                .expect("course index was checked")];
+            course.problem_count += 1;
+            if due {
+                course.due_count += 1;
+            }
+
+            let mut seen_topics = HashSet::new();
+            for topic_name in problem_topics {
+                let normalized = topic_name.to_lowercase();
+                if !seen_topics.insert(normalized.clone()) {
+                    continue;
+                }
+                let key = (problem_course_id.clone(), normalized);
+                let topic_index = if let Some(index) = topic_indexes.get(&key) {
+                    *index
+                } else {
+                    let topic_id = format!(
+                        "topic-{}-{}",
+                        problem_course_id,
+                        knowledge_slug(&topic_name)
+                    );
+                    let index = topics.len();
+                    topics.push(KnowledgeTopicAccumulator::new(
+                        topic_id.clone(),
+                        problem_course_id.clone(),
+                        topic_name,
+                    ));
+                    topic_indexes.insert(key, index);
+                    edges.push(KnowledgeEdge {
+                        id: format!("edge-{problem_course_id}-{topic_id}"),
+                        source_id: problem_course_id.clone(),
+                        target_id: topic_id,
+                        kind: "course_topic".to_owned(),
+                    });
+                    course.topic_count += 1;
+                    index
+                };
+                let topic = &mut topics[topic_index];
+                topic.problem_ids.push(problem_id.clone());
+                topic.due_count += usize::from(due);
+                topic.mastery_total += u32::from(problem_mastery_score(
+                    review_interval_days,
+                    last_reviewed_at.as_deref(),
+                    due,
+                ));
+                if topic.last_reviewed_at.as_deref() < last_reviewed_at.as_deref() {
+                    topic.last_reviewed_at = last_reviewed_at.clone();
+                }
+                if !mistake_reason.is_empty() && !topic.mistake_reasons.contains(&mistake_reason) {
+                    topic.mistake_reasons.push(mistake_reason.clone());
+                }
+                edges.push(KnowledgeEdge {
+                    id: format!("edge-{}-{problem_id}", topic.id),
+                    source_id: topic.id.clone(),
+                    target_id: problem_id.clone(),
+                    kind: "topic_problem".to_owned(),
+                });
+            }
+        }
+
+        let mut topics = topics
+            .into_iter()
+            .map(KnowledgeTopicAccumulator::finish)
+            .collect::<Vec<_>>();
+        topics.sort_by(|left, right| {
+            left.course_id
+                .cmp(&right.course_id)
+                .then_with(|| left.name.cmp(&right.name))
+        });
+        Ok(KnowledgeGraph {
+            courses,
+            topics,
+            problems,
+            edges,
+        })
+    }
+
     pub fn create_backup(&self, destination: &Path) -> DatabaseResult<()> {
         if destination.exists() {
             return Err(DatabaseError::Conflict(
@@ -520,7 +665,9 @@ impl Database {
                     ))
                 })
                 .optional()?
-                .ok_or_else(|| DatabaseError::Conflict("所选教材片段不存在或已被移除。".to_owned()))?;
+                .ok_or_else(|| {
+                    DatabaseError::Conflict("所选教材片段不存在或已被移除。".to_owned())
+                })?;
             if selected.2 != problem_course_id {
                 return Err(DatabaseError::Conflict(
                     "所选教材片段不属于当前课程，已停止本次请求。".to_owned(),
@@ -670,8 +817,9 @@ impl Database {
 
     pub fn get_problem_document(&self, problem_id: &str) -> DatabaseResult<ProblemDocument> {
         let connection = self.connection()?;
-        let (id, course_id, has_image_attachment, title, status, updated_at, version) = connection.query_row(
-            "SELECT p.id, p.course_id,
+        let (id, course_id, has_image_attachment, title, status, updated_at, version) = connection
+            .query_row(
+                "SELECT p.id, p.course_id,
                     EXISTS(
                         SELECT 1 FROM inbox_items item
                         JOIN attachments attachment ON attachment.id = item.attachment_id
@@ -679,19 +827,19 @@ impl Database {
                     ),
                     p.title, p.status, p.updated_at, p.version
              FROM problems p WHERE p.id = ?1",
-            [problem_id],
-            |row| {
-                Ok((
-                    row.get(0)?,
-                    row.get(1)?,
-                    row.get(2)?,
-                    row.get(3)?,
-                    row.get(4)?,
-                    row.get(5)?,
-                    row.get(6)?,
-                ))
-            },
-        )?;
+                [problem_id],
+                |row| {
+                    Ok((
+                        row.get(0)?,
+                        row.get(1)?,
+                        row.get(2)?,
+                        row.get(3)?,
+                        row.get(4)?,
+                        row.get(5)?,
+                        row.get(6)?,
+                    ))
+                },
+            )?;
         let mut statement = connection.prepare(
             "SELECT kind, value, updated_at FROM problem_fields WHERE problem_id = ?1
              ORDER BY CASE kind
@@ -867,6 +1015,112 @@ impl Database {
             .lock()
             .map_err(|_| DatabaseError::LockPoisoned)
     }
+}
+
+#[derive(Debug)]
+struct KnowledgeTopicAccumulator {
+    id: String,
+    course_id: String,
+    name: String,
+    due_count: usize,
+    mastery_total: u32,
+    last_reviewed_at: Option<String>,
+    mistake_reasons: Vec<String>,
+    problem_ids: Vec<String>,
+}
+
+impl KnowledgeTopicAccumulator {
+    fn new(id: String, course_id: String, name: String) -> Self {
+        Self {
+            id,
+            course_id,
+            name,
+            due_count: 0,
+            mastery_total: 0,
+            last_reviewed_at: None,
+            mistake_reasons: Vec::new(),
+            problem_ids: Vec::new(),
+        }
+    }
+
+    fn finish(self) -> KnowledgeTopic {
+        let problem_count = self.problem_ids.len();
+        let mastery_score = if problem_count == 0 {
+            0
+        } else {
+            (self.mastery_total / problem_count as u32) as u8
+        };
+        KnowledgeTopic {
+            id: self.id,
+            course_id: self.course_id,
+            name: self.name,
+            problem_count,
+            due_count: self.due_count,
+            mastery_score,
+            last_reviewed_at: self.last_reviewed_at,
+            mistake_reasons: self.mistake_reasons,
+            problem_ids: self.problem_ids,
+        }
+    }
+}
+
+fn query_knowledge_courses(
+    connection: &Connection,
+    course_id: Option<&str>,
+) -> DatabaseResult<Vec<KnowledgeCourse>> {
+    let mut statement = connection.prepare(
+        "SELECT id, name, color FROM courses
+         WHERE archived_at IS NULL AND (?1 IS NULL OR id = ?1)
+         ORDER BY created_at ASC, id ASC",
+    )?;
+    let courses = statement
+        .query_map([course_id], |row| {
+            Ok(KnowledgeCourse {
+                id: row.get(0)?,
+                name: row.get(1)?,
+                color: row.get(2)?,
+                topic_count: 0,
+                problem_count: 0,
+                due_count: 0,
+            })
+        })?
+        .collect::<Result<Vec<_>, _>>()?;
+    Ok(courses)
+}
+
+fn knowledge_slug(value: &str) -> String {
+    let mut slug = String::new();
+    let mut pending_separator = false;
+    for character in value.trim().to_lowercase().chars() {
+        if character.is_alphanumeric() {
+            if pending_separator && !slug.is_empty() {
+                slug.push('-');
+            }
+            slug.push(character);
+            pending_separator = false;
+        } else {
+            pending_separator = true;
+        }
+    }
+    if slug.is_empty() {
+        "topic".to_owned()
+    } else {
+        slug
+    }
+}
+
+fn problem_mastery_score(
+    review_interval_days: i64,
+    last_reviewed_at: Option<&str>,
+    due: bool,
+) -> u8 {
+    // This is a display-only, auditable score. It never changes review scheduling.
+    let base = if last_reviewed_at.is_some() {
+        45 + review_interval_days.clamp(0, 10) * 5
+    } else {
+        30
+    };
+    (base - if due { 25 } else { 0 }).clamp(20, 95) as u8
 }
 
 pub(crate) fn apply_migration(

@@ -138,12 +138,27 @@ fn material_context_for_problem_preserves_explicit_order() {
     let snippets = database
         .material_context_for_problem(
             "problem-macro",
-            &["macro-notes-chunk-1".to_owned(), "macro-notes-chunk-0".to_owned()],
+            &[
+                "macro-notes-chunk-1".to_owned(),
+                "macro-notes-chunk-0".to_owned(),
+            ],
         )
         .expect("validate selected chunks");
 
-    assert_eq!(snippets.iter().map(|item| item.chunk_id.as_str()).collect::<Vec<_>>(), vec!["macro-notes-chunk-1", "macro-notes-chunk-0"]);
-    assert_eq!(snippets.iter().map(|item| item.excerpt.as_str()).collect::<Vec<_>>(), vec!["片段二", "片段一"]);
+    assert_eq!(
+        snippets
+            .iter()
+            .map(|item| item.chunk_id.as_str())
+            .collect::<Vec<_>>(),
+        vec!["macro-notes-chunk-1", "macro-notes-chunk-0"]
+    );
+    assert_eq!(
+        snippets
+            .iter()
+            .map(|item| item.excerpt.as_str())
+            .collect::<Vec<_>>(),
+        vec!["片段二", "片段一"]
+    );
 }
 
 #[test]
@@ -152,25 +167,54 @@ fn material_context_for_problem_rejects_unknown_cross_course_and_more_than_three
     let connection = dashboard_connection(&root);
     insert_library_course(&connection, "macro", "宏观经济学", "2026-07-30");
     insert_library_course(&connection, "micro", "微观经济学", "2026-07-30");
-    insert_dashboard_problem(&connection, "problem-macro", "macro", "active", "IS-LM", None, "2026-07-30", None);
-    insert_library_material(&connection, "micro-notes", "micro", "微观讲义.md", "2026-07-30", &["跨课程片段"]);
+    insert_dashboard_problem(
+        &connection,
+        "problem-macro",
+        "macro",
+        "active",
+        "IS-LM",
+        None,
+        "2026-07-30",
+        None,
+    );
+    insert_library_material(
+        &connection,
+        "micro-notes",
+        "micro",
+        "微观讲义.md",
+        "2026-07-30",
+        &["跨课程片段"],
+    );
     drop(connection);
 
     let unknown = database.material_context_for_problem("problem-macro", &["missing".to_owned()]);
     assert!(matches!(unknown, Err(DatabaseError::Conflict(message)) if message.contains("不存在")));
 
-    let cross_course = database.material_context_for_problem("problem-macro", &["micro-notes-chunk-0".to_owned()]);
-    assert!(matches!(cross_course, Err(DatabaseError::Conflict(message)) if message.contains("当前课程")));
+    let cross_course =
+        database.material_context_for_problem("problem-macro", &["micro-notes-chunk-0".to_owned()]);
+    assert!(
+        matches!(cross_course, Err(DatabaseError::Conflict(message)) if message.contains("当前课程"))
+    );
 
     let too_many = database.material_context_for_problem(
         "problem-macro",
-        &["a".to_owned(), "b".to_owned(), "c".to_owned(), "d".to_owned()],
+        &[
+            "a".to_owned(),
+            "b".to_owned(),
+            "c".to_owned(),
+            "d".to_owned(),
+        ],
     );
-    assert!(matches!(too_many, Err(DatabaseError::Conflict(message)) if message.contains("最多选择 3 段")));
+    assert!(
+        matches!(too_many, Err(DatabaseError::Conflict(message)) if message.contains("最多选择 3 段"))
+    );
 
     let duplicate = database.material_context_for_problem(
         "problem-macro",
-        &["micro-notes-chunk-0".to_owned(), "micro-notes-chunk-0".to_owned()],
+        &[
+            "micro-notes-chunk-0".to_owned(),
+            "micro-notes-chunk-0".to_owned(),
+        ],
     );
     assert!(matches!(duplicate, Err(DatabaseError::Conflict(message)) if message.contains("重复")));
 }
@@ -751,6 +795,128 @@ fn dashboard_overview_deduplicates_and_splits_knowledge_topics_per_problem() {
     assert_eq!(topics[1].count, 1);
     assert_eq!(topics[2].label, "璐㈡斂鏀跨瓥");
     assert_eq!(topics[2].count, 1);
+}
+
+#[test]
+fn knowledge_graph_is_course_scoped_and_aggregates_saved_topics() {
+    let (root, database) = dashboard_database();
+    let connection = dashboard_connection(&root);
+    insert_dashboard_course(&connection, "macro", "宏观经济学", "2026-07-01");
+    insert_dashboard_course(&connection, "micro", "微观经济学", "2026-07-01");
+
+    insert_dashboard_problem(
+        &connection,
+        "macro-due",
+        "macro",
+        "active",
+        "货币政策题",
+        Some("2026-08-01"),
+        "2026-08-01T08:00:00Z",
+        Some("2026-07-20"),
+    );
+    insert_dashboard_field(
+        &connection,
+        "macro-due",
+        "notes",
+        "知识点：IS 曲线、LM 曲线",
+    );
+    insert_dashboard_field(
+        &connection,
+        "macro-due",
+        "mistake_reason",
+        "忽略货币供给变化",
+    );
+    connection
+        .execute(
+            "UPDATE problems SET review_interval_days = 2 WHERE id = 'macro-due'",
+            [],
+        )
+        .expect("set due interval");
+
+    insert_dashboard_problem(
+        &connection,
+        "macro-future",
+        "macro",
+        "active",
+        "财政政策题",
+        Some("2026-08-20"),
+        "2026-08-02T08:00:00Z",
+        Some("2026-08-01"),
+    );
+    insert_dashboard_field(&connection, "macro-future", "notes", "知识点：IS 曲线");
+    connection
+        .execute(
+            "UPDATE problems SET review_interval_days = 8 WHERE id = 'macro-future'",
+            [],
+        )
+        .expect("set future interval");
+
+    insert_dashboard_problem(
+        &connection,
+        "micro-due",
+        "micro",
+        "active",
+        "消费者题",
+        Some("2026-08-01"),
+        "2026-08-01T08:00:00Z",
+        None,
+    );
+    insert_dashboard_field(&connection, "micro-due", "notes", "知识点：IS 曲线");
+    drop(connection);
+
+    let graph = database
+        .knowledge_graph(Some("macro"), "2026-08-08")
+        .expect("course knowledge graph");
+
+    assert_eq!(graph.courses.len(), 1);
+    assert_eq!(graph.courses[0].id, "macro");
+    assert_eq!(
+        graph
+            .topics
+            .iter()
+            .map(|topic| topic.name.as_str())
+            .collect::<Vec<_>>(),
+        vec!["IS 曲线", "LM 曲线"]
+    );
+    let is_curve = graph
+        .topics
+        .iter()
+        .find(|topic| topic.name == "IS 曲线")
+        .expect("IS topic");
+    assert_eq!(is_curve.id, "topic-macro-is-曲线");
+    assert_eq!(is_curve.problem_count, 2);
+    assert_eq!(is_curve.due_count, 1);
+    assert_eq!(is_curve.mastery_score, 57);
+    assert_eq!(
+        is_curve.problem_ids,
+        vec!["macro-future".to_owned(), "macro-due".to_owned()]
+    );
+    assert_eq!(
+        is_curve.mistake_reasons,
+        vec!["忽略货币供给变化".to_owned()]
+    );
+    assert_eq!(graph.problems.len(), 2);
+    assert_eq!(graph.edges.len(), 5);
+    assert!(graph
+        .edges
+        .iter()
+        .any(|edge| edge.kind == "course_topic" && edge.target_id == is_curve.id));
+    assert!(graph.edges.iter().any(|edge| {
+        edge.kind == "topic_problem"
+            && edge.source_id == is_curve.id
+            && edge.target_id == "macro-future"
+    }));
+}
+
+#[test]
+fn knowledge_graph_rejects_a_non_iso_today_value() {
+    let (_root, database) = dashboard_database();
+
+    let result = database.knowledge_graph(None, "2026/08/08");
+
+    assert!(
+        matches!(result, Err(DatabaseError::Conflict(message)) if message.contains("YYYY-MM-DD"))
+    );
 }
 
 #[test]
