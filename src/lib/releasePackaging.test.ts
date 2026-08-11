@@ -15,4 +15,14 @@ describe('Windows release packaging', () => {
       'resources/windows-x64/WebView2Loader.dll': 'WebView2Loader.dll',
     })
   })
+
+  it('fits the desktop window within compact and scaled Windows work areas', () => {
+    const config = JSON.parse(readFileSync(tauriConfigPath, 'utf8')) as {
+      app?: { windows?: Array<{ minWidth?: number; minHeight?: number }> }
+    }
+    const mainWindow = config.app?.windows?.[0]
+
+    expect(mainWindow?.minWidth).toBeLessThanOrEqual(760)
+    expect(mainWindow?.minHeight).toBeLessThanOrEqual(520)
+  })
 })

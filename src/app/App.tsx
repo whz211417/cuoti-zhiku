@@ -540,8 +540,7 @@ export function App() {
         />
 
         {isSettingsOpen ? (
-          <div className="inspector-backdrop">
-            <InspectorSurface>
+          <InspectorSurface>
               <section aria-labelledby="preferences-title" aria-modal="true" className="preferences-inspector" ref={settingsDialogRef} role="dialog" tabIndex={-1}>
                 <header className="preferences-header">
                   <div>
@@ -575,8 +574,7 @@ export function App() {
                 {exportStatus ? <p aria-live="polite" className="export-status">{exportStatus}</p> : null}
                 <p className="preferences-note">此处不会自动上传教材、题目或个人作答。</p>
               </section>
-            </InspectorSurface>
-          </div>
+          </InspectorSurface>
         ) : null}
       </section>
     </main>

@@ -83,7 +83,7 @@ h1 { font-size: clamp(34px, 4vw, 46px); line-height: 1.07; }.toolbar-actions { d
 .document-ai-action:hover { background: #e8f2ff; box-shadow: 0 5px 13px rgb(0 122 255 / .12); transform: translateY(-1px); }
 .document-ai-action:active { transform: scale(.98); }
 .document-ai-notice, .ai-error { margin: 14px 0 0; color: #c9342f; font-size: 12px; line-height: 1.55; }
-.ai-review-inspector { max-height: min(780px, calc(100vh - 48px)); overflow: auto; padding: 20px; }
+.ai-review-inspector { padding: 20px; }
 .ai-review-inspector .preferences-header h2 { font-size: 24px; }
 .ai-review-inspector .inspector-close { width: 44px; height: 44px; }.ai-review-inspector .primary-action { min-height: 44px; }
 .ai-consent > p, .ai-consent li, .ai-empty { color: var(--secondary); font-size: 12px; line-height: 1.65; }
@@ -252,7 +252,6 @@ h1 { font-size: clamp(34px, 4vw, 46px); line-height: 1.07; }.toolbar-actions { d
 .preference-ai { display: block; }
 /* One stable preferences sheet, with only the toolbar using a restrained material layer. */
 .inspector-glass:has(.ai-provider-settings), .inspector-surface.is-solid:has(.ai-provider-settings) { width: min(880px, calc(100vw - 48px)); }
-.preferences-inspector:has(.ai-provider-settings) { max-height: min(780px, calc(100vh - 48px)); overflow: auto; }
 .ai-provider-settings { width: 100%; overflow: hidden; border: 1px solid rgb(60 60 67 / .12); border-radius: 15px; background: #fff; box-shadow: inset 0 1px 0 rgb(255 255 255 / .9); }
 .ai-provider-settings-toolbar { display: flex; align-items: end; justify-content: space-between; gap: 22px; padding: 19px 20px 17px; border-bottom: 1px solid rgb(60 60 67 / .11); background: rgb(250 251 253 / .76); backdrop-filter: blur(15px) saturate(1.18); -webkit-backdrop-filter: blur(15px) saturate(1.18); }
 .ai-provider-settings-toolbar h3 { margin: 3px 0 0; font-size: 18px; letter-spacing: -.025em; }
@@ -277,6 +276,45 @@ h1 { font-size: clamp(34px, 4vw, 46px); line-height: 1.07; }.toolbar-actions { d
 .ai-provider-editor-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 18px; }.ai-provider-progress, .ai-provider-message { margin: 10px 0 0; font-size: 11px; line-height: 1.45; }.ai-provider-progress { color: var(--secondary); }.ai-provider-message.is-success { color: #197239; }.ai-provider-message strong { display: block; font-size: 12px; }.ai-provider-message span { display: block; margin-top: 2px; }.ai-provider-message.is-error { color: #b42318; }.ai-provider-message.is-info { color: #1b5e95; }.is-spinning { animation: ai-provider-spin .85s linear infinite; }.ai-provider-loading { align-self: center; justify-self: center; color: var(--secondary); font-size: 12px; }.ai-provider-active-note { margin: 0; padding: 11px 20px; border-top: 1px solid rgb(60 60 67 / .11); color: #20723a; background: #fbfdfb; }.ai-provider-active-note.is-muted { color: var(--tertiary); background: #fbfbfc; }
 @keyframes ai-provider-spin { to { transform: rotate(360deg); } }
 @media (max-width: 650px) { .ai-provider-settings-toolbar { align-items: flex-start; flex-direction: column; gap: 8px; }.ai-provider-settings-toolbar > p { text-align: left; }.ai-provider-layout { grid-template-columns: 1fr; }.ai-provider-list { grid-template-columns: repeat(2, minmax(0, 1fr)); border-right: 0; border-bottom: 1px solid rgb(60 60 67 / .11); }.ai-provider-custom { margin-top: 0; border-top: 0 !important; }.ai-provider-grid { grid-template-columns: 1fr; }.ai-provider-migration { align-items: flex-start; flex-wrap: wrap; } }
+
+/* The application owns Inspector geometry; the glass library is visual only. */
+.inspector-backdrop { overflow: hidden; padding: 16px; }
+.inspector-positioner, .inspector-positioner > * { min-width: 0; }
+.inspector-positioner > * { max-width: calc(100vw - 32px); max-height: calc(100dvh - 32px); }
+.inspector-glass { max-height: calc(100dvh - 32px); }
+.inspector-glass > svg { z-index: 0; pointer-events: none; }
+.inspector-glass > .glass { position: relative; z-index: 1; }
+.inspector-glass .glass, .inspector-glass .glass > div:last-child, .inspector-surface { width: 100%; min-width: 0; max-width: 100%; }
+.inspector-glass .glass { max-height: calc(100dvh - 32px); padding: 0 !important; }
+.inspector-surface, .inspector-surface.is-solid { max-height: calc(100dvh - 32px); }
+.preferences-inspector, .ai-review-inspector { --inspector-padding: 20px; width: 100%; max-height: calc(100dvh - 32px); overflow-x: hidden; overflow-y: auto; padding: var(--inspector-padding); overscroll-behavior: contain; scrollbar-gutter: stable; }
+.preferences-inspector > .preferences-header, .ai-review-inspector > .preferences-header { position: sticky; z-index: 3; top: calc(-1 * var(--inspector-padding)); margin: calc(-1 * var(--inspector-padding)) calc(-1 * var(--inspector-padding)) 0; padding: calc(var(--inspector-padding) + 1px) var(--inspector-padding) 18px; background: var(--paper); box-shadow: 0 1px 0 var(--separator); }
+
+@media (max-width: 650px) {
+  .inspector-backdrop { padding: 12px; }
+  .inspector-positioner > * { max-width: calc(100vw - 24px); max-height: calc(100dvh - 24px); }
+  .inspector-glass, .inspector-glass:has(.ai-provider-settings), .inspector-surface.is-solid, .inspector-surface.is-solid:has(.ai-provider-settings) { width: calc(100vw - 24px); max-height: calc(100dvh - 24px); }
+  .inspector-glass .glass, .inspector-surface, .preferences-inspector, .ai-review-inspector { max-height: calc(100dvh - 24px); }
+  .preferences-inspector, .ai-review-inspector { --inspector-padding: 16px; }
+  .preference-row { align-items: stretch; flex-direction: column; gap: 10px; }
+  .preference-status { align-self: flex-start; }
+  .export-actions { width: 100%; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .export-actions button { width: 100%; min-width: 0; }
+  .ai-mode-picker { grid-template-columns: 1fr; }
+  .ai-material-consent > div { display: grid; grid-template-columns: 1fr; }
+  .ai-material-consent > div button { width: 100%; }
+}
+
+@media (max-width: 420px) {
+  .ai-provider-list, .export-actions { grid-template-columns: 1fr; }
+}
+
+@media (max-height: 640px) {
+  .inspector-backdrop { padding: 8px; }
+  .inspector-positioner > *, .inspector-glass, .inspector-glass .glass, .inspector-surface, .inspector-surface.is-solid, .preferences-inspector, .ai-review-inspector { max-height: calc(100dvh - 16px); }
+  .preferences-inspector, .ai-review-inspector { --inspector-padding: 14px; }
+  .preferences-header { padding-bottom: 12px; }
+}
 
 /* Learning cockpit: solid editorial content beneath the transient control layer. */
 button { min-height: 44px; touch-action: manipulation; }

@@ -405,8 +405,7 @@ export function ProblemDocument({ onOpenAiSettings, onSaved, problemId }: Proble
         })}
       </div>
       {aiStage !== 'closed' ? (
-        <div className="inspector-backdrop">
-          <InspectorSurface>
+        <InspectorSurface>
             <section aria-label="AI 建议审核" aria-modal="true" className="ai-review-inspector" ref={aiDialogRef} role="dialog" tabIndex={-1}>
               <header className="preferences-header">
                 <div><p className="eyebrow">AI · 可选增强</p><h2>逐字段审核建议</h2></div>
@@ -516,8 +515,7 @@ export function ProblemDocument({ onOpenAiSettings, onSaved, problemId }: Proble
                 </div>
               )}
             </section>
-          </InspectorSurface>
-        </div>
+        </InspectorSurface>
       ) : null}
     </article>
   );
