@@ -1,79 +1,104 @@
 # 错题智库
 
-面向中文大学生的 Windows 本地错题学习应用。题目原件、题干、个人作答、标准答案、解析、错因、知识点笔记、课程资料和复习记录保存在同一份本地资料库中。
+> 一款为中文大学生设计的 Windows 本地错题学习应用：把题目、教材、知识点和复习记录放进同一份可恢复的学习档案。
 
-## 学习总览与全局搜索
+<p>
+  <a href="https://github.com/whz211417/cuoti-zhiku/releases/tag/v0.3.3"><strong>下载 Windows 版</strong></a>
+  ·
+  <a href="https://github.com/whz211417/cuoti-zhiku/releases">查看全部版本</a>
+  ·
+  <a href="docs/development.md">开发与架构</a>
+</p>
 
-- 应用默认打开“学习总览”。课程数、资料数、待整理题目、待复习题目、最近题目和学习信号均来自当前本地 SQLite 资料库；没有数据时显示真实的空状态，不使用演示统计。
-- 点击工具栏搜索按钮或按 `Ctrl+K` 可打开 Spotlight 风格的全局搜索，在题目、课程和已导入资料中查找内容。输入至少两个去除首尾空白后的字符才会发起查询，单次最多返回 12 条结果。
-- 总览聚合与全局搜索都在本机完成，不会因搜索把查询词、题目或资料发送到网络。可选 AI 流程仍需用户单独配置并逐次确认。
+![Windows](https://img.shields.io/badge/Windows-x64-1f6feb?style=flat-square)
+![Tauri](https://img.shields.io/badge/Tauri-2-24c8db?style=flat-square&logo=tauri&logoColor=white)
+![React](https://img.shields.io/badge/React-TypeScript-61dafb?style=flat-square&logo=react&logoColor=111827)
+![Rust](https://img.shields.io/badge/Rust-backend-000000?style=flat-square&logo=rust)
+![License](https://img.shields.io/badge/license-MIT-2ea44f?style=flat-square)
 
-## 已交付的学习流程
+## 先看它长什么样
 
-1. 新建课程，或直接使用“未分类”。
-2. 将 PNG、JPG、JPEG、WebP、PDF、Markdown 或 TXT 从资源管理器直接拖进窗口，也可使用文件选择器；在非编辑区域粘贴截图也会直接进入待整理。原件先按 SHA-256 内容地址安全落盘，再创建待整理记录。
-3. 打开题目档案，就地补充和编辑题干、个人作答、标准答案、解析、错因与笔记。
-4. 进入今日复习。默认只显示题目，主动揭示答案后按“忘记、吃力、熟悉、掌握”安排下次复习；完成后显示本轮评分总结。
-5. 导入 PDF、Markdown 或 TXT 课程资料，在课程范围内本地检索。
-6. 分别导出题目册和答案解析册 Markdown，或生成带 A4 排版与打印入口的离线 HTML。
-7. 在知识网络中按课程浏览“课程—知识点—题目”关系，可平移缩放、筛选薄弱点并回到相关题目。
-8. 将课程 Markdown、附件与符合 JSON Canvas 规范的知识网络安全导出到 Obsidian；检测到用户修改时写冲突副本，不覆盖原文。
-9. 创建包含 SQLite 与全部原件的 `.czkbackup` 完整备份，并在明确确认后恢复；恢复前应用自动保留当前资料库的救援副本。
+<p align="center">
+  <img src="docs/assets/readme/overview.png" alt="错题智库档案总览" width="49%" />
+  <img src="docs/assets/readme/ai-review.png" alt="错题智库题目档案与 AI 审核" width="49%" />
+</p>
+<p align="center">
+  <img src="docs/assets/readme/ai-settings.png" alt="错题智库 AI 引擎设置" width="49%" />
+  <img src="docs/assets/readme/local-materials.png" alt="错题智库本地课程资料依据" width="49%" />
+</p>
 
-## 可选 AI 增强
+截图使用无个人题目和无 API Key 的界面状态，仅用于展示产品结构与交互方向。
 
-- 支持平台：阿里云百炼、DeepSeek、智谱 AI、月之暗面，以及用户提供的 OpenAI 兼容 HTTPS 地址
-- 模型选择：每个平台可分别填写文本模型、视觉模型与能力开关；应用不会偷偷替换用户选择的模型
-- API Key：按“平台 + 目标地址”隔离保存到 Windows 凭据管理器，不进入 SQLite、备份或导出文件
-- 启用规则：配置必须先完成原生连接测试，测试通过的地址、模型和能力组合才可设为当前平台
-- 每次请求：先显示实际平台、实际模型、题目字段、可选原图和最多三段教材片段，由用户逐次授权
-- 返回内容：只进入逐字段审核层，用户可以编辑、采纳或拒绝，不会自动覆盖本地字段
-- 教材引用：只接受本次已授权片段中的逐字依据；无法在本地验证的引用不会写入题目档案
+## 它解决什么问题？
 
-核心收题、整理、教材检索、复习、备份和导出流程完全独立于 AI。没有网络、没有 API Key 或 AI 请求失败时，本地记录仍可照常使用。
-
-## 界面与辅助功能
-
-- 主工作台采用稳定的桌面侧栏、上下文工具栏与编辑式内容分区；题目详情和复习使用独立纸面阅读层。
-- 动态材质仅用于导航控制、设置、确认和拖放状态，不覆盖整页内容。
-- 动效使用短时阻尼曲线和指针驱动高光；系统开启“减少动态效果”或“减少透明度”后自动降级。
-- 自动跟随 Windows 明暗外观，并保留键盘焦点、弹窗焦点约束和不小于 44px 的主要交互目标。
-
-## 本地数据
-
-发布版默认使用 Windows 本地应用数据目录：
+把“题目文档”和“答案文档”合成一份可以持续复习的本地记录：
 
 ```text
-%LOCALAPPDATA%\com.cuoti.zhiku
+拖入题目 / 题图 / PDF
+  → 原件安全保存为待整理
+  → 补充题干与个人作答
+  → 可选 AI 生成待审核建议
+  → 按字段采纳、编辑或拒绝
+  → 进入今日复习与知识网络
+  → 导出题目册、答案解析册或 Obsidian
 ```
 
-其中 `library.sqlite3` 保存结构化记录，`originals` 保存按内容哈希组织的原件，`backups` 保存恢复前自动创建的完整救援备份。
+## 为什么是本地优先？
 
-## 当前边界
+- 题目原件、SQLite 资料库、课程材料和复习记录默认只保存在这台 Windows 电脑上。
+- AI 是可选增强：没有网络、没有 API Key 或 AI 请求失败时，收题、整理、检索、复习、备份和导出仍然可用。
+- API Key 按平台与目标地址隔离保存到 Windows 凭据管理器，不进入 SQLite、备份或导出文件。
+- 完整备份包含数据库与原件；恢复前自动创建救援副本，避免一次操作破坏资料。
 
-- 当前版本不内置 OCR。课程 PDF 只提取已有文本层；扫描版 PDF 需要先使用其他工具 OCR，或手动整理内容。
-- 题目 PDF 会安全保存，但 AI 请求只直接携带图片原件；PDF 可先手动补充题干。
-- `.czkbackup` 包含数据库和原件，但不包含 Windows 凭据管理器中的 API Key；迁移后需重新配置 AI。
-- 可打印 HTML 可在浏览器中打印或保存 PDF；应用本身不内置 PDF 排版引擎。
-- NSIS 安装包未做商业代码签名，Windows 可能显示 SmartScreen 提示；请只使用可信来源的安装包并核对 SHA-256。
+## 核心功能
 
-## 开发验证
+### 收题与整理
 
-```powershell
-pnpm test
-pnpm lint
-pnpm build
-pnpm test:rust
-```
+- 从资源管理器直接拖入 PNG、JPG、WebP、PDF、Markdown 或 TXT，也支持粘贴截图。
+- 原件先按 SHA-256 内容地址安全落盘，再创建待整理记录，避免导入失败导致原件丢失。
+- 题目详情将题干、个人作答、标准答案、解析、错因、知识点笔记放在同一份阅读式档案中。
 
-Windows x64 安装包由 Tauri NSIS 目标生成。
+### 复习与知识网络
 
-## 0.3.3 Windows 安装包
+- 今日复习默认先隐藏答案，主动揭示后按“忘记、吃力、熟悉、掌握”安排下次复习。
+- 按课程浏览“课程—知识点—题目”关系，可筛选薄弱点并回到相关题目。
+- 可将课程 Markdown、附件和 JSON Canvas 知识网络导出到 Obsidian；检测到用户修改时写冲突副本，不覆盖原文。
 
-- 文件：`release/错题智库_0.3.3_x64-setup.exe`
+### 可选 AI 整理
+
+- 兼容阿里云百炼、DeepSeek、智谱 AI、月之暗面和 OpenAI 兼容 HTTPS 平台。
+- 每次请求先展示实际平台、模型、题目文字、题图授权和最多三段教材片段。
+- AI 输出只进入逐字段审核层；已有内容不会被批量覆盖，版本冲突会自动恢复并保留未写入建议。
+- 教材引用只接受本次明确授权片段中的可验证原文，不伪造教材依据。
+
+## 安装 Windows 版
+
+前往 [GitHub Releases](https://github.com/whz211417/cuoti-zhiku/releases/tag/v0.3.3)，下载 `错题智库_0.3.3_x64-setup.exe` 并运行。
+
+当前正式安装包：
+
 - 大小：7,727,201 字节
 - SHA-256：`CA26577494449D8D0A1B1CBCBA8DA0E24CCDBE1272144F1E1927640AF03093A5`
 - 安装范围：当前 Windows 用户
-- 默认安装位置：首次安装由安装器选择；升级时沿用已有位置
+- 代码签名：未购买商业签名，SmartScreen 可能要求确认来源
 
-0.3.3 将 AI 辅助整理改为简洁的两阶段流程：先确认发送摘要，再审核结果；可一次采纳全部空白字段，已有内容只会在明确选择“替换”时修改。补充了版本冲突恢复、写入中防误关、完成提示、失败保留、小屏单滚动面、紧凑顶部栏和减少动效/透明度适配。该安装包未做商业代码签名。如 Windows 显示来源确认，请先核对以上 SHA-256。
+PowerShell 校验：
+
+```powershell
+Get-FileHash -Algorithm SHA256 .\错题智库_0.3.3_x64-setup.exe
+```
+
+## 隐私与当前边界
+
+- 当前版本不内置 OCR；扫描版 PDF 需要先 OCR 或手动补充题干。
+- 题目 PDF 会安全保存，但 AI 不会默认发送 PDF 全文；只有用户明确授权的内容才会进入请求范围。
+- `.czkbackup` 不包含 Windows 凭据管理器中的 API Key，迁移后需重新配置 AI。
+- 可打印 HTML 可在浏览器中打印或保存 PDF；应用本身不内置 PDF 排版引擎。
+
+## 开发者入口
+
+开发环境、数据模型、AI 安全边界、Obsidian 格式、测试命令和发布流程见 [docs/development.md](docs/development.md)。
+
+## 许可证
+
+本项目使用 [MIT License](LICENSE)。
