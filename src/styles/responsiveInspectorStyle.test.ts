@@ -18,3 +18,15 @@ test('keeps dismissal reachable and stacks wide controls in narrow windows', () 
   expect(styles).toMatch(/@media\s*\(max-width:\s*650px\)\s*\{[\s\S]*?\.ai-mode-picker\s*\{[^}]*grid-template-columns:\s*1fr/s);
   expect(styles).toMatch(/@media\s*\(max-width:\s*650px\)\s*\{[\s\S]*?\.ai-material-consent\s*>\s*div\s*\{[^}]*grid-template-columns:\s*1fr/s);
 });
+
+test('keeps the AI workflow on one scroll surface and wraps result actions on small screens', () => {
+  expect(styles).toMatch(/\.ai-suggestions\s*\{[^}]*overflow:\s*visible/s);
+  expect(styles).toMatch(/\.ai-result-toolbar\s*\{[^}]*display:\s*flex[^}]*flex-wrap:\s*wrap/s);
+  expect(styles).toMatch(/@media\s*\(max-width:\s*650px\)\s*\{[\s\S]*?\.ai-result-toolbar\s*\{[^}]*align-items:\s*stretch[^}]*flex-direction:\s*column/s);
+  expect(styles).toMatch(/@media\s*\(prefers-reduced-motion:\s*reduce\)\s*\{[\s\S]*?\.ai-review-state[^}]*animation:\s*none/s);
+});
+
+test('does not distribute empty viewport height into the compact mobile sidebar', () => {
+  expect(styles).toMatch(/@media\s*\(max-width:\s*780px\)\s*\{[\s\S]*?\.app-shell\s*\{[^}]*grid-template-rows:\s*auto auto[^}]*align-content:\s*start/s);
+  expect(styles).toMatch(/@media\s*\(max-width:\s*780px\)\s*\{[\s\S]*?\.sidebar\s*\{[^}]*padding:\s*10px 12px/s);
+});
