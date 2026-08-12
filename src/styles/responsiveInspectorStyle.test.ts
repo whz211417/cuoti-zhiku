@@ -24,6 +24,7 @@ test('keeps the AI workflow on one scroll surface and wraps result actions on sm
   expect(styles).toMatch(/\.ai-result-toolbar\s*\{[^}]*display:\s*flex[^}]*flex-wrap:\s*wrap/s);
   expect(styles).toMatch(/@media\s*\(max-width:\s*650px\)\s*\{[\s\S]*?\.ai-result-toolbar\s*\{[^}]*align-items:\s*stretch[^}]*flex-direction:\s*column/s);
   expect(styles).toMatch(/@media\s*\(prefers-reduced-motion:\s*reduce\)\s*\{[\s\S]*?\.ai-review-state[^}]*animation:\s*none/s);
+  expect(styles).toMatch(/@media\s*\(prefers-reduced-transparency:\s*reduce\)\s*\{[\s\S]*?\.ai-evidence,\s*\.ai-send-summary\s*\{[^}]*background:\s*var\(--paper-muted\)[^}]*backdrop-filter:\s*none/s);
 });
 
 test('does not distribute empty viewport height into the compact mobile sidebar', () => {

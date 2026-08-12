@@ -83,6 +83,7 @@ h1 { font-size: clamp(34px, 4vw, 46px); line-height: 1.07; }.toolbar-actions { d
 .document-ai-action:hover { background: #e8f2ff; box-shadow: 0 5px 13px rgb(0 122 255 / .12); transform: translateY(-1px); }
 .document-ai-action:active { transform: scale(.98); }
 .document-ai-notice, .ai-error { margin: 14px 0 0; color: #c9342f; font-size: 12px; line-height: 1.55; }
+.document-ai-success { margin: 14px 0 0; color: #237a45; font-size: 12px; font-weight: 600; line-height: 1.55; }
 .ai-review-inspector { padding: 20px; }
 .ai-review-inspector .preferences-header h2 { font-size: 24px; }
 .ai-review-inspector .inspector-close { width: 44px; height: 44px; }.ai-review-inspector .primary-action { min-height: 44px; }
@@ -601,6 +602,7 @@ input:not([type="radio"]):not([type="checkbox"]) { min-height: 44px; }
 
 @media (prefers-reduced-transparency: reduce) {
   body { background: var(--canvas); }
+  .ai-evidence, .ai-send-summary { background: var(--paper-muted); backdrop-filter: none; -webkit-backdrop-filter: none; }
   .sidebar, .toolbar, .toolbar-button, .nav-selection-lens, .materials-workspace, .review-reader, .review-answer, .inspector-surface, .command-palette, .problem-archive, .ai-provider-settings, .ai-provider-settings-toolbar { background: var(--paper) !important; box-shadow: none; backdrop-filter: none; -webkit-backdrop-filter: none; }
   .inspector-backdrop, .command-palette-backdrop { background: rgb(28 28 30 / .48); backdrop-filter: none; -webkit-backdrop-filter: none; }
   .materials-rail { background: #f4f5f7; }

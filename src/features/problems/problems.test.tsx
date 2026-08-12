@@ -680,6 +680,118 @@ test('locks every suggestion control while one accepted field is saving', async 
   expect(screen.getByRole('textbox', { name: '编辑 AI 解析建议' })).toBeDisabled();
   expect(screen.getAllByRole('button', { name: '忽略' }).every((button) => button.hasAttribute('disabled'))).toBe(true);
   expect(screen.getByRole('button', { name: '采纳解析' })).toBeDisabled();
+  expect(screen.getByRole('button', { name: '关闭 AI 审核' })).toBeDisabled();
+  await user.keyboard('{Escape}');
+  expect(screen.getByRole('dialog', { name: 'AI 建议审核' })).toBeVisible();
+});
+
+test('reloads the latest problem after an AI save conflict and retries with its version', async () => {
+  const initialDocument = {
+    id: 'problem-conflict', courseId: 'macro', title: '', status: 'inbox', updatedAt: '2026-07-30', version: 'v1',
+    fields: [{ kind: 'stem', value: '旧题干', updatedAt: 'v1' }],
+  };
+  const latestDocument = {
+    ...initialDocument,
+    updatedAt: '2026-07-31',
+    version: 'v2',
+    fields: [{ kind: 'stem', value: '另一处更新后的题干', updatedAt: 'v2' }],
+  };
+  getProblemDocument
+    .mockResolvedValueOnce(initialDocument)
+    .mockResolvedValueOnce(latestDocument);
+  runProblemAnalysis.mockResolvedValue([{ kind: 'standard_answer', value: 'AI 答案' }]);
+  saveProblemField
+    .mockRejectedValueOnce(new Error('stale document version'))
+    .mockResolvedValueOnce({ problemId: 'problem-conflict', kind: 'standard_answer', value: 'AI 答案', updatedAt: '2026-08-01', version: 'v3' });
+  const user = userEvent.setup();
+  render(<ProblemDocument problemId="problem-conflict" />);
+
+  await user.click(await screen.findByRole('button', { name: 'AI 辅助整理' }));
+  await user.click(screen.getByRole('button', { name: '开始整理' }));
+  await user.click(await screen.findByRole('button', { name: '采纳标准答案' }));
+
+  expect(await screen.findByText('题目已在另一处更新。已载入最新内容，AI 建议仍保留，请重试。')).toBeVisible();
+  expect(screen.getByDisplayValue('AI 答案')).toBeVisible();
+  await user.click(screen.getByRole('button', { name: '采纳标准答案' }));
+
+  expect(saveProblemField).toHaveBeenLastCalledWith('problem-conflict', 'standard_answer', 'AI 答案', 'v2');
+  expect(await screen.findByText('已写入 1 项 AI 建议')).toBeVisible();
+  expect(screen.queryByRole('dialog', { name: 'AI 建议审核' })).not.toBeInTheDocument();
+});
+
+test('closes the review after ignoring the final suggestion and reports zero writes', async () => {
+  getProblemDocument.mockResolvedValue({
+    id: 'problem-ignore-last', courseId: 'macro', title: '', status: 'inbox', updatedAt: '2026-07-30', version: 'v1',
+    fields: [{ kind: 'stem', value: '题干', updatedAt: 'v1' }],
+  });
+  runProblemAnalysis.mockResolvedValue([{ kind: 'explanation', value: '不采用的解析' }]);
+  const user = userEvent.setup();
+  render(<ProblemDocument problemId="problem-ignore-last" />);
+
+  await user.click(await screen.findByRole('button', { name: 'AI 辅助整理' }));
+  await user.click(screen.getByRole('button', { name: '开始整理' }));
+  await user.click(await screen.findByRole('button', { name: '忽略' }));
+
+  expect(await screen.findByText('已写入 0 项 AI 建议')).toBeVisible();
+  expect(screen.queryByRole('dialog', { name: 'AI 建议审核' })).not.toBeInTheDocument();
+});
+
+test('restores focus to the AI trigger after the final accepted suggestion finishes saving', async () => {
+  const saved = deferred<{ problemId: string; kind: string; value: string; updatedAt: string; version: string }>();
+  getProblemDocument.mockResolvedValue({
+    id: 'problem-focus-save', courseId: 'macro', title: '', status: 'inbox', updatedAt: '2026-07-30', version: 'v1',
+    fields: [{ kind: 'stem', value: '题干', updatedAt: 'v1' }],
+  });
+  runProblemAnalysis.mockResolvedValue([{ kind: 'standard_answer', value: '答案' }]);
+  saveProblemField.mockReturnValue(saved.promise);
+  const user = userEvent.setup();
+  render(<ProblemDocument problemId="problem-focus-save" />);
+
+  const trigger = await screen.findByRole('button', { name: 'AI 辅助整理' });
+  await user.click(trigger);
+  await user.click(screen.getByRole('button', { name: '开始整理' }));
+  await user.click(await screen.findByRole('button', { name: '采纳标准答案' }));
+  await act(async () => saved.resolve({ problemId: 'problem-focus-save', kind: 'standard_answer', value: '答案', updatedAt: '2026-07-31', version: 'v2' }));
+
+  await waitFor(() => expect(screen.queryByRole('dialog', { name: 'AI 建议审核' })).not.toBeInTheDocument());
+  expect(trigger).toHaveFocus();
+});
+
+test('refreshes the latest version after a later batch item conflicts', async () => {
+  const initialDocument = {
+    id: 'problem-late-batch-conflict', courseId: 'macro', title: '', status: 'inbox', updatedAt: '2026-07-30', version: 'v1',
+    fields: [{ kind: 'stem', value: '题干', updatedAt: 'v1' }],
+  };
+  const latestDocument = {
+    ...initialDocument,
+    updatedAt: '2026-08-01',
+    version: 'v3',
+    fields: [
+      ...initialDocument.fields,
+      { kind: 'explanation', value: 'AI 解析', updatedAt: 'v2' },
+      { kind: 'notes', value: '另一处新增笔记', updatedAt: 'v3' },
+    ],
+  };
+  getProblemDocument.mockResolvedValueOnce(initialDocument).mockResolvedValueOnce(latestDocument);
+  runProblemAnalysis.mockResolvedValue([
+    { kind: 'explanation', value: 'AI 解析' },
+    { kind: 'mistake_reason', value: 'AI 错因' },
+  ]);
+  saveProblemField
+    .mockResolvedValueOnce({ problemId: initialDocument.id, kind: 'explanation', value: 'AI 解析', updatedAt: '2026-07-31', version: 'v2' })
+    .mockRejectedValueOnce(new Error('stale document version'))
+    .mockResolvedValueOnce({ problemId: initialDocument.id, kind: 'mistake_reason', value: 'AI 错因', updatedAt: '2026-08-01', version: 'v4' });
+  const user = userEvent.setup();
+  render(<ProblemDocument problemId={initialDocument.id} />);
+
+  await user.click(await screen.findByRole('button', { name: 'AI 辅助整理' }));
+  await user.click(screen.getByRole('button', { name: '开始整理' }));
+  await user.click(await screen.findByRole('button', { name: '采纳全部空白字段' }));
+  expect(await screen.findByText('已采纳 1 个字段，剩余建议仍保留')).toBeVisible();
+  expect(screen.getByText('另一处新增笔记')).toBeVisible();
+
+  await user.click(screen.getByRole('button', { name: '采纳全部空白字段' }));
+  expect(saveProblemField).toHaveBeenLastCalledWith(initialDocument.id, 'mistake_reason', 'AI 错因', 'v3');
 });
 
 test('does not merge an accepted suggestion after switching problems', async () => {

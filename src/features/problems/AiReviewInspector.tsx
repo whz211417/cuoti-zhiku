@@ -97,7 +97,7 @@ export function AiReviewInspector({
     <section aria-label="AI 建议审核" aria-modal="true" className="ai-review-inspector" ref={dialogRef} role="dialog" tabIndex={-1}>
       <header className="preferences-header">
         <div><p className="eyebrow">AI · 可选增强</p><h2>{stage === 'suggestions' ? '审核整理建议' : '整理这道题'}</h2></div>
-        <button aria-label="关闭 AI 审核" className="inspector-close" onClick={onClose} type="button"><X aria-hidden="true" size={17} /></button>
+        <button aria-label="关闭 AI 审核" className="inspector-close" disabled={isSaving} onClick={onClose} type="button"><X aria-hidden="true" size={17} /></button>
       </header>
 
       {stage === 'checking' ? (

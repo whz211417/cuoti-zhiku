@@ -1,12 +1,12 @@
 {
   "name": "cuoti-zhiku",
   "private": true,
-  "version": "0.3.2",
+  "version": "0.3.3",
   "type": "module",
   "scripts": {
     "dev": "vite",
     "test": "vitest run",
-    "test:rust": "set RUSTUP_HOME=C:\\tmp\\rustup-home&& set CARGO_HOME=C:\\tmp\\cargo-home&& C:\\tmp\\cargo-home\\bin\\cargo.exe test --manifest-path src-tauri/Cargo.toml",
+    "test:rust": "set RUSTUP_HOME=C:\\tmp\\rustup-home&& set CARGO_HOME=C:\\tmp\\cargo-home&& set RUSTUP_TOOLCHAIN=stable-x86_64-pc-windows-gnu&& set PATH=C:\\tmp\\llvm-mingw\\llvm-mingw-20260407-ucrt-x86_64\\bin;%PATH%&& C:\\tmp\\cargo-home\\bin\\cargo.exe test --target x86_64-pc-windows-gnu --manifest-path src-tauri/Cargo.toml",
     "test:e2e": "playwright test",
     "lint": "eslint . --max-warnings=0",
     "typecheck": "tsc --noEmit",

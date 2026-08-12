@@ -55,6 +55,8 @@ export function ProblemDocument({ onOpenAiSettings, onSaved, problemId }: Proble
   const [aiMode, setAiMode] = useState<'flash' | 'deep'>('flash');
   const [aiSuggestions, setAiSuggestions] = useState<AiFieldSuggestion[]>([]);
   const [aiError, setAiError] = useState<string | null>(null);
+  const [aiNotice, setAiNotice] = useState<string | null>(null);
+  const [aiAcceptedCount, setAiAcceptedCount] = useState(0);
   const [activeProvider, setActiveProvider] = useState<AiProviderConfig | null>(null);
   const [materialQuery, setMaterialQuery] = useState('');
   const [materialResults, setMaterialResults] = useState<MaterialSnippet[]>([]);
@@ -68,6 +70,8 @@ export function ProblemDocument({ onOpenAiSettings, onSaved, problemId }: Proble
   const aiDialogRef = useRef<HTMLElement>(null);
   const aiTriggerRef = useRef<HTMLButtonElement>(null);
   const aiRestoreFocusRef = useRef<HTMLElement | null>(null);
+  const isSavingRef = useRef(isSaving);
+  isSavingRef.current = isSaving;
   const isAiOpen = aiStage !== 'closed';
 
   useLayoutEffect(() => {
@@ -85,6 +89,8 @@ export function ProblemDocument({ onOpenAiSettings, onSaved, problemId }: Proble
     setAiStage('closed');
     setAiSuggestions([]);
     setAiError(null);
+    setAiNotice(null);
+    setAiAcceptedCount(0);
     setActiveProvider(null);
     setMaterialQuery('');
     setMaterialResults([]);
@@ -114,10 +120,20 @@ export function ProblemDocument({ onOpenAiSettings, onSaved, problemId }: Proble
   }, [problemId]);
 
   const closeAiReview = useCallback(() => {
+    if (isSavingRef.current) return;
     aiRequestGenerationRef.current += 1;
     materialSearchGenerationRef.current += 1;
     setAiStage('closed');
     setAiError(null);
+  }, []);
+
+  const finishAiReview = useCallback((acceptedCount: number) => {
+    aiRequestGenerationRef.current += 1;
+    materialSearchGenerationRef.current += 1;
+    setAiSuggestions([]);
+    setAiError(null);
+    setAiNotice(`已写入 ${acceptedCount} 项 AI 建议`);
+    setAiStage('closed');
     setIsSaving(false);
   }, []);
 
@@ -130,7 +146,7 @@ export function ProblemDocument({ onOpenAiSettings, onSaved, problemId }: Proble
     ));
     (focusableElements()[0] ?? dialog).focus();
     const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') {
+      if (event.key === 'Escape' && !isSavingRef.current) {
         event.preventDefault();
         closeAiReview();
         return;
@@ -220,6 +236,7 @@ export function ProblemDocument({ onOpenAiSettings, onSaved, problemId }: Proble
     const generation = aiRequestGenerationRef.current + 1;
     aiRequestGenerationRef.current = generation;
     setAiError(null);
+    setAiNotice(null);
     setAiStage('checking');
     try {
       const providerState = await loadAiProviderState();
@@ -322,6 +339,7 @@ export function ProblemDocument({ onOpenAiSettings, onSaved, problemId }: Proble
         return;
       }
       setAiSuggestions(suggestions);
+      setAiAcceptedCount(0);
       setAiStage('suggestions');
     } catch (cause) {
       if (activeProblemRef.current !== requestProblemId || aiRequestGenerationRef.current !== generation) return;
@@ -342,7 +360,12 @@ export function ProblemDocument({ onOpenAiSettings, onSaved, problemId }: Proble
   };
 
   const rejectSuggestion = (index: number) => {
-    setAiSuggestions((current) => current.filter((_, currentIndex) => currentIndex !== index));
+    const remaining = aiSuggestions.filter((_, currentIndex) => currentIndex !== index);
+    if (remaining.length === 0) {
+      finishAiReview(aiAcceptedCount);
+      return;
+    }
+    setAiSuggestions(remaining);
   };
 
   const acceptSuggestion = async (index: number) => {
@@ -365,11 +388,24 @@ export function ProblemDocument({ onOpenAiSettings, onSaved, problemId }: Proble
         version: saved.version,
         fields: [...current.fields.filter((field) => field.kind !== saved.kind), saved],
       } : current);
-      rejectSuggestion(index);
+      const remaining = aiSuggestions.filter((_, currentIndex) => currentIndex !== index);
+      const nextAcceptedCount = aiAcceptedCount + 1;
+      setAiAcceptedCount(nextAcceptedCount);
+      if (remaining.length === 0) finishAiReview(nextAcceptedCount);
+      else setAiSuggestions(remaining);
       onSaved?.();
     } catch {
       if (!isActiveRequest()) return;
-      setAiError('采纳没有保存，题目可能已更新；请关闭审核器后重新打开。');
+      try {
+        const latestDocument = await getProblemDocument(document.id);
+        if (!isActiveRequest()) return;
+        setDocument(latestDocument);
+        setAiError(latestDocument.version !== document.version
+          ? '题目已在另一处更新。已载入最新内容，AI 建议仍保留，请重试。'
+          : '采纳没有保存，AI 建议仍保留，请重试。');
+      } catch {
+        if (isActiveRequest()) setAiError('采纳没有保存，AI 建议仍保留，请重试。');
+      }
     } finally {
       if (isActiveRequest()) setIsSaving(false);
     }
@@ -386,6 +422,7 @@ export function ProblemDocument({ onOpenAiSettings, onSaved, problemId }: Proble
     );
     setIsSaving(true);
     setAiError(null);
+    let latestSavedVersion = document.version;
     const result = await saveAiSuggestionsSequentially(
       blankSuggestions,
       document.version,
@@ -395,6 +432,7 @@ export function ProblemDocument({ onOpenAiSettings, onSaved, problemId }: Proble
       },
       (saved) => {
         if (!isActiveRequest()) return;
+        latestSavedVersion = saved.version;
         setDocument((current) => current?.id === requestProblemId ? {
           ...current,
           updatedAt: saved.updatedAt,
@@ -406,11 +444,29 @@ export function ProblemDocument({ onOpenAiSettings, onSaved, problemId }: Proble
     );
     if (!isActiveRequest()) return;
     const savedKinds = new Set(result.savedSuggestions.map((suggestion) => suggestion.kind));
-    setAiSuggestions((current) => current.filter((suggestion) => !savedKinds.has(suggestion.kind)));
+    const remaining = aiSuggestions.filter((suggestion) => !savedKinds.has(suggestion.kind));
+    const nextAcceptedCount = aiAcceptedCount + result.savedSuggestions.length;
+    setAiAcceptedCount(nextAcceptedCount);
+    setAiSuggestions(remaining);
     if (result.error) {
+      let refreshedConflict = false;
+      try {
+        const latestDocument = await getProblemDocument(document.id);
+        if (!isActiveRequest()) return;
+        refreshedConflict = latestDocument.version !== latestSavedVersion;
+        setDocument(latestDocument);
+      } catch {
+        // The suggestions stay mounted even if the recovery read also fails.
+      }
+      if (!isActiveRequest()) return;
       setAiError(result.savedSuggestions.length > 0
         ? `已采纳 ${result.savedSuggestions.length} 个字段，剩余建议仍保留`
-        : '没有保存任何字段，建议仍保留，请重试');
+        : refreshedConflict
+          ? '题目已在另一处更新。已载入最新内容，AI 建议仍保留，请重试。'
+          : '没有保存任何字段，建议仍保留，请重试');
+    } else if (remaining.length === 0) {
+      finishAiReview(nextAcceptedCount);
+      return;
     }
     setIsSaving(false);
   };
@@ -423,6 +479,7 @@ export function ProblemDocument({ onOpenAiSettings, onSaved, problemId }: Proble
           <button aria-label="AI 辅助整理" className="document-ai-action" onClick={() => void openAiReview()} ref={aiTriggerRef} type="button"><Sparkles aria-hidden="true" size={15} />AI 辅助整理</button>
         </div>
         {aiError && aiStage === 'closed' ? <p className="document-ai-notice" role="status">{aiError}</p> : null}
+        {aiNotice && aiStage === 'closed' ? <p className="document-ai-success" role="status">{aiNotice}</p> : null}
       </header>
       <div className="document-pages">
         {fieldOrder.map(([kind, label]) => {
