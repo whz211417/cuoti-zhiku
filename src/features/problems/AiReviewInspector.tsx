@@ -26,6 +26,7 @@ type AiReviewInspectorProps = {
   materialQuery: string;
   materialResults: MaterialSnippet[];
   onAcceptSuggestion: (index: number) => void;
+  onAcceptBlankSuggestions: () => void;
   onChangeMaterialQuery: (value: string) => void;
   onChangeMode: (mode: 'flash' | 'deep') => void;
   onClose: () => void;
@@ -38,6 +39,7 @@ type AiReviewInspectorProps = {
   onToggleImage: (include: boolean) => void;
   onToggleMaterial: (snippet: MaterialSnippet) => void;
   onUpdateSuggestion: (index: number, value: string) => void;
+  occupiedKinds: string[];
   providerLabel: string | null;
   selectedMaterials: MaterialSnippet[];
   stage: AiReviewStage;
@@ -58,6 +60,7 @@ export function AiReviewInspector({
   materialQuery,
   materialResults,
   onAcceptSuggestion,
+  onAcceptBlankSuggestions,
   onChangeMaterialQuery,
   onChangeMode,
   onClose,
@@ -70,6 +73,7 @@ export function AiReviewInspector({
   onToggleImage,
   onToggleMaterial,
   onUpdateSuggestion,
+  occupiedKinds,
   providerLabel,
   selectedMaterials,
   stage,
@@ -86,6 +90,8 @@ export function AiReviewInspector({
   const evidenceSummary = includeOriginalImage || selectedMaterials.length > 0
     ? [includeOriginalImage ? '题图' : null, selectedMaterials.length ? `${selectedMaterials.length} 段教材` : null].filter(Boolean).join('、')
     : '可选';
+  const occupiedKindSet = new Set(occupiedKinds);
+  const blankSuggestionCount = suggestions.filter((suggestion) => !occupiedKindSet.has(suggestion.kind)).length;
 
   return (
     <section aria-label="AI 建议审核" aria-modal="true" className="ai-review-inspector" ref={dialogRef} role="dialog" tabIndex={-1}>
@@ -208,7 +214,17 @@ export function AiReviewInspector({
 
       {stage === 'suggestions' ? (
         <div className="ai-review-state ai-suggestions">
-          <div className="ai-result-toolbar"><p>已生成 {suggestions.length} 项建议</p><button disabled={isSaving} onClick={onRegenerate} type="button">重新生成</button></div>
+          <div className="ai-result-toolbar">
+            <p>已生成 {suggestions.length} 项建议</p>
+            <div>
+              {blankSuggestionCount > 0 ? (
+                <button className="ai-accept-blank" disabled={isSaving} onClick={onAcceptBlankSuggestions} type="button">
+                  采纳全部空白字段 <small aria-hidden="true">{blankSuggestionCount}</small>
+                </button>
+              ) : null}
+              <button disabled={isSaving} onClick={onRegenerate} type="button">重新生成</button>
+            </div>
+          </div>
           {suggestions.length === 0 ? <p className="ai-empty">没有需要修改的字段建议。</p> : null}
           {suggestions.map((suggestion, index) => {
             const label = fieldLabels.get(suggestion.kind) ?? suggestion.kind;
@@ -216,7 +232,7 @@ export function AiReviewInspector({
               <section className="ai-suggestion" key={`${suggestion.kind}-${index}`}>
                 <p>{label}</p>
                 <textarea aria-label={`编辑 AI ${label}建议`} disabled={isSaving} onChange={(event) => onUpdateSuggestion(index, event.target.value)} value={suggestion.value} />
-                <div><button disabled={isSaving} onClick={() => onIgnoreSuggestion(index)} type="button">忽略</button><button disabled={isSaving} onClick={() => onAcceptSuggestion(index)} type="button">{`采纳${label}`}</button></div>
+                <div><button disabled={isSaving} onClick={() => onIgnoreSuggestion(index)} type="button">忽略</button><button disabled={isSaving} onClick={() => onAcceptSuggestion(index)} type="button">{`${occupiedKindSet.has(suggestion.kind) ? '替换' : '采纳'}${label}`}</button></div>
               </section>
             );
           })}

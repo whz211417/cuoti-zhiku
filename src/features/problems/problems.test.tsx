@@ -704,3 +704,57 @@ test('does not merge an accepted suggestion after switching problems', async () 
   expect(await screen.findByRole('heading', { name: '题目 B' })).toBeVisible();
   expect(screen.queryByText('题目 A 的建议答案')).not.toBeInTheDocument();
 });
+
+test('accepts every blank AI field in one action while preserving existing content', async () => {
+  getProblemDocument.mockResolvedValue({
+    id: 'problem-batch', courseId: 'macro', title: '', status: 'inbox', updatedAt: '2026-07-30', version: 'v1',
+    fields: [
+      { kind: 'stem', value: '题干', updatedAt: 'v1' },
+      { kind: 'standard_answer', value: '我的原答案', updatedAt: 'v1' },
+    ],
+  });
+  runProblemAnalysis.mockResolvedValue([
+    { kind: 'standard_answer', value: 'AI 新答案' },
+    { kind: 'explanation', value: 'AI 解析' },
+    { kind: 'mistake_reason', value: 'AI 错因' },
+  ]);
+  saveProblemField
+    .mockResolvedValueOnce({ problemId: 'problem-batch', kind: 'explanation', value: 'AI 解析', updatedAt: '2026-07-31', version: 'v2' })
+    .mockResolvedValueOnce({ problemId: 'problem-batch', kind: 'mistake_reason', value: 'AI 错因', updatedAt: '2026-07-31', version: 'v3' });
+  const user = userEvent.setup();
+  render(<ProblemDocument problemId="problem-batch" />);
+
+  await user.click(await screen.findByRole('button', { name: 'AI 辅助整理' }));
+  await user.click(screen.getByRole('button', { name: '开始整理' }));
+  await user.click(await screen.findByRole('button', { name: '采纳全部空白字段' }));
+
+  expect(saveProblemField).toHaveBeenNthCalledWith(1, 'problem-batch', 'explanation', 'AI 解析', 'v1');
+  expect(saveProblemField).toHaveBeenNthCalledWith(2, 'problem-batch', 'mistake_reason', 'AI 错因', 'v2');
+  expect(screen.getByRole('button', { name: '替换标准答案' })).toBeVisible();
+  expect(screen.queryByDisplayValue('AI 解析')).not.toBeInTheDocument();
+  expect(screen.queryByDisplayValue('AI 错因')).not.toBeInTheDocument();
+});
+
+test('keeps unsaved AI fields available when a batch adoption stops midway', async () => {
+  getProblemDocument.mockResolvedValue({
+    id: 'problem-batch-failure', courseId: 'macro', title: '', status: 'inbox', updatedAt: '2026-07-30', version: 'v1',
+    fields: [{ kind: 'stem', value: '题干', updatedAt: 'v1' }],
+  });
+  runProblemAnalysis.mockResolvedValue([
+    { kind: 'explanation', value: '已保存解析' },
+    { kind: 'mistake_reason', value: '仍待保存错因' },
+  ]);
+  saveProblemField
+    .mockResolvedValueOnce({ problemId: 'problem-batch-failure', kind: 'explanation', value: '已保存解析', updatedAt: '2026-07-31', version: 'v2' })
+    .mockRejectedValueOnce(new Error('database busy'));
+  const user = userEvent.setup();
+  render(<ProblemDocument problemId="problem-batch-failure" />);
+
+  await user.click(await screen.findByRole('button', { name: 'AI 辅助整理' }));
+  await user.click(screen.getByRole('button', { name: '开始整理' }));
+  await user.click(await screen.findByRole('button', { name: '采纳全部空白字段' }));
+
+  expect(await screen.findByText('已采纳 1 个字段，剩余建议仍保留')).toBeVisible();
+  expect(screen.queryByDisplayValue('已保存解析')).not.toBeInTheDocument();
+  expect(screen.getByDisplayValue('仍待保存错因')).toBeVisible();
+});

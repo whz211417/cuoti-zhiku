@@ -14,6 +14,7 @@ import {
 import type { AiProviderConfig } from '../settings/aiProviderCatalog';
 import { loadAiProviderState } from '../settings/aiProviderStore';
 import { AiReviewInspector, type AiReviewStage } from './AiReviewInspector';
+import { saveAiSuggestionsSequentially } from './saveAiSuggestionsSequentially';
 
 const fieldOrder = [
   ['stem', '题干'],
@@ -374,6 +375,46 @@ export function ProblemDocument({ onOpenAiSettings, onSaved, problemId }: Proble
     }
   };
 
+  const acceptBlankSuggestions = async () => {
+    const blankSuggestions = aiSuggestions.filter((suggestion) => !fields.get(suggestion.kind)?.value.trim());
+    if (blankSuggestions.length === 0) return;
+    const requestProblemId = problemId;
+    const requestGeneration = aiRequestGenerationRef.current;
+    const isActiveRequest = () => (
+      activeProblemRef.current === requestProblemId
+      && aiRequestGenerationRef.current === requestGeneration
+    );
+    setIsSaving(true);
+    setAiError(null);
+    const result = await saveAiSuggestionsSequentially(
+      blankSuggestions,
+      document.version,
+      async (suggestion, expectedVersion) => {
+        if (!isActiveRequest()) throw new Error('AI review is no longer active');
+        return saveProblemField(document.id, suggestion.kind, suggestion.value, expectedVersion);
+      },
+      (saved) => {
+        if (!isActiveRequest()) return;
+        setDocument((current) => current?.id === requestProblemId ? {
+          ...current,
+          updatedAt: saved.updatedAt,
+          version: saved.version,
+          fields: [...current.fields.filter((field) => field.kind !== saved.kind), saved],
+        } : current);
+        onSaved?.();
+      },
+    );
+    if (!isActiveRequest()) return;
+    const savedKinds = new Set(result.savedSuggestions.map((suggestion) => suggestion.kind));
+    setAiSuggestions((current) => current.filter((suggestion) => !savedKinds.has(suggestion.kind)));
+    if (result.error) {
+      setAiError(result.savedSuggestions.length > 0
+        ? `已采纳 ${result.savedSuggestions.length} 个字段，剩余建议仍保留`
+        : '没有保存任何字段，建议仍保留，请重试');
+    }
+    setIsSaving(false);
+  };
+
   return (
     <article className="problem-document" aria-label="题目档案">
       <header className="document-header">
@@ -427,6 +468,8 @@ export function ProblemDocument({ onOpenAiSettings, onSaved, problemId }: Proble
             isSearchingMaterials={isSearchingMaterials}
             materialQuery={materialQuery}
             materialResults={materialResults}
+            occupiedKinds={document.fields.filter((field) => field.value.trim()).map((field) => field.kind)}
+            onAcceptBlankSuggestions={() => void acceptBlankSuggestions()}
             onAcceptSuggestion={(index) => void acceptSuggestion(index)}
             onChangeMaterialQuery={changeMaterialQuery}
             onChangeMode={setAiMode}
