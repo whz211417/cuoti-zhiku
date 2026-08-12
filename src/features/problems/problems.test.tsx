@@ -149,7 +149,7 @@ test('saves an added stem with the document version', async () => {
   expect(onSaved).toHaveBeenCalledOnce();
 });
 
-test('runs AI only after consent and accepts suggestions one field at a time', async () => {
+test('opens a compact AI setup before sending and accepts suggestions one field at a time', async () => {
   getProblemDocument.mockResolvedValue({
     id: 'problem-ai',
     courseId: 'macro',
@@ -177,11 +177,11 @@ test('runs AI only after consent and accepts suggestions one field at a time', a
 
   await user.click(await screen.findByRole('button', { name: 'AI 辅助整理' }));
   expect(runProblemAnalysis).not.toHaveBeenCalled();
-  expect(screen.getByText('DeepSeek · deepseek-v4-flash')).toBeVisible();
-  expect(screen.getByText('题干：财政扩张如何影响 IS 曲线？')).toBeVisible();
-  expect(screen.getByText('有题图，本次不发送')).toBeVisible();
-  expect(screen.getByText('学习资料片段：0 段')).toBeVisible();
-  await user.click(screen.getByRole('button', { name: '仅本次发送' }));
+  expect(await screen.findByRole('heading', { name: '整理这道题' })).toBeVisible();
+  expect(screen.getByText('题目文字 · 不含题图 · 0 段教材')).toBeVisible();
+  expect(screen.getByRole('searchbox', { name: '搜索本课程学习资料' })).not.toBeVisible();
+  expect(screen.queryByText('题干：财政扩张如何影响 IS 曲线？')).not.toBeInTheDocument();
+  await user.click(screen.getByRole('button', { name: '开始整理' }));
   await user.click(await screen.findByRole('button', { name: '采纳标准答案' }));
 
   expect(runProblemAnalysis).toHaveBeenCalledWith('problem-ai', 'flash', deepseekConfig, [], 'version-1', false);
@@ -394,9 +394,9 @@ test('lets the learner explicitly choose deep analysis before sending', async ()
   render(<ProblemDocument problemId="problem-deep" />);
 
   await user.click(await screen.findByRole('button', { name: 'AI 辅助整理' }));
-  expect(screen.getByText('不包含题图')).toBeVisible();
+  expect(screen.getByText('题目文字 · 不含题图 · 0 段教材')).toBeVisible();
   await user.click(screen.getByRole('radio', { name: '深度分析' }));
-  await user.click(screen.getByRole('button', { name: '仅本次发送' }));
+  await user.click(screen.getByRole('button', { name: '开始整理' }));
 
   expect(runProblemAnalysis).toHaveBeenCalledWith('problem-deep', 'deep', deepseekConfig, [], 'version-1', false);
 });
@@ -413,17 +413,17 @@ test('sends a question image only after explicit consent and shows the actual vi
   await user.click(await screen.findByRole('button', { name: 'AI 辅助整理' }));
   const imageConsent = screen.getByRole('checkbox', { name: '本次发送题目原图' });
   expect(imageConsent).not.toBeChecked();
-  expect(screen.getByText('智谱 AI · glm-5.2')).toBeVisible();
+  expect(screen.getByText('glm-5.2')).toBeVisible();
   await user.click(imageConsent);
-  expect(screen.getByText('智谱 AI · glm-4.5v')).toBeVisible();
-  await user.click(screen.getByRole('button', { name: '仅本次发送' }));
+  expect(screen.getByText('glm-4.5v')).toBeVisible();
+  await user.click(screen.getByRole('button', { name: '开始整理' }));
 
   expect(runProblemAnalysis).toHaveBeenCalledWith(
     'problem-image', 'flash', visionConfig, [], 'version-image', true,
   );
 });
 
-test('opens AI settings without changing the local record when no active provider exists', async () => {
+test('explains missing AI setup before the learner chooses to open settings', async () => {
   getProblemDocument.mockResolvedValue({
     id: 'problem-no-provider', courseId: 'macro', title: '', status: 'inbox',
     updatedAt: '2026-07-30T08:00:00Z', version: 'version-1', fields: [],
@@ -435,12 +435,15 @@ test('opens AI settings without changing the local record when no active provide
 
   await user.click(await screen.findByRole('button', { name: 'AI 辅助整理' }));
 
+  expect(await screen.findByText('需要先连接 AI')).toBeVisible();
+  expect(onOpenAiSettings).not.toHaveBeenCalled();
+  await user.click(screen.getByRole('button', { name: '前往 AI 设置' }));
   expect(onOpenAiSettings).toHaveBeenCalledOnce();
   expect(runProblemAnalysis).not.toHaveBeenCalled();
   expect(saveProblemField).not.toHaveBeenCalled();
 });
 
-test('opens AI settings without sending when the active provider has no saved key', async () => {
+test('explains a missing provider key before the learner chooses to open settings', async () => {
   getProblemDocument.mockResolvedValue({
     id: 'problem-no-key', courseId: 'macro', title: '', status: 'inbox',
     updatedAt: '2026-07-30T08:00:00Z', version: 'version-1', fields: [],
@@ -453,6 +456,9 @@ test('opens AI settings without sending when the active provider has no saved ke
   await user.click(await screen.findByRole('button', { name: 'AI 辅助整理' }));
 
   expect(hasAiProviderKey).toHaveBeenCalledWith(deepseekConfig);
+  expect(await screen.findByText('需要先连接 AI')).toBeVisible();
+  expect(onOpenAiSettings).not.toHaveBeenCalled();
+  await user.click(screen.getByRole('button', { name: '前往 AI 设置' }));
   expect(onOpenAiSettings).toHaveBeenCalledOnce();
   expect(runProblemAnalysis).not.toHaveBeenCalled();
   expect(saveProblemField).not.toHaveBeenCalled();
@@ -474,6 +480,7 @@ test('sends only explicitly selected same-course material chunks in request orde
   render(<ProblemDocument problemId="problem-materials" />);
 
   await user.click(await screen.findByRole('button', { name: 'AI 辅助整理' }));
+  await user.click(screen.getByText('添加依据'));
   await user.type(screen.getByRole('searchbox', { name: '搜索本课程学习资料' }), '需求弹性');
   await user.click(screen.getByRole('button', { name: '查找片段' }));
   for (const excerpt of ['片段一', '片段二', '片段三']) {
@@ -483,8 +490,8 @@ test('sends only explicitly selected same-course material chunks in request orde
   expect(screen.getByRole('region', { name: '本次已选片段' })).toHaveTextContent('第一章.pdf');
   expect(screen.getByRole('region', { name: '本次已选片段' })).toHaveTextContent('片段三');
   expect(screen.getByText('片段三')).toBeVisible();
-  expect(screen.getByText('学习资料片段：3 段')).toBeVisible();
-  await user.click(screen.getByRole('button', { name: '仅本次发送' }));
+  expect(screen.getByText('题目文字 · 不含题图 · 3 段教材')).toBeVisible();
+  await user.click(screen.getByRole('button', { name: '开始整理' }));
 
   expect(searchCourseMaterial).toHaveBeenCalledWith('macro', '需求弹性');
   expect(runProblemAnalysis).toHaveBeenCalledWith(
@@ -504,6 +511,7 @@ test('does not allow more than three material snippets', async () => {
   const user = userEvent.setup();
   render(<ProblemDocument problemId="problem-limit" />);
   await user.click(await screen.findByRole('button', { name: 'AI 辅助整理' }));
+  await user.click(screen.getByText('添加依据'));
   await user.type(screen.getByRole('searchbox', { name: '搜索本课程学习资料' }), '片段');
   await user.click(screen.getByRole('button', { name: '查找片段' }));
   for (const excerpt of ['片段1', '片段2', '片段3']) await user.click(await screen.findByRole('checkbox', { name: excerpt }));
@@ -521,7 +529,7 @@ test('ignores a late AI response after another problem is selected', async () =>
   const user = userEvent.setup();
   const { rerender } = render(<ProblemDocument problemId="p1" />);
   await user.click(await screen.findByRole('button', { name: 'AI 辅助整理' }));
-  await user.click(screen.getByRole('button', { name: '仅本次发送' }));
+  await user.click(screen.getByRole('button', { name: '开始整理' }));
 
   rerender(<ProblemDocument problemId="p2" />);
   await act(async () => response.resolve([{ kind: 'stem', value: '迟到的旧建议' }]));
@@ -545,7 +553,7 @@ test('discards a late AI response when the active provider model changes', async
   const user = userEvent.setup();
   render(<ProblemDocument problemId="problem-provider-change" />);
   await user.click(await screen.findByRole('button', { name: 'AI 辅助整理' }));
-  await user.click(screen.getByRole('button', { name: '仅本次发送' }));
+  await user.click(screen.getByRole('button', { name: '开始整理' }));
   await act(async () => response.resolve([{ kind: 'stem', value: '旧模型建议' }]));
 
   expect(screen.queryByDisplayValue('旧模型建议')).not.toBeInTheDocument();
@@ -562,6 +570,7 @@ test('ignores a late material search after the query changes', async () => {
   const user = userEvent.setup();
   render(<ProblemDocument problemId="problem-search-race" />);
   await user.click(await screen.findByRole('button', { name: 'AI 辅助整理' }));
+  await user.click(screen.getByText('添加依据'));
   const input = screen.getByRole('searchbox', { name: '搜索本课程学习资料' });
   await user.type(input, '旧查询');
   await user.click(screen.getByRole('button', { name: '查找片段' }));
@@ -585,7 +594,7 @@ test('ignores a late AI response after the review dialog closes', async () => {
   const user = userEvent.setup();
   render(<ProblemDocument problemId="problem-close" />);
   await user.click(await screen.findByRole('button', { name: 'AI 辅助整理' }));
-  await user.click(screen.getByRole('button', { name: '仅本次发送' }));
+  await user.click(screen.getByRole('button', { name: '开始整理' }));
   await user.click(screen.getByRole('button', { name: '关闭 AI 审核' }));
   await act(async () => response.resolve([{ kind: 'stem', value: '关闭后的建议' }]));
 
@@ -602,7 +611,7 @@ test('shows a string rejection from the native AI command', async () => {
   const user = userEvent.setup();
   render(<ProblemDocument problemId="problem-error" />);
   await user.click(await screen.findByRole('button', { name: 'AI 辅助整理' }));
-  await user.click(screen.getByRole('button', { name: '仅本次发送' }));
+  await user.click(screen.getByRole('button', { name: '开始整理' }));
 
   expect(await screen.findByText('AI 账户额度不足或计费不可用，请检查余额。')).toBeVisible();
 });
@@ -617,7 +626,7 @@ test('traps focus in the modal, closes with Escape, and restores the AI trigger'
   const trigger = await screen.findByRole('button', { name: 'AI 辅助整理' });
   await user.click(trigger);
   const close = screen.getByRole('button', { name: '关闭 AI 审核' });
-  const send = screen.getByRole('button', { name: '仅本次发送' });
+  const send = screen.getByRole('button', { name: '开始整理' });
   expect(close).toHaveFocus();
   await user.tab({ shift: true });
   expect(send).toHaveFocus();
@@ -640,9 +649,10 @@ test('keeps image sending disabled for a text-only provider while allowing the t
   render(<ProblemDocument problemId="problem-text-only" />);
 
   await user.click(await screen.findByRole('button', { name: 'AI 辅助整理' }));
+  await user.click(screen.getByText('添加依据'));
   expect(screen.getByRole('checkbox', { name: '本次发送题目原图' })).toBeDisabled();
   expect(screen.getByText('当前平台不支持题图；仍可只发送文字')).toBeVisible();
-  await user.click(screen.getByRole('button', { name: '仅本次发送' }));
+  await user.click(screen.getByRole('button', { name: '开始整理' }));
 
   expect(runProblemAnalysis).toHaveBeenCalledWith(
     'problem-text-only', 'flash', deepseekConfig, [], 'v1', false,
@@ -664,11 +674,11 @@ test('locks every suggestion control while one accepted field is saving', async 
   render(<ProblemDocument problemId="problem-lock" />);
 
   await user.click(await screen.findByRole('button', { name: 'AI 辅助整理' }));
-  await user.click(screen.getByRole('button', { name: '仅本次发送' }));
+  await user.click(screen.getByRole('button', { name: '开始整理' }));
   await user.click(await screen.findByRole('button', { name: '采纳标准答案' }));
 
   expect(screen.getByRole('textbox', { name: '编辑 AI 解析建议' })).toBeDisabled();
-  expect(screen.getAllByRole('button', { name: '拒绝' }).every((button) => button.hasAttribute('disabled'))).toBe(true);
+  expect(screen.getAllByRole('button', { name: '忽略' }).every((button) => button.hasAttribute('disabled'))).toBe(true);
   expect(screen.getByRole('button', { name: '采纳解析' })).toBeDisabled();
 });
 
@@ -683,7 +693,7 @@ test('does not merge an accepted suggestion after switching problems', async () 
   const user = userEvent.setup();
   const view = render(<ProblemDocument problemId="accept-a" />);
   await user.click(await screen.findByRole('button', { name: 'AI 辅助整理' }));
-  await user.click(screen.getByRole('button', { name: '仅本次发送' }));
+  await user.click(screen.getByRole('button', { name: '开始整理' }));
   await user.click(await screen.findByRole('button', { name: '采纳标准答案' }));
 
   view.rerender(<ProblemDocument problemId="accept-b" />);

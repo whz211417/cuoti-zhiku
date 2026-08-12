@@ -1,4 +1,4 @@
-import { Sparkles, X } from 'lucide-react';
+import { Sparkles } from 'lucide-react';
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { InspectorSurface } from '../../components/material/InspectorSurface';
 import {
@@ -13,6 +13,7 @@ import {
 } from '../../lib/tauri';
 import type { AiProviderConfig } from '../settings/aiProviderCatalog';
 import { loadAiProviderState } from '../settings/aiProviderStore';
+import { AiReviewInspector, type AiReviewStage } from './AiReviewInspector';
 
 const fieldOrder = [
   ['stem', '题干'],
@@ -22,8 +23,6 @@ const fieldOrder = [
   ['mistake_reason', '错因'],
   ['notes', '补充笔记'],
 ] as const;
-
-const labels = new Map(fieldOrder);
 
 type ProblemDocumentProps = {
   onOpenAiSettings?: () => void;
@@ -51,7 +50,7 @@ export function ProblemDocument({ onOpenAiSettings, onSaved, problemId }: Proble
   const [editingKind, setEditingKind] = useState<string | null>(null);
   const [draft, setDraft] = useState('');
   const [isSaving, setIsSaving] = useState(false);
-  const [aiStage, setAiStage] = useState<'closed' | 'consent' | 'loading' | 'suggestions'>('closed');
+  const [aiStage, setAiStage] = useState<AiReviewStage | 'closed'>('closed');
   const [aiMode, setAiMode] = useState<'flash' | 'deep'>('flash');
   const [aiSuggestions, setAiSuggestions] = useState<AiFieldSuggestion[]>([]);
   const [aiError, setAiError] = useState<string | null>(null);
@@ -212,12 +211,15 @@ export function ProblemDocument({ onOpenAiSettings, onSaved, problemId }: Proble
   };
 
   const openAiReview = async () => {
-    aiRestoreFocusRef.current = globalThis.document.activeElement instanceof HTMLElement
-      ? globalThis.document.activeElement
-      : aiTriggerRef.current;
+    if (aiStage === 'closed') {
+      aiRestoreFocusRef.current = globalThis.document.activeElement instanceof HTMLElement
+        ? globalThis.document.activeElement
+        : aiTriggerRef.current;
+    }
     const generation = aiRequestGenerationRef.current + 1;
     aiRequestGenerationRef.current = generation;
     setAiError(null);
+    setAiStage('checking');
     try {
       const providerState = await loadAiProviderState();
       if (activeProblemRef.current !== problemId || aiRequestGenerationRef.current !== generation) return;
@@ -226,8 +228,9 @@ export function ProblemDocument({ onOpenAiSettings, onSaved, problemId }: Proble
       )) ?? null;
       if (!provider || !await hasAiProviderKey(provider)) {
         if (activeProblemRef.current !== problemId || aiRequestGenerationRef.current !== generation) return;
+        setActiveProvider(provider);
         setAiError(provider ? `请先在 AI 设置中保存 ${provider.displayName} 的 API Key。` : '请先选择并连接一个 AI 平台。');
-        onOpenAiSettings?.();
+        setAiStage('needs_setup');
         return;
       }
       if (activeProblemRef.current !== problemId || aiRequestGenerationRef.current !== generation) return;
@@ -236,12 +239,17 @@ export function ProblemDocument({ onOpenAiSettings, onSaved, problemId }: Proble
       setMaterialResults([]);
       setSelectedMaterials([]);
       setIncludeOriginalImage(false);
-      setAiStage('consent');
+      setAiStage('setup');
     } catch (cause) {
       if (activeProblemRef.current !== problemId || aiRequestGenerationRef.current !== generation) return;
       setAiError(errorMessage(cause));
-      onOpenAiSettings?.();
+      setAiStage('needs_setup');
     }
+  };
+
+  const openAiSettingsFromReview = () => {
+    closeAiReview();
+    onOpenAiSettings?.();
   };
 
   const searchMaterials = async () => {
@@ -309,7 +317,7 @@ export function ProblemDocument({ onOpenAiSettings, onSaved, problemId }: Proble
       ) return;
       if (!sameProviderTarget(requestProvider, currentProvider)) {
         setAiError('AI 平台配置已改变，请核对后重新发送。');
-        setAiStage('consent');
+        setAiStage('setup');
         return;
       }
       setAiSuggestions(suggestions);
@@ -317,13 +325,14 @@ export function ProblemDocument({ onOpenAiSettings, onSaved, problemId }: Proble
     } catch (cause) {
       if (activeProblemRef.current !== requestProblemId || aiRequestGenerationRef.current !== generation) return;
       setAiError(errorMessage(cause));
-      setAiStage('consent');
+      setAiStage('setup');
     }
   };
 
   const actualModel = activeProvider
     ? includeOriginalImage ? activeProvider.visionModel : activeProvider.selectedModel
     : null;
+  const hasQuestionText = document.fields.some((field) => field.value.trim());
 
   const updateSuggestion = (index: number, value: string) => {
     setAiSuggestions((current) => current.map((suggestion, currentIndex) => (
@@ -406,115 +415,37 @@ export function ProblemDocument({ onOpenAiSettings, onSaved, problemId }: Proble
       </div>
       {aiStage !== 'closed' ? (
         <InspectorSurface>
-            <section aria-label="AI 建议审核" aria-modal="true" className="ai-review-inspector" ref={aiDialogRef} role="dialog" tabIndex={-1}>
-              <header className="preferences-header">
-                <div><p className="eyebrow">AI · 可选增强</p><h2>逐字段审核建议</h2></div>
-                <button aria-label="关闭 AI 审核" className="inspector-close" onClick={closeAiReview} type="button"><X aria-hidden="true" size={17} /></button>
-              </header>
-              {aiStage === 'consent' || aiStage === 'loading' ? (
-                <div className="ai-consent">
-                  <p>发送前请核对本次范围。不会发送整门课程资料，也不会自动写回答案。</p>
-                  <dl className="ai-payload-scope">
-                    <div><dt>AI 平台</dt><dd>{activeProvider ? `${activeProvider.displayName} · ${actualModel}` : '尚未选择'}</dd></div>
-                    <div><dt>题目文字</dt><dd>{document.fields.filter((field) => field.value.trim()).map((field) => `${labels.get(field.kind as typeof fieldOrder[number][0]) ?? field.kind}：${field.value}`).join('；') || '没有已填写文字'}</dd></div>
-                    <div><dt>题目原图</dt><dd>{document.hasImageAttachment ? includeOriginalImage ? '已授权发送 1 张题图' : '有题图，本次不发送' : '不包含题图'}</dd></div>
-                    <div><dt>教材范围</dt><dd aria-live="polite">{`学习资料片段：${selectedMaterials.length} 段`}</dd></div>
-                  </dl>
-                  {document.hasImageAttachment ? (
-                    <label className="ai-image-consent">
-                      <input
-                        aria-label="本次发送题目原图"
-                        checked={includeOriginalImage}
-                        disabled={aiStage === 'loading' || !activeProvider?.supportsVision || !activeProvider.visionModel}
-                        onChange={(event) => setIncludeOriginalImage(event.target.checked)}
-                        type="checkbox"
-                      />
-                      <span><strong>本次发送题目原图</strong><small>{activeProvider?.supportsVision && activeProvider.visionModel ? `开启后使用 ${activeProvider.visionModel}` : '当前平台不支持题图；仍可只发送文字'}</small></span>
-                    </label>
-                  ) : null}
-                  <fieldset className="ai-mode-picker" disabled={aiStage === 'loading'}>
-                    <legend>分析模式</legend>
-                    <label className={aiMode === 'flash' ? 'is-selected' : ''}>
-                      <input aria-label="快速整理" checked={aiMode === 'flash'} name="ai-mode" onChange={() => setAiMode('flash')} type="radio" />
-                      <span><strong>快速整理</strong><small>{actualModel} · 日常题目</small></span>
-                    </label>
-                    <label className={aiMode === 'deep' ? 'is-selected' : ''}>
-                      <input aria-label="深度分析" checked={aiMode === 'deep'} name="ai-mode" onChange={() => setAiMode('deep')} type="radio" />
-                      <span><strong>深度分析</strong><small>{actualModel} · 复杂推导</small></span>
-                    </label>
-                  </fieldset>
-                  <div className="ai-material-consent">
-                    <label htmlFor="ai-material-query">从本课程学习资料中查找（可选，默认 0 段）</label>
-                    <div>
-                      <input
-                        aria-label="搜索本课程学习资料"
-                        disabled={aiStage === 'loading'}
-                        id="ai-material-query"
-                        onChange={(event) => changeMaterialQuery(event.target.value)}
-                        onKeyDown={(event) => { if (event.key === 'Enter') { event.preventDefault(); void searchMaterials(); } }}
-                        placeholder="输入知识点或关键词"
-                        type="search"
-                        value={materialQuery}
-                      />
-                      <button disabled={aiStage === 'loading' || isSearchingMaterials || !materialQuery.trim()} onClick={() => void searchMaterials()} type="button">{isSearchingMaterials ? '查找中…' : '查找片段'}</button>
-                    </div>
-                    {materialResults.length > 0 ? (
-                      <ul aria-label="可授权的学习资料片段">
-                        {materialResults.map((snippet) => {
-                          const checked = selectedMaterials.some((material) => material.chunkId === snippet.chunkId);
-                          return (
-                            <li key={snippet.chunkId}>
-                              <label>
-                                <input
-                                  aria-label={snippet.excerpt}
-                                  checked={checked}
-                                  disabled={aiStage === 'loading' || (!checked && selectedMaterials.length >= 3)}
-                                  onChange={() => toggleMaterial(snippet)}
-                                  type="checkbox"
-                                />
-                                <span><strong>{snippet.filename}</strong><small>{snippet.excerpt}</small></span>
-                              </label>
-                            </li>
-                          );
-                        })}
-                      </ul>
-                    ) : null}
-                    {selectedMaterials.length > 0 ? (
-                      <section aria-label="本次已选片段" className="ai-selected-materials">
-                        <p aria-live="polite">本次已选片段 · {selectedMaterials.length}/3</p>
-                        {selectedMaterials.map((snippet) => (
-                          <div key={snippet.chunkId}>
-                            <details open>
-                              <summary>{snippet.filename}</summary>
-                              <p>{snippet.excerpt}</p>
-                            </details>
-                            <button aria-label={`移除已选片段：${snippet.excerpt}`} disabled={aiStage === 'loading'} onClick={() => toggleMaterial(snippet)} type="button">移除</button>
-                          </div>
-                        ))}
-                      </section>
-                    ) : null}
-                  </div>
-                  <ul><li>题目原件：{includeOriginalImage ? '本次发送已授权题图' : '本次不发送题图；PDF 不直接发送'}</li><li>教材片段：仅发送上方明确勾选的 {selectedMaterials.length} 段</li><li>返回结果：逐字段审核</li></ul>
-                  {aiError ? <p className="ai-error" role="status">{aiError}</p> : null}
-                  <button className="primary-action" disabled={aiStage === 'loading'} onClick={() => void runAi()} type="button">{aiStage === 'loading' ? '正在生成建议…' : '仅本次发送'}</button>
-                </div>
-              ) : (
-                <div className="ai-suggestions">
-                  {aiSuggestions.length === 0 ? <p className="ai-empty">没有可采纳的字段建议。</p> : null}
-                  {aiSuggestions.map((suggestion, index) => {
-                    const label = labels.get(suggestion.kind as typeof fieldOrder[number][0]) ?? suggestion.kind;
-                    return (
-                      <section className="ai-suggestion" key={`${suggestion.kind}-${index}`}>
-                        <p>{label}</p>
-                        <textarea aria-label={`编辑 AI ${label}建议`} disabled={isSaving} onChange={(event) => updateSuggestion(index, event.target.value)} value={suggestion.value} />
-                        <div><button disabled={isSaving} onClick={() => rejectSuggestion(index)} type="button">拒绝</button><button disabled={isSaving} onClick={() => void acceptSuggestion(index)} type="button">{`采纳${label}`}</button></div>
-                      </section>
-                    );
-                  })}
-                  {aiError ? <p className="ai-error" role="status">{aiError}</p> : null}
-                </div>
-              )}
-            </section>
+          <AiReviewInspector
+            actualModel={actualModel}
+            aiMode={aiMode}
+            dialogRef={aiDialogRef}
+            error={aiError}
+            hasImageAttachment={document.hasImageAttachment}
+            hasQuestionText={hasQuestionText}
+            includeOriginalImage={includeOriginalImage}
+            isSaving={isSaving}
+            isSearchingMaterials={isSearchingMaterials}
+            materialQuery={materialQuery}
+            materialResults={materialResults}
+            onAcceptSuggestion={(index) => void acceptSuggestion(index)}
+            onChangeMaterialQuery={changeMaterialQuery}
+            onChangeMode={setAiMode}
+            onClose={closeAiReview}
+            onIgnoreSuggestion={rejectSuggestion}
+            onOpenSettings={openAiSettingsFromReview}
+            onRegenerate={() => { setAiError(null); setAiStage('setup'); }}
+            onRetryProvider={() => void openAiReview()}
+            onSearchMaterials={() => void searchMaterials()}
+            onStart={() => void runAi()}
+            onToggleImage={setIncludeOriginalImage}
+            onToggleMaterial={toggleMaterial}
+            onUpdateSuggestion={updateSuggestion}
+            providerLabel={activeProvider?.displayName ?? null}
+            selectedMaterials={selectedMaterials}
+            stage={aiStage}
+            suggestions={aiSuggestions}
+            supportsVision={Boolean(activeProvider?.supportsVision && activeProvider.visionModel)}
+          />
         </InspectorSurface>
       ) : null}
     </article>
