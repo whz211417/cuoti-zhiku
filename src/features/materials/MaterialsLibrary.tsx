@@ -1,7 +1,7 @@
 import { open } from '@tauri-apps/plugin-dialog';
-import { BookMarked, FileUp, LockKeyhole, Save, Search } from 'lucide-react';
+import { BookMarked, FileUp, LockKeyhole, Save, Search, Trash2 } from 'lucide-react';
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { importCourseMaterialFile, saveCourseMaterial, searchCourseMaterial, type MaterialSnippet } from '../../lib/tauri';
+import { deleteCourseMaterial, importCourseMaterialFile, listCourseMaterials, saveCourseMaterial, searchCourseMaterial, type CourseMaterial, type MaterialSnippet } from '../../lib/tauri';
 
 export function MaterialsLibrary({
   courseId,
@@ -21,10 +21,19 @@ export function MaterialsLibrary({
   const [isSearching, setIsSearching] = useState(false);
   const [searchError, setSearchError] = useState(false);
   const [isImporting, setIsImporting] = useState(false);
+  const [materials, setMaterials] = useState<CourseMaterial[]>([]);
+  const [pendingRemoval, setPendingRemoval] = useState<CourseMaterial | null>(null);
+  const [isRemoving, setIsRemoving] = useState(false);
   const processedInitialQueryRef = useRef<string | null>(null);
   const activeCourseRef = useRef(courseId);
   const requestGenerationRef = useRef(0);
   const successfulSearchRef = useRef<string | null>(null);
+
+  const loadMaterials = useCallback(async (nextCourseId = courseId) => {
+    if (!nextCourseId) { setMaterials([]); return; }
+    try { setMaterials(await listCourseMaterials(nextCourseId)); }
+    catch { setStatus('资料列表没有加载完成，请稍后重试。'); }
+  }, [courseId]);
 
   const save = async () => {
     if (!courseId || !filename.trim() || !content.trim()) return;
@@ -35,6 +44,7 @@ export function MaterialsLibrary({
       setStatus('已保存到本课程资料库。');
       setFilename('');
       setContent('');
+      await loadMaterials();
       onSaved?.();
     } catch {
       setStatus('保存没有完成，请稍后重试。');
@@ -85,7 +95,11 @@ export function MaterialsLibrary({
     setSnippets([]);
     setSearchError(false);
     setIsSearching(false);
+    setMaterials([]);
+    setPendingRemoval(null);
   }, [courseId]);
+
+  useEffect(() => { void loadMaterials(courseId); }, [courseId, loadMaterials]);
 
   useEffect(() => {
     const nextQuery = initialQuery.trim();
@@ -122,6 +136,7 @@ export function MaterialsLibrary({
     setStatus(null);
     try {
       await importCourseMaterialFile(courseId, path);
+      await loadMaterials();
       setStatus('已从文件提取文字并保存到本课程。');
       onSaved?.();
     } catch (error) {
@@ -129,6 +144,19 @@ export function MaterialsLibrary({
     } finally {
       setIsImporting(false);
     }
+  };
+
+  const confirmRemoval = async () => {
+    if (!courseId || !pendingRemoval) return;
+    setIsRemoving(true);
+    try {
+      await deleteCourseMaterial(courseId, pendingRemoval.id);
+      setMaterials((current) => current.filter((material) => material.id !== pendingRemoval.id));
+      setPendingRemoval(null);
+      setStatus('已从本地资料库移除。原始 PDF 或讲义文件不会被删除。');
+      onSaved?.();
+    } catch { setStatus('资料没有移除，请稍后重试。'); }
+    finally { setIsRemoving(false); }
   };
 
   if (!courseId) return (
@@ -198,8 +226,13 @@ export function MaterialsLibrary({
               {snippets.map((snippet) => <article className="material-snippet" key={snippet.chunkId}><p>{snippet.filename}</p><div>{snippet.excerpt}</div></article>)}
             </div>
           </section>
+          <section className="materials-saved" aria-label="已保存资料">
+            <div className="materials-section-heading"><div><p className="eyebrow">本课程资料</p><h3>已保存的本地依据</h3></div><span>{String(materials.length).padStart(2, '0')}</span></div>
+            {materials.length === 0 ? <p className="materials-saved-empty">还没有已保存资料。导入或粘贴后会在这里出现。</p> : <ul className="materials-saved-list">{materials.map((material) => <li key={material.id}><BookMarked aria-hidden="true" size={16} /><span>{material.filename}</span><button aria-label={`删除 ${material.filename}`} onClick={() => setPendingRemoval(material)} type="button"><Trash2 aria-hidden="true" size={15} /></button></li>)}</ul>}
+          </section>
         </div>
       </div>
+      {pendingRemoval ? <div className="material-remove-dialog" role="dialog" aria-modal="true" aria-label="移除本地资料"><div className="material-remove-dialog__surface"><p className="eyebrow">移除本地索引</p><h3>移除“{pendingRemoval.filename}”吗？</h3><p>这会删除错题智库中保存的文字和检索片段，不能再被 AI 引用；不会删除你电脑上的原始文件。</p><div><button disabled={isRemoving} onClick={() => setPendingRemoval(null)} type="button">取消</button><button className="material-remove-confirm" disabled={isRemoving} onClick={() => void confirmRemoval()} type="button">{isRemoving ? '正在移除…' : '确认移除'}</button></div></div></div> : null}
     </section>
   );
 }

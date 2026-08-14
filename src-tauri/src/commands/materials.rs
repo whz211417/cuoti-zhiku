@@ -36,6 +36,23 @@ pub fn save_course_material(
 }
 
 #[tauri::command]
+pub fn list_course_materials(
+    state: State<'_, AppState>,
+    course_id: String,
+) -> Result<Vec<crate::db::database::CourseMaterial>, String> {
+    state.database.list_course_materials(&course_id).map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+pub fn delete_course_material(
+    state: State<'_, AppState>,
+    course_id: String,
+    material_id: String,
+) -> Result<(), String> {
+    state.database.delete_course_material(&course_id, &material_id).map_err(|error| error.to_string())
+}
+
+#[tauri::command]
 pub fn search_course_material(
     state: State<'_, AppState>,
     course_id: String,

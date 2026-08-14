@@ -111,6 +111,22 @@ fn material_search_exposes_stable_chunk_ids() {
 }
 
 #[test]
+fn course_material_can_be_removed_without_affecting_other_course_materials() {
+    let (root, database) = dashboard_database();
+    let connection = dashboard_connection(&root);
+    insert_library_course(&connection, "macro", "宏观经济学", "2026-07-30");
+    insert_library_course(&connection, "micro", "微观经济学", "2026-07-30");
+    insert_library_material(&connection, "macro-notes", "macro", "IS-LM 讲义.md", "2026-07-30", &["LM 曲线"]);
+    insert_library_material(&connection, "micro-notes", "micro", "供需讲义.md", "2026-07-30", &["需求曲线"]);
+    drop(connection);
+
+    database.delete_course_material("macro", "macro-notes").expect("remove material");
+
+    assert!(database.search_course_material("macro", "LM 曲线", 6).expect("search removed material").is_empty());
+    assert_eq!(database.search_course_material("micro", "需求曲线", 6).expect("search other material").len(), 1);
+}
+
+#[test]
 fn material_context_for_problem_preserves_explicit_order() {
     let (root, database) = dashboard_database();
     let connection = dashboard_connection(&root);

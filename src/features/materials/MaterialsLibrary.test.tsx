@@ -4,16 +4,37 @@ import { StrictMode } from 'react';
 import { beforeEach, expect, test, vi } from 'vitest';
 import { MaterialsLibrary } from './MaterialsLibrary';
 
-const { importCourseMaterialFile, open, saveCourseMaterial, searchCourseMaterial } = vi.hoisted(() => ({
+const { deleteCourseMaterial, importCourseMaterialFile, listCourseMaterials, open, saveCourseMaterial, searchCourseMaterial } = vi.hoisted(() => ({
+  deleteCourseMaterial: vi.fn(),
   importCourseMaterialFile: vi.fn(),
+  listCourseMaterials: vi.fn(),
   open: vi.fn(),
   saveCourseMaterial: vi.fn(),
   searchCourseMaterial: vi.fn(),
 }));
 vi.mock('@tauri-apps/plugin-dialog', () => ({ open }));
-vi.mock('../../lib/tauri', () => ({ importCourseMaterialFile, saveCourseMaterial, searchCourseMaterial }));
+vi.mock('../../lib/tauri', () => ({ deleteCourseMaterial, importCourseMaterialFile, listCourseMaterials, saveCourseMaterial, searchCourseMaterial }));
 
-beforeEach(() => vi.clearAllMocks());
+beforeEach(() => {
+  vi.clearAllMocks();
+  listCourseMaterials.mockResolvedValue([]);
+});
+
+test('lists saved materials and removes one only after an explicit confirmation', async () => {
+  const user = userEvent.setup();
+  listCourseMaterials.mockResolvedValue([{ id: 'material-1', courseId: 'macro', filename: 'IS-LM 讲义.md' }]);
+  deleteCourseMaterial.mockResolvedValue(undefined);
+  render(<MaterialsLibrary courseId="macro" />);
+
+  expect(await screen.findByText('IS-LM 讲义.md')).toBeVisible();
+  await user.click(screen.getByRole('button', { name: '删除 IS-LM 讲义.md' }));
+  expect(screen.getByRole('dialog', { name: '移除本地资料' })).toBeVisible();
+  expect(deleteCourseMaterial).not.toHaveBeenCalled();
+
+  await user.click(screen.getByRole('button', { name: '确认移除' }));
+  await waitFor(() => expect(deleteCourseMaterial).toHaveBeenCalledWith('macro', 'material-1'));
+  expect(screen.queryByText('IS-LM 讲义.md')).not.toBeInTheDocument();
+});
 
 test('stores pasted course material locally before making it searchable', async () => {
   const user = userEvent.setup();

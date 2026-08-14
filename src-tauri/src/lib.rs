@@ -59,6 +59,8 @@ pub fn run() {
             commands::knowledge::open_obsidian_canvas,
             commands::materials::import_course_material_file,
             commands::materials::save_course_material,
+            commands::materials::list_course_materials,
+            commands::materials::delete_course_material,
             commands::materials::search_course_material,
             commands::problems::get_problem_document,
             commands::problems::save_problem_field,

@@ -698,6 +698,32 @@ impl Database {
         })
     }
 
+    pub fn list_course_materials(&self, course_id: &str) -> DatabaseResult<Vec<CourseMaterial>> {
+        let connection = self.connection()?;
+        let mut statement = connection.prepare(
+            "SELECT id, course_id, filename FROM course_materials WHERE course_id = ?1 ORDER BY created_at DESC, id DESC",
+        )?;
+        let rows = statement.query_map([course_id], |row| {
+            Ok(CourseMaterial {
+                id: row.get(0)?,
+                course_id: row.get(1)?,
+                filename: row.get(2)?,
+            })
+        })?;
+        rows.collect::<Result<Vec<_>, _>>().map_err(Into::into)
+    }
+
+    pub fn delete_course_material(&self, course_id: &str, material_id: &str) -> DatabaseResult<()> {
+        let deleted = self.connection()?.execute(
+            "DELETE FROM course_materials WHERE id = ?1 AND course_id = ?2",
+            params![material_id, course_id],
+        )?;
+        if deleted == 0 {
+            return Err(DatabaseError::Conflict("资料不存在，或不属于当前课程。".to_owned()));
+        }
+        Ok(())
+    }
+
     pub fn search_course_material(
         &self,
         course_id: &str,

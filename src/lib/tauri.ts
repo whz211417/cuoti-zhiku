@@ -50,6 +50,10 @@ export const importCourseMaterialFile = (courseId: string, path: string) =>
   invoke<CourseMaterial>('import_course_material_file', { courseId, path });
 export const saveCourseMaterial = (courseId: string, filename: string, content: string) =>
   invoke<CourseMaterial>('save_course_material', { courseId, filename, content });
+export const listCourseMaterials = (courseId: string) =>
+  invoke<CourseMaterial[]>('list_course_materials', { courseId });
+export const deleteCourseMaterial = (courseId: string, materialId: string) =>
+  invoke<void>('delete_course_material', { courseId, materialId });
 export const searchCourseMaterial = (courseId: string, query: string) =>
   invoke<MaterialSnippet[]>('search_course_material', { courseId, query });
 
