@@ -4,36 +4,47 @@ import { StrictMode } from 'react';
 import { beforeEach, expect, test, vi } from 'vitest';
 import { MaterialsLibrary } from './MaterialsLibrary';
 
-const { deleteCourseMaterial, importCourseMaterialFile, listCourseMaterials, open, saveCourseMaterial, searchCourseMaterial } = vi.hoisted(() => ({
-  deleteCourseMaterial: vi.fn(),
+const { importCourseMaterialFile, listCourseMaterials, open, purgeCourseMaterial, restoreCourseMaterial, saveCourseMaterial, searchCourseMaterial, trashCourseMaterial } = vi.hoisted(() => ({
   importCourseMaterialFile: vi.fn(),
   listCourseMaterials: vi.fn(),
   open: vi.fn(),
+  purgeCourseMaterial: vi.fn(),
+  restoreCourseMaterial: vi.fn(),
   saveCourseMaterial: vi.fn(),
   searchCourseMaterial: vi.fn(),
+  trashCourseMaterial: vi.fn(),
 }));
 vi.mock('@tauri-apps/plugin-dialog', () => ({ open }));
-vi.mock('../../lib/tauri', () => ({ deleteCourseMaterial, importCourseMaterialFile, listCourseMaterials, saveCourseMaterial, searchCourseMaterial }));
+vi.mock('../../lib/tauri', () => ({ importCourseMaterialFile, listCourseMaterials, purgeCourseMaterial, restoreCourseMaterial, saveCourseMaterial, searchCourseMaterial, trashCourseMaterial }));
 
 beforeEach(() => {
   vi.clearAllMocks();
   listCourseMaterials.mockResolvedValue([]);
 });
 
-test('lists saved materials and removes one only after an explicit confirmation', async () => {
+test('moves a material to trash only after an explicit confirmation, then restores it', async () => {
   const user = userEvent.setup();
-  listCourseMaterials.mockResolvedValue([{ id: 'material-1', courseId: 'macro', filename: 'IS-LM 讲义.md' }]);
-  deleteCourseMaterial.mockResolvedValue(undefined);
+  listCourseMaterials
+    .mockResolvedValueOnce([{ id: 'material-1', courseId: 'macro', filename: 'IS-LM 讲义.md' }])
+    .mockResolvedValueOnce([])
+    .mockResolvedValueOnce([])
+    .mockResolvedValueOnce([{ id: 'material-1', courseId: 'macro', filename: 'IS-LM 讲义.md' }])
+    .mockResolvedValueOnce([{ id: 'material-1', courseId: 'macro', filename: 'IS-LM 讲义.md', deletedAt: '2026-08-20T00:00:00Z' }])
+    .mockResolvedValueOnce([]);
+  trashCourseMaterial.mockResolvedValue(undefined);
+  restoreCourseMaterial.mockResolvedValue(undefined);
   render(<MaterialsLibrary courseId="macro" />);
 
   expect(await screen.findByText('IS-LM 讲义.md')).toBeVisible();
-  await user.click(screen.getByRole('button', { name: '删除 IS-LM 讲义.md' }));
-  expect(screen.getByRole('dialog', { name: '移除本地资料' })).toBeVisible();
-  expect(deleteCourseMaterial).not.toHaveBeenCalled();
+  await user.click(screen.getByRole('button', { name: '移入最近删除 IS-LM 讲义.md' }));
+  expect(screen.getByRole('dialog', { name: '移入最近删除' })).toBeVisible();
+  expect(trashCourseMaterial).not.toHaveBeenCalled();
 
-  await user.click(screen.getByRole('button', { name: '确认移除' }));
-  await waitFor(() => expect(deleteCourseMaterial).toHaveBeenCalledWith('macro', 'material-1'));
-  expect(screen.queryByText('IS-LM 讲义.md')).not.toBeInTheDocument();
+  await user.click(screen.getByRole('button', { name: '移入最近删除' }));
+  await waitFor(() => expect(trashCourseMaterial).toHaveBeenCalledWith('macro', 'material-1'));
+  await user.click(screen.getByRole('button', { name: '最近删除 · 1' }));
+  await user.click(screen.getByRole('button', { name: '恢复 IS-LM 讲义.md' }));
+  await waitFor(() => expect(restoreCourseMaterial).toHaveBeenCalledWith('macro', 'material-1'));
 });
 
 test('stores pasted course material locally before making it searchable', async () => {
