@@ -26,3 +26,10 @@ test('does not draw surface-specific ellipse spotlights', () => {
 test('keeps the pointer highlight hidden for reduced motion', () => {
   expect(styles).toMatch(/prefers-reduced-motion:[\s\S]*?dynamic-glass-light[^}]*opacity:\s*0\s*!important/);
 });
+
+test('defines a theme-aware immersive cursor with an accessibility fallback', () => {
+  expect(ruleBody('.immersive-cursor')).toContain('position: fixed');
+  expect(styles).toMatch(/prefers-color-scheme: dark[\s\S]*--cursor-halo/);
+  expect(styles).toMatch(/prefers-reduced-motion[\s\S]*?\.immersive-cursor[^}]*display:\s*none/);
+  expect(styles).toMatch(/has-immersive-cursor[\s\S]*?input[^}]*cursor:\s*text/);
+});
