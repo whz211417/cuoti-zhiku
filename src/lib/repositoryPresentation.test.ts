@@ -14,7 +14,7 @@ describe('public repository presentation', () => {
     )
 
     expect(readme).toContain('releases/latest')
-    expect(readme).toContain('错题智库_0.4.0_x64-setup.exe')
+    expect(readme).toContain('Cuoti-Zhiku-0.4.0-x64-setup.exe')
     expect(installationGuide).toContain('09B0EE82B23A94CBD08AC5D168F8202B62CD1FB63CB6EB3F7E8BC9B1CE18C772')
   })
 

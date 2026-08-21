@@ -47,7 +47,7 @@
 
 ## 三步开始
 
-1. 从 [最新 Release](https://github.com/whz211417/cuoti-zhiku/releases/latest) 下载 `错题智库_0.4.0_x64-setup.exe`。
+1. 从 [最新 Release](https://github.com/whz211417/cuoti-zhiku/releases/latest) 下载 `Cuoti-Zhiku-0.4.0-x64-setup.exe`。
 2. 新建课程，拖入一张题图或一份 PDF；原件会先保存，再等待你整理。
 3. 到“今日复习”揭示答案并记录掌握程度；不配置 AI 也能完整使用本地学习流程。
 

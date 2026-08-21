@@ -23,9 +23,9 @@
 - Modify: `docs/release/windows-installation.md`
 - Create: `docs/release/0.4.0.md`
 
-- [ ] 写出产品优先 README，保留四张真实截图、下载按钮、隐私边界、功能矩阵与开发者链接。
-- [ ] 将安装文件名、大小、SHA-256 与发布标签升级至 `v0.4.0`。
-- [ ] 运行 `pnpm test -- --run src/lib/releasePackaging.test.ts`，确认发布约束未回归。
+- [x] 写出产品优先 README，保留四张真实截图、下载按钮、隐私边界、功能矩阵与开发者链接。
+- [x] 将安装文件名、大小、SHA-256 与发布标签升级至 `v0.4.0`。
+- [x] 运行 `pnpm test -- --run src/lib/releasePackaging.test.ts`，确认发布约束未回归。
 
 ### Task 2: 建立贡献与验证入口
 
@@ -36,16 +36,16 @@
 - Create: `.github/ISSUE_TEMPLATE/feature_request.yml`
 - Create: `.github/workflows/verify.yml`
 
-- [ ] 使用结构化模板收集可复现信息，并明确不得附带题目原件或 API Key。
-- [ ] CI 在 push/PR 执行 `pnpm install --frozen-lockfile`、lint、test、build；不假装 Windows 安装包在 Linux CI 中已验证。
-- [ ] 运行 YAML/Markdown 的本地结构检查与完整前端验证。
+- [x] 使用结构化模板收集可复现信息，并明确不得附带题目原件或 API Key。
+- [x] CI 在 push/PR 执行 `pnpm install --frozen-lockfile`、lint、test、build；不假装 Windows 安装包在 Linux CI 中已验证。
+- [x] 运行 YAML/Markdown 的本地结构检查与完整前端验证。
 
 ### Task 3: 发布 GitHub 远端状态
 
 **Files:**
 - Verify: `release/错题智库_0.4.0_x64-setup.exe`
 
-- [ ] 推送当前已验证提交到 `feature/cuoti-zhiku-v1`。
-- [ ] 用 GitHub API 更新 description、topics 与 Issues 设置。
-- [ ] 创建 `v0.4.0` Release、上传安装包、写入校验值和用户可读版本说明。
-- [ ] 只读复查仓库 metadata、Release 资产和 README 链接。
+- [x] 推送当前已验证提交到 `feature/cuoti-zhiku-v1`。
+- [x] 用 GitHub API 更新 description、topics 与 Issues 设置。
+- [x] 创建 `v0.4.0` Release、上传安装包、写入校验值和用户可读版本说明。
+- [x] 只读复查仓库 metadata、Release 资产和 README 链接。
