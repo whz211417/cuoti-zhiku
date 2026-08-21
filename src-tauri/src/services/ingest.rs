@@ -60,6 +60,33 @@ pub fn import_original_bytes(
     store_original_bytes(bytes, &normalized, mime_type, originals_root)
 }
 
+pub fn remove_original(originals_root: &Path, relative_path: &str) -> Result<(), IngestError> {
+    let relative_path = Path::new(relative_path);
+    if relative_path.as_os_str().is_empty()
+        || relative_path.is_absolute()
+        || relative_path
+            .components()
+            .any(|component| matches!(component, std::path::Component::ParentDir))
+    {
+        return Err(IngestError::Io(std::io::Error::new(
+            std::io::ErrorKind::InvalidInput,
+            "原件路径无效",
+        )));
+    }
+    let candidate = originals_root.join(relative_path);
+    if !candidate.starts_with(originals_root) {
+        return Err(IngestError::Io(std::io::Error::new(
+            std::io::ErrorKind::InvalidInput,
+            "原件路径超出资料库",
+        )));
+    }
+    match fs::remove_file(candidate) {
+        Ok(()) => Ok(()),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
+        Err(error) => Err(IngestError::Io(error)),
+    }
+}
+
 fn store_original_bytes(
     bytes: &[u8],
     extension: &str,

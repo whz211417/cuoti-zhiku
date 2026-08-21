@@ -29,7 +29,7 @@ use crate::{
 };
 
 static NEXT_RECORD_ID: AtomicU64 = AtomicU64::new(1);
-const CURRENT_SCHEMA_VERSION: i64 = 6;
+const CURRENT_SCHEMA_VERSION: i64 = 7;
 
 #[derive(Debug, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
@@ -88,6 +88,10 @@ pub struct CourseMaterial {
     pub id: String,
     pub course_id: String,
     pub filename: String,
+    pub original_relative_path: Option<String>,
+    pub sha256: Option<String>,
+    pub byte_size: Option<u64>,
+    pub deleted_at: Option<String>,
 }
 
 #[derive(Debug, Serialize, PartialEq, Eq)]
@@ -242,7 +246,11 @@ impl Database {
                 "SELECT COUNT(*) FROM courses WHERE archived_at IS NULL",
                 [],
             )?,
-            material_count: query_scalar(&connection, "SELECT COUNT(*) FROM course_materials", [])?,
+            material_count: query_scalar(
+                &connection,
+                "SELECT COUNT(*) FROM course_materials WHERE deleted_at IS NULL",
+                [],
+            )?,
             course_summaries: query_course_summaries(&connection, today)?,
             recent_problems: query_recent_problems(&connection)?,
             top_mistake_reasons: query_counted_fields(&connection, "mistake_reason", false)?,
@@ -280,11 +288,11 @@ impl Database {
                          ) AS snippet,
                          m.created_at AS updated_at
                   FROM course_materials m
-                  WHERE m.filename LIKE ?1 ESCAPE '\'
+                  WHERE m.deleted_at IS NULL AND (m.filename LIKE ?1 ESCAPE '\'
                      OR EXISTS (
                        SELECT 1 FROM material_chunks ch
                        WHERE ch.material_id = m.id AND ch.content LIKE ?1 ESCAPE '\'
-                     )
+                     ))
                 )
                 SELECT 'problem', p.id, COALESCE(p.course_id, ''),
                        COALESCE(NULLIF(stem.value, ''), NULLIF(p.title, ''), i.filename, '未命名题目'),
@@ -671,10 +679,29 @@ impl Database {
         filename: &str,
         content: &str,
     ) -> DatabaseResult<CourseMaterial> {
+        self.record_course_material_with_original(course_id, filename, content, None)
+    }
+
+    pub fn record_course_material_with_original(
+        &self,
+        course_id: &str,
+        filename: &str,
+        content: &str,
+        original: Option<&ImportedOriginal>,
+    ) -> DatabaseResult<CourseMaterial> {
+        let byte_size = original
+            .map(|item| i64::try_from(item.byte_size))
+            .transpose()
+            .map_err(|_| DatabaseError::Conflict("资料原件过大，无法安全保存。".to_owned()))?;
         let material = CourseMaterial {
             id: record_id("material"),
             course_id: course_id.to_owned(),
             filename: filename.trim().to_owned(),
+            original_relative_path: original
+                .map(|item| item.relative_path.to_string_lossy().replace('\\', "/")),
+            sha256: original.map(|item| item.sha256.clone()),
+            byte_size: byte_size.map(|value| value as u64),
+            deleted_at: None,
         };
         let content = content.trim();
         if material.filename.is_empty() || content.is_empty() {
@@ -685,8 +712,20 @@ impl Database {
         let chunks = split_material_chunks(content, 800);
         self.with_transaction(|transaction| {
             transaction.execute(
-                "INSERT INTO course_materials(id, course_id, filename, content, created_at) VALUES (?1, ?2, ?3, ?4, ?5)",
-                params![&material.id, &material.course_id, &material.filename, content, timestamp()],
+                "INSERT INTO course_materials(
+                    id, course_id, filename, content, created_at,
+                    original_relative_path, sha256, byte_size
+                 ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+                params![
+                    &material.id,
+                    &material.course_id,
+                    &material.filename,
+                    content,
+                    timestamp(),
+                    &material.original_relative_path,
+                    &material.sha256,
+                    byte_size,
+                ],
             )?;
             for (ordinal, chunk) in chunks.iter().enumerate() {
                 transaction.execute(
@@ -695,6 +734,144 @@ impl Database {
                 )?;
             }
             Ok(material)
+        })
+    }
+
+    pub fn list_course_materials(
+        &self,
+        course_id: &str,
+        deleted_only: bool,
+    ) -> DatabaseResult<Vec<CourseMaterial>> {
+        let connection = self.connection()?;
+        let mut statement = connection.prepare(
+            "SELECT id, course_id, filename, original_relative_path, sha256, byte_size, deleted_at
+             FROM course_materials
+             WHERE course_id = ?1
+               AND ((?2 = 0 AND deleted_at IS NULL) OR (?2 = 1 AND deleted_at IS NOT NULL))
+             ORDER BY created_at DESC, id DESC",
+        )?;
+        let rows = statement.query_map(params![course_id, deleted_only as i64], |row| {
+            Ok(CourseMaterial {
+                id: row.get(0)?,
+                course_id: row.get(1)?,
+                filename: row.get(2)?,
+                original_relative_path: row.get(3)?,
+                sha256: row.get(4)?,
+                byte_size: row
+                    .get::<_, Option<i64>>(5)?
+                    .and_then(|value| u64::try_from(value).ok()),
+                deleted_at: row.get(6)?,
+            })
+        })?;
+        rows.collect::<Result<Vec<_>, _>>().map_err(Into::into)
+    }
+
+    pub fn trash_course_material(&self, course_id: &str, material_id: &str) -> DatabaseResult<()> {
+        let changed = self.connection()?.execute(
+            "UPDATE course_materials SET deleted_at = ?1
+             WHERE id = ?2 AND course_id = ?3 AND deleted_at IS NULL",
+            params![timestamp(), material_id, course_id],
+        )?;
+        if changed == 0 {
+            return Err(DatabaseError::Conflict(
+                "资料不存在，或不属于当前课程。".to_owned(),
+            ));
+        }
+        Ok(())
+    }
+
+    pub fn restore_course_material(
+        &self,
+        course_id: &str,
+        material_id: &str,
+    ) -> DatabaseResult<()> {
+        let changed = self.connection()?.execute(
+            "UPDATE course_materials SET deleted_at = NULL
+             WHERE id = ?1 AND course_id = ?2 AND deleted_at IS NOT NULL",
+            params![material_id, course_id],
+        )?;
+        if changed == 0 {
+            return Err(DatabaseError::Conflict(
+                "资料不存在，或不属于当前课程。".to_owned(),
+            ));
+        }
+        Ok(())
+    }
+
+    pub fn purge_course_material(
+        &self,
+        course_id: &str,
+        material_id: &str,
+    ) -> DatabaseResult<Option<String>> {
+        self.with_transaction(|transaction| {
+            let original_relative_path = transaction
+                .query_row(
+                    "SELECT original_relative_path FROM course_materials
+                     WHERE id = ?1 AND course_id = ?2 AND deleted_at IS NOT NULL",
+                    params![material_id, course_id],
+                    |row| row.get::<_, Option<String>>(0),
+                )
+                .optional()?
+                .flatten();
+            let deleted = transaction.execute(
+                "DELETE FROM course_materials
+                 WHERE id = ?1 AND course_id = ?2 AND deleted_at IS NOT NULL",
+                params![material_id, course_id],
+            )?;
+            if deleted == 0 {
+                return Err(DatabaseError::Conflict(
+                    "资料不在最近删除中，无法永久清除。".to_owned(),
+                ));
+            }
+            let unreferenced = match original_relative_path {
+                Some(relative_path) => {
+                    let references = transaction.query_row(
+                        "SELECT COUNT(*) FROM course_materials WHERE original_relative_path = ?1",
+                        [&relative_path],
+                        |row| row.get::<_, i64>(0),
+                    )?;
+                    (references == 0).then_some(relative_path)
+                }
+                None => None,
+            };
+            Ok(unreferenced)
+        })
+    }
+
+    pub fn purge_expired_course_materials(&self, before: &str) -> DatabaseResult<Vec<String>> {
+        self.with_transaction(|transaction| {
+            let mut statement = transaction.prepare(
+                "SELECT id, course_id FROM course_materials
+                 WHERE deleted_at IS NOT NULL AND deleted_at < ?1",
+            )?;
+            let candidates = statement
+                .query_map([before], |row| {
+                    Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+                })?
+                .collect::<Result<Vec<_>, _>>()?;
+            drop(statement);
+            let mut originals = Vec::new();
+            for (id, course_id) in candidates {
+                if let Some(relative_path) = transaction.query_row(
+                    "SELECT original_relative_path FROM course_materials
+                         WHERE id = ?1 AND course_id = ?2",
+                    params![id, course_id],
+                    |row| row.get::<_, Option<String>>(0),
+                )? {
+                    transaction.execute("DELETE FROM course_materials WHERE id = ?1", [id])?;
+                    let references = transaction.query_row(
+                        "SELECT COUNT(*) FROM course_materials WHERE original_relative_path = ?1",
+                        [&relative_path],
+                        |row| row.get::<_, i64>(0),
+                    )?;
+                    if references == 0 {
+                        originals.push(relative_path);
+                    }
+                } else {
+                    transaction.execute("DELETE FROM course_materials WHERE id = ?1", [id])?;
+                }
+            }
+            Ok(originals)
         })
     }
 
@@ -713,7 +890,7 @@ impl Database {
             "SELECT chunk.id, material.id, material.filename, chunk.content
              FROM material_chunks chunk
              JOIN course_materials material ON material.id = chunk.material_id
-             WHERE material.course_id = ?1 AND instr(chunk.content, ?2) > 0
+             WHERE material.course_id = ?1 AND material.deleted_at IS NULL AND instr(chunk.content, ?2) > 0
              ORDER BY material.created_at DESC, chunk.ordinal ASC
              LIMIT ?3",
         )?;
@@ -761,7 +938,7 @@ impl Database {
             "SELECT chunk.id, material.id, material.course_id, material.filename, chunk.content
              FROM material_chunks chunk
              JOIN course_materials material ON material.id = chunk.material_id
-             WHERE chunk.id = ?1",
+             WHERE chunk.id = ?1 AND material.deleted_at IS NULL",
         )?;
         let mut snippets = Vec::with_capacity(chunk_ids.len());
         for chunk_id in chunk_ids {
@@ -1326,10 +1503,18 @@ fn migrate_to_current_schema(connection: &mut Connection) -> DatabaseResult<()> 
         )?;
         schema_version = 5;
     }
-    if schema_version < CURRENT_SCHEMA_VERSION {
+    if schema_version < 6 {
         apply_migration(
             connection,
             include_str!("../../migrations/0006_course_kind.sql"),
+            6,
+        )?;
+        schema_version = 6;
+    }
+    if schema_version < CURRENT_SCHEMA_VERSION {
+        apply_migration(
+            connection,
+            include_str!("../../migrations/0007_course_material_custody.sql"),
             CURRENT_SCHEMA_VERSION,
         )?;
     }
@@ -1482,7 +1667,7 @@ fn query_course_summaries(
              UNION ALL
              SELECT course_id, updated_at FROM problems WHERE status != 'trash'
              UNION ALL
-             SELECT course_id, created_at FROM course_materials
+             SELECT course_id, created_at FROM course_materials WHERE deleted_at IS NULL
          ),
          normalized_course_activity AS (
              SELECT course_id,
@@ -1513,7 +1698,8 @@ fn query_course_summaries(
                    AND p.status IN ('inbox', 'active')
                    AND p.next_review_at IS NOT NULL
                    AND p.next_review_at <= ?1),
-                (SELECT COUNT(*) FROM course_materials m WHERE m.course_id = c.id),
+                (SELECT COUNT(*) FROM course_materials m
+                 WHERE m.course_id = c.id AND m.deleted_at IS NULL),
                 activity.updated_at AS aggregate_updated_at
          FROM courses c
          JOIN latest_course_activity activity ON activity.course_id = c.id

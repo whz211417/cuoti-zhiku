@@ -5,6 +5,8 @@ mod domain;
 mod services;
 
 #[cfg(not(test))]
+use chrono::{Duration, SecondsFormat, Utc};
+#[cfg(not(test))]
 use tauri::Manager;
 
 #[cfg(not(test))]
@@ -23,10 +25,17 @@ pub fn run() {
             services::credentials::migrate_legacy_dashscope_key_on_startup();
             let library_root = app.path().app_local_data_dir()?;
             let database = db::database::Database::open(&library_root)?;
+            let originals_root = library_root.join("originals");
+            let purge_before =
+                (Utc::now() - Duration::days(30)).to_rfc3339_opts(SecondsFormat::Millis, true);
+            for original in database.purge_expired_course_materials(&purge_before)? {
+                // A stale file is harmless; never let cleanup prevent the local library from opening.
+                let _ = services::ingest::remove_original(&originals_root, &original);
+            }
             app.manage(AppState {
                 database,
                 library_root: library_root.clone(),
-                originals_root: library_root.join("originals"),
+                originals_root,
             });
             Ok(())
         })
@@ -59,6 +68,10 @@ pub fn run() {
             commands::knowledge::open_obsidian_canvas,
             commands::materials::import_course_material_file,
             commands::materials::save_course_material,
+            commands::materials::list_course_materials,
+            commands::materials::trash_course_material,
+            commands::materials::restore_course_material,
+            commands::materials::purge_course_material,
             commands::materials::search_course_material,
             commands::problems::get_problem_document,
             commands::problems::save_problem_field,

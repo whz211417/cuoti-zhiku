@@ -44,12 +44,28 @@ export const getCourses = () => invoke<Course[]>('get_courses');
 export const createCourse = (name: string, term: string, color: string, kind: CourseKind) =>
   invoke<Course>('create_course', { name, term, color, kind });
 
-export type CourseMaterial = { id: string; courseId: string; filename: string };
+export type CourseMaterial = {
+  id: string;
+  courseId: string;
+  filename: string;
+  originalRelativePath: string | null;
+  sha256: string | null;
+  byteSize: number | null;
+  deletedAt: string | null;
+};
 export type MaterialSnippet = { chunkId: string; materialId: string; filename: string; excerpt: string };
 export const importCourseMaterialFile = (courseId: string, path: string) =>
   invoke<CourseMaterial>('import_course_material_file', { courseId, path });
 export const saveCourseMaterial = (courseId: string, filename: string, content: string) =>
   invoke<CourseMaterial>('save_course_material', { courseId, filename, content });
+export const listCourseMaterials = (courseId: string, deletedOnly = false) =>
+  invoke<CourseMaterial[]>('list_course_materials', { courseId, deletedOnly });
+export const trashCourseMaterial = (courseId: string, materialId: string) =>
+  invoke<void>('trash_course_material', { courseId, materialId });
+export const restoreCourseMaterial = (courseId: string, materialId: string) =>
+  invoke<void>('restore_course_material', { courseId, materialId });
+export const purgeCourseMaterial = (courseId: string, materialId: string) =>
+  invoke<void>('purge_course_material', { courseId, materialId });
 export const searchCourseMaterial = (courseId: string, query: string) =>
   invoke<MaterialSnippet[]>('search_course_material', { courseId, query });
 

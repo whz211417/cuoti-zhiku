@@ -111,6 +111,129 @@ fn material_search_exposes_stable_chunk_ids() {
 }
 
 #[test]
+fn course_material_can_be_trashed_without_affecting_other_course_materials() {
+    let (root, database) = dashboard_database();
+    let connection = dashboard_connection(&root);
+    insert_library_course(&connection, "macro", "宏观经济学", "2026-07-30");
+    insert_library_course(&connection, "micro", "微观经济学", "2026-07-30");
+    insert_library_material(
+        &connection,
+        "macro-notes",
+        "macro",
+        "IS-LM 讲义.md",
+        "2026-07-30",
+        &["LM 曲线"],
+    );
+    insert_library_material(
+        &connection,
+        "micro-notes",
+        "micro",
+        "供需讲义.md",
+        "2026-07-30",
+        &["需求曲线"],
+    );
+    drop(connection);
+
+    database
+        .trash_course_material("macro", "macro-notes")
+        .expect("trash material");
+
+    assert!(database
+        .search_course_material("macro", "LM 曲线", 6)
+        .expect("search removed material")
+        .is_empty());
+    assert_eq!(
+        database
+            .search_course_material("micro", "需求曲线", 6)
+            .expect("search other material")
+            .len(),
+        1
+    );
+}
+
+#[test]
+fn imported_course_material_keeps_custody_metadata_and_purges_only_from_trash() {
+    let (root, database) = dashboard_database();
+    let connection = dashboard_connection(&root);
+    insert_library_course(&connection, "macro", "宏观经济学", "2026-07-30");
+    drop(connection);
+
+    let original = ImportedOriginal {
+        sha256: "a".repeat(64),
+        relative_path: std::path::PathBuf::from("aa/bb/original.pdf"),
+        mime_type: "application/pdf".to_owned(),
+        byte_size: 1024,
+        duplicate: false,
+    };
+    let material = database
+        .record_course_material_with_original("macro", "讲义.pdf", "可检索正文", Some(&original))
+        .expect("save imported material");
+
+    assert_eq!(
+        material.original_relative_path.as_deref(),
+        Some("aa/bb/original.pdf")
+    );
+    assert_eq!(material.sha256.as_deref(), Some(original.sha256.as_str()));
+    assert_eq!(material.byte_size, Some(1024));
+    assert!(matches!(
+        database.purge_course_material("macro", &material.id),
+        Err(DatabaseError::Conflict(_))
+    ));
+
+    database
+        .trash_course_material("macro", &material.id)
+        .expect("trash material");
+    assert!(database
+        .list_course_materials("macro", false)
+        .expect("live materials")
+        .is_empty());
+    assert_eq!(
+        database
+            .list_course_materials("macro", true)
+            .expect("trash materials")
+            .len(),
+        1
+    );
+    assert_eq!(
+        database
+            .purge_course_material("macro", &material.id)
+            .expect("purge material"),
+        Some("aa/bb/original.pdf".to_owned())
+    );
+}
+
+#[test]
+fn trashed_material_is_hidden_from_search_and_restorable() {
+    let (root, database) = dashboard_database();
+    let connection = dashboard_connection(&root);
+    insert_library_course(&connection, "macro", "宏观经济学", "2026-07-30");
+    drop(connection);
+
+    let material = database
+        .record_course_material("macro", "IS-LM 讲义.md", "LM 曲线右移")
+        .expect("save material");
+
+    database
+        .trash_course_material("macro", &material.id)
+        .expect("move material to trash");
+    assert!(database
+        .search_course_material("macro", "LM 曲线", 6)
+        .expect("search trashed material")
+        .is_empty());
+
+    database
+        .restore_course_material("macro", &material.id)
+        .expect("restore material");
+    assert_eq!(
+        database
+            .search_course_material("macro", "LM 曲线", 6)
+            .expect("search restored material")
+            .len(),
+        1
+    );
+}
+
+#[test]
 fn material_context_for_problem_preserves_explicit_order() {
     let (root, database) = dashboard_database();
     let connection = dashboard_connection(&root);
@@ -1059,6 +1182,14 @@ fn seed_schema_version(root: &std::path::Path, version: i64) {
             .execute("UPDATE schema_meta SET version = 5", [])
             .expect("schema version 5");
     }
+    if version >= 6 {
+        connection
+            .execute_batch(include_str!("../../migrations/0006_course_kind.sql"))
+            .expect("schema version 6 columns");
+        connection
+            .execute("UPDATE schema_meta SET version = 6", [])
+            .expect("schema version 6");
+    }
 }
 
 fn seed_version_two_problem(root: &std::path::Path) {
@@ -1081,7 +1212,7 @@ fn seed_version_two_problem(root: &std::path::Path) {
 }
 
 fn assert_recovered_review_schema(root: &std::path::Path, database: &Database) {
-    assert_eq!(database.schema_version().expect("current schema"), 6);
+    assert_eq!(database.schema_version().expect("current schema"), 7);
     let connection = Connection::open(root.join("library.sqlite3")).expect("recovered database");
     let recovered: (String, i64, Option<String>) = connection
         .query_row(
@@ -1096,7 +1227,7 @@ fn assert_recovered_review_schema(root: &std::path::Path, database: &Database) {
 
 #[test]
 fn migrates_supported_legacy_versions_to_the_current_schema() {
-    for starting_version in [1, 2, 3, 4, 5] {
+    for starting_version in [1, 2, 3, 4, 5, 6] {
         let root = tempfile::tempdir().expect("legacy library root");
         seed_schema_version(root.path(), starting_version);
         let connection =
@@ -1112,7 +1243,7 @@ fn migrates_supported_legacy_versions_to_the_current_schema() {
 
         let database = Database::open(root.path()).expect("migrate legacy library");
 
-        assert_eq!(database.schema_version().expect("current schema"), 6);
+        assert_eq!(database.schema_version().expect("current schema"), 7);
         assert_eq!(
             database.list_courses().expect("course list")[0].kind,
             "school"
@@ -1148,7 +1279,7 @@ fn open_recovers_version_one_with_only_schema_metadata_and_preserves_unrelated_d
         )
         .expect("problems table lookup");
 
-    assert_eq!(database.schema_version().expect("current schema"), 6);
+    assert_eq!(database.schema_version().expect("current schema"), 7);
     assert_eq!(marker, "keep me");
     assert!(problems_exists);
 }
@@ -1173,7 +1304,7 @@ fn open_recovers_an_empty_schema_metadata_table_and_preserves_unrelated_data() {
         .query_row("SELECT value FROM legacy_marker", [], |row| row.get(0))
         .expect("unrelated legacy row");
 
-    assert_eq!(database.schema_version().expect("current schema"), 6);
+    assert_eq!(database.schema_version().expect("current schema"), 7);
     assert_eq!(marker, "keep empty-meta data");
 }
 
@@ -1241,7 +1372,7 @@ fn resumes_a_partially_applied_legacy_migration() {
         )
         .expect("field revisions table");
 
-    assert_eq!(database.schema_version().expect("current schema"), 6);
+    assert_eq!(database.schema_version().expect("current schema"), 7);
     assert_eq!(field_revisions_exists, 1);
 }
 
@@ -1279,7 +1410,7 @@ fn opens_a_wal_database_with_foreign_keys_enabled() {
 
     assert!(database.foreign_keys_enabled().expect("foreign key status"));
     assert_eq!(database.journal_mode().expect("journal mode"), "wal");
-    assert_eq!(database.schema_version().expect("schema version"), 6);
+    assert_eq!(database.schema_version().expect("schema version"), 7);
 }
 
 #[test]
@@ -1290,7 +1421,7 @@ fn migrates_existing_courses_to_school_kind() {
         .create_course("微积分", "", "#7895A5", "school")
         .unwrap();
     assert_eq!(course.kind, "school");
-    assert_eq!(database.schema_version().unwrap(), 6);
+    assert_eq!(database.schema_version().unwrap(), 7);
 }
 
 #[test]
@@ -1300,7 +1431,7 @@ fn reports_database_health_without_exposing_its_connection() {
 
     let health = database.health().expect("library health");
 
-    assert_eq!(health.schema_version, 6);
+    assert_eq!(health.schema_version, 7);
     assert!(health.foreign_keys_enabled);
     assert_eq!(health.journal_mode, "wal");
 }
@@ -1378,7 +1509,7 @@ fn restores_a_version_five_snapshot_after_migrating_it_to_the_current_schema() {
         .expect("migrated snapshot restore");
     let courses = current.list_courses().expect("restored courses");
 
-    assert_eq!(current.schema_version().expect("current schema"), 6);
+    assert_eq!(current.schema_version().expect("current schema"), 7);
     assert_eq!(courses.len(), 1);
     assert_eq!(courses[0].name, "Legacy course");
     assert_eq!(courses[0].kind, "school");

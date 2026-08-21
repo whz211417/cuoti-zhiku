@@ -1,0 +1,56 @@
+name: Bug 报告
+description: 帮助我们复现一个明确的问题
+title: "[Bug]: "
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        请不要上传真实题目、教材、资料库、备份文件、API Key 或个人路径。截图请先打码。
+  - type: input
+    id: version
+    attributes:
+      label: 应用版本
+      description: 例如 0.4.0，可在设置或安装包名称中查看。
+    validations:
+      required: true
+  - type: input
+    id: windows
+    attributes:
+      label: Windows 版本
+      placeholder: 例如 Windows 11 23H2
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: 最小复现步骤
+      description: 请用虚构课程和虚构题目描述。
+      placeholder: |
+        1. 打开……
+        2. 点击……
+        3. 看到……
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: 预期结果
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: 实际结果与错误信息
+    validations:
+      required: true
+  - type: dropdown
+    id: data_risk
+    attributes:
+      label: 是否涉及资料或密钥风险？
+      options:
+        - 否
+        - 可能涉及资料丢失或泄露（请勿贴出敏感内容）
+        - 可能涉及 API Key 或安全问题（请不要公开提交，改看 SECURITY.md）
+    validations:
+      required: true
