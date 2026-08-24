@@ -174,16 +174,21 @@ vi.mock('../features/review/ReviewReader', () => ({
     isGrading,
     onGrade,
     onRetry,
+    position,
     stem,
+    total,
   }: {
     gradeError?: string | null;
     isGrading?: boolean;
     onGrade: (grade: 'mastered') => void;
     onRetry?: () => void;
+    position?: number;
     stem?: string;
+    total?: number;
   }) => (
     <section aria-label="专注复习">
       <p>{stem}</p>
+      {position && total ? <output aria-label="复习位置">第 {position} / {total} 道</output> : null}
       <button disabled={isGrading} onClick={() => onGrade('mastered')} type="button">完成评分</button>
       {gradeError ? <div role="alert">{gradeError}<button onClick={onRetry} type="button">重新保存评分</button></div> : null}
     </section>
@@ -408,6 +413,19 @@ test('search results open problems, courses and materials with the active query'
   await user.type(screen.getByRole('searchbox', { name: '搜索本地资料库' }), 'LM curve');
   await user.click(await screen.findByRole('button', { name: /material-result/ }));
   await waitFor(() => expect(screen.getByText('materials:course-material:LM curve')).toBeVisible());
+});
+
+test('passes the active review position into the focused reader', async () => {
+  const user = userEvent.setup();
+  getDueReviewProblems.mockResolvedValue([
+    { id: 'review-first', stem: '第一题', ownAnswer: '', standardAnswer: '', explanation: '' },
+    { id: 'review-second', stem: '第二题', ownAnswer: '', standardAnswer: '', explanation: '' },
+  ]);
+  render(<App />);
+
+  await user.click(screen.getByRole('button', { name: '开始复习' }));
+
+  expect(await screen.findByRole('status', { name: '复习位置' })).toHaveTextContent('第 1 / 2 道');
 });
 
 test('increments one refresh token after every successful mutation', async () => {

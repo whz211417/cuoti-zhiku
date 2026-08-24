@@ -14,8 +14,8 @@ describe('public repository presentation', () => {
     )
 
     expect(readme).toContain('releases/latest')
-    expect(readme).toContain('Cuoti-Zhiku-0.4.0-x64-setup.exe')
-    expect(installationGuide).toContain('09B0EE82B23A94CBD08AC5D168F8202B62CD1FB63CB6EB3F7E8BC9B1CE18C772')
+    expect(readme).toContain('Cuoti-Zhiku-0.5.0-x64-setup.exe')
+    expect(installationGuide).toContain('DA11C4B8A4E1BC90724CCC3EEAEFA62A2A159AED039892E7E0A78E81AADCAB70')
   })
 
   it('provides an honest path for feedback, contribution, security reports, and CI', () => {

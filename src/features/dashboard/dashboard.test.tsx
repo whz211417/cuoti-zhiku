@@ -144,15 +144,43 @@ test('continues pending organization when no review is due', async () => {
   expect(callbacks.onOpenInbox).toHaveBeenCalledOnce();
 });
 
-test('offers ingestion when the library has no pending work', async () => {
+test('resumes the latest problem when the library has no pending work', async () => {
   const user = userEvent.setup();
   getDashboardOverview.mockResolvedValue(makeOverview({ dueReviewCount: 0, pendingInboxCount: 0 }));
+
+  renderDashboard();
+
+  expect(await screen.findByRole('heading', { name: '继续上次题目' })).toBeVisible();
+  await user.click(screen.getByRole('button', { name: '继续上次题目' }));
+  expect(callbacks.onOpenProblem).toHaveBeenCalledWith('problem-1');
+  expect(callbacks.onIngest).not.toHaveBeenCalled();
+});
+
+test('offers ingestion only when there is no pending work and no problem to resume', async () => {
+  const user = userEvent.setup();
+  getDashboardOverview.mockResolvedValue(makeOverview({
+    dueReviewCount: 0,
+    pendingInboxCount: 0,
+    recentProblems: [],
+  }));
 
   renderDashboard();
 
   expect(await screen.findByRole('heading', { name: '资料库已整理好' })).toBeVisible();
   await user.click(screen.getByRole('button', { name: '投进题目' }));
   expect(callbacks.onIngest).toHaveBeenCalledOnce();
+});
+
+test('shows a three-step path alongside the one recommended action', async () => {
+  getDashboardOverview.mockResolvedValue(makeOverview());
+
+  renderDashboard();
+
+  const path = await screen.findByRole('list', { name: '今日路径' });
+  expect(within(path).getAllByRole('listitem')).toHaveLength(3);
+  expect(within(path).getByText('先复习')).toBeVisible();
+  expect(within(path).getByText('再整理')).toBeVisible();
+  expect(within(path).getByText('然后延续')).toBeVisible();
 });
 
 test('opens a course and a recent problem from the overview', async () => {
