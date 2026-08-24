@@ -21,6 +21,10 @@ const keyboardGrades = {
   4: 'mastered',
 } as const;
 
+function getKeyboardGrade(key: string) {
+  return key === '1' || key === '2' || key === '3' || key === '4' ? keyboardGrades[key] : undefined;
+}
+
 function isEditableTarget(target: EventTarget | null) {
   if (!(target instanceof Element)) return false;
   return Boolean(target.closest('input, textarea, select, [contenteditable="true"]'));
@@ -60,7 +64,7 @@ export function ReviewReader({
         setIsAnswerVisible(true);
         return;
       }
-      const grade = keyboardGrades[event.key as keyof typeof keyboardGrades];
+      const grade = getKeyboardGrade(event.key);
       if (grade && isAnswerVisibleRef.current && !isGradingRef.current && onGradeRef.current) {
         event.preventDefault();
         onGradeRef.current(grade);
