@@ -113,6 +113,7 @@ export function LearningDashboard({
               <TodayFocus
                 onIngest={onIngest}
                 onOpenInbox={onOpenInbox}
+                onOpenProblem={onOpenProblem}
                 onStartReview={onStartReview}
                 overview={overview}
               />
