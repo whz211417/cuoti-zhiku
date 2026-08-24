@@ -2,28 +2,28 @@
 
 ## 下载与校验
 
-从 [v0.4.0 Release](https://github.com/whz211417/cuoti-zhiku/releases/tag/v0.4.0) 下载 `Cuoti-Zhiku-0.4.0-x64-setup.exe`。请只从项目 Release 页面下载。
+从 [v0.5.0 Release](https://github.com/whz211417/cuoti-zhiku/releases/tag/v0.5.0) 下载 `Cuoti-Zhiku-0.5.0-x64-setup.exe`。请只从项目 Release 页面下载。
 
 | 项目 | 值 |
 | --- | --- |
-| 文件大小 | 7,745,159 字节 |
-| SHA-256 | `09B0EE82B23A94CBD08AC5D168F8202B62CD1FB63CB6EB3F7E8BC9B1CE18C772` |
+| 文件大小 | 7,747,585 字节 |
+| SHA-256 | `DA11C4B8A4E1BC90724CCC3EEAEFA62A2A159AED039892E7E0A78E81AADCAB70` |
 | 安装范围 | 当前 Windows 用户 |
 | 平台 | Windows x64 |
 
 下载后，在安装包所在文件夹运行：
 
 ```powershell
-Get-Item -LiteralPath '.\Cuoti-Zhiku-0.4.0-x64-setup.exe' |
+Get-Item -LiteralPath '.\Cuoti-Zhiku-0.5.0-x64-setup.exe' |
   Select-Object Name, Length, LastWriteTime
-Get-FileHash -LiteralPath '.\Cuoti-Zhiku-0.4.0-x64-setup.exe' -Algorithm SHA256
+Get-FileHash -LiteralPath '.\Cuoti-Zhiku-0.5.0-x64-setup.exe' -Algorithm SHA256
 ```
 
 输出的 `Length` 与 `Hash` 必须分别与上表一致。当前安装包没有商业代码签名；若 Windows SmartScreen 提示，请先核对下载来源和 SHA-256，再自行决定是否继续。
 
 ## 安装
 
-1. 运行 `Cuoti-Zhiku-0.4.0-x64-setup.exe`。
+1. 运行 `Cuoti-Zhiku-0.5.0-x64-setup.exe`。
 2. 按安装向导完成当前用户安装。
 3. 从开始菜单启动“错题智库”。启动后不应再出现额外的黑色控制台窗口。
 
