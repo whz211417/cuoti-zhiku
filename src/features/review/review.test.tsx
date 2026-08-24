@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { expect, test, vi } from 'vitest';
 import { ReviewReader } from './ReviewReader';
@@ -62,4 +62,47 @@ test('disables every grade while persistence is in flight and exposes an inline 
   expect(screen.getByRole('alert')).toHaveTextContent('评分没有保存，请重试。');
   await user.click(screen.getByRole('button', { name: '重新保存评分' }));
   expect(onRetry).toHaveBeenCalledOnce();
+});
+
+test('shows review position and supports the reveal-and-grade keyboard flow', () => {
+  const onGrade = vi.fn();
+  render(<ReviewReader onGrade={onGrade} position={2} standardAnswer="答案" stem="测试题" total={6} />);
+
+  expect(screen.getByText('第 2 / 6 道')).toBeVisible();
+  expect(screen.getByRole('progressbar', { name: '复习进度' })).toHaveAttribute('aria-valuenow', '2');
+
+  fireEvent.keyDown(window, { code: 'Space' });
+  expect(screen.getByText('答案')).toBeVisible();
+
+  fireEvent.keyDown(window, { key: '3' });
+  expect(onGrade).toHaveBeenCalledWith('familiar');
+});
+
+test('ignores unsafe or stale review shortcuts', () => {
+  const onGrade = vi.fn();
+  const view = render(<ReviewReader onGrade={onGrade} standardAnswer="答案" stem="测试题" />);
+
+  fireEvent.keyDown(window, { code: 'Space', ctrlKey: true });
+  expect(screen.queryByText('答案')).not.toBeInTheDocument();
+  fireEvent.keyDown(window, { code: 'Space', repeat: true });
+  expect(screen.queryByText('答案')).not.toBeInTheDocument();
+
+  const input = document.createElement('input');
+  document.body.append(input);
+  input.focus();
+  fireEvent.keyDown(input, { code: 'Space' });
+  expect(screen.queryByText('答案')).not.toBeInTheDocument();
+  input.remove();
+
+  fireEvent.keyDown(window, { code: 'Space' });
+  fireEvent.keyDown(window, { key: '3', repeat: true });
+  expect(onGrade).not.toHaveBeenCalled();
+
+  view.rerender(<ReviewReader isGrading onGrade={onGrade} standardAnswer="答案" stem="测试题" />);
+  fireEvent.keyDown(window, { key: '3' });
+  expect(onGrade).not.toHaveBeenCalled();
+
+  view.unmount();
+  fireEvent.keyDown(window, { key: '3' });
+  expect(onGrade).not.toHaveBeenCalled();
 });

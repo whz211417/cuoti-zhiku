@@ -494,8 +494,10 @@ export function App() {
               onGrade={(grade) => void gradeCurrentReview(grade)}
               onRetry={failedGrade ? () => void gradeCurrentReview(failedGrade) : undefined}
               ownAnswer={reviewQueue[0].ownAnswer}
+              position={reviewSession ? reviewSession.completed + 1 : undefined}
               standardAnswer={reviewQueue[0].standardAnswer}
               stem={reviewQueue[0].stem}
+              total={reviewSession?.initialCount}
             />
           ) : workspace === 'review' && !isReviewLoading && reviewSession && reviewSession.completed > 0 ? (
             <section className="review-summary" aria-label="本次复习总结">
