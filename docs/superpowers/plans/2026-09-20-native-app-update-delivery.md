@@ -38,7 +38,7 @@
 - Consumes: the generated Tauri updater public key and the fixed GitHub `latest.json` endpoint.
 - Produces: registered updater plugin, `updater:default` permission, signed updater artifact configuration, and a committed public verification key.
 
-- [ ] **Step 1: Write the failing configuration test**
+- [x] **Step 1: Write the failing configuration test**
 
 Extend `src/lib/releasePackaging.test.ts` to parse `tauri.conf.json`, `main.json`, `Cargo.toml`, and `package.json`, then assert:
 
@@ -53,13 +53,13 @@ expect(cargo).toContain('tauri-plugin-updater');
 expect(pkg.dependencies['@tauri-apps/plugin-updater']).toBe('^2.12.0');
 ```
 
-- [ ] **Step 2: Run the red test**
+- [x] **Step 2: Run the red test**
 
 Run: `npm.cmd test -- --run src/lib/releasePackaging.test.ts`
 
 Expected: FAIL because updater dependencies and configuration do not exist.
 
-- [ ] **Step 3: Generate the updater key outside the repository**
+- [x] **Step 3: Generate the updater key outside the repository**
 
 Run the Tauri signer with an absolute path under the user's protected Codex state directory, never the worktree:
 
@@ -69,7 +69,7 @@ pnpm.cmd tauri signer generate -- -w C:\Users\whz21\.codex\secrets\cuoti-zhiku-u
 
 Confirm that the private key is outside the repository. Read only the generated `.pub` value for the next configuration edit. Never print or stage the private key.
 
-- [ ] **Step 4: Install and register the official plugin**
+- [x] **Step 4: Install and register the official plugin**
 
 Run: `pnpm.cmd tauri add updater`
 
@@ -81,7 +81,7 @@ Pin the frontend dependency to `^2.12.0`, keep the compatible Rust version produ
 
 Add `updater:default` to `src-tauri/capabilities/main.json`. Set `bundle.createUpdaterArtifacts` to `true`, and add the exact HTTPS endpoint plus the generated public key under `plugins.updater`.
 
-- [ ] **Step 5: Verify and commit**
+- [x] **Step 5: Verify and commit**
 
 Run the focused test, `npm.cmd run typecheck`, and `npm.cmd run test:rust`. Expected: PASS; private-key scans return no matches.
 

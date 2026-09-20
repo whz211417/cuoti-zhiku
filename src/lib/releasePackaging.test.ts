@@ -5,6 +5,9 @@ import { describe, expect, it } from 'vitest'
 
 const tauriConfigPath = resolve(process.cwd(), 'src-tauri/tauri.conf.json')
 const tauriMainPath = resolve(process.cwd(), 'src-tauri/src/main.rs')
+const capabilityPath = resolve(process.cwd(), 'src-tauri/capabilities/main.json')
+const cargoManifestPath = resolve(process.cwd(), 'src-tauri/Cargo.toml')
+const packageManifestPath = resolve(process.cwd(), 'package.json')
 
 describe('Windows release packaging', () => {
   it('uses the Windows GUI subsystem so the installed app does not open a console window', () => {
@@ -31,5 +34,27 @@ describe('Windows release packaging', () => {
 
     expect(mainWindow?.minWidth).toBeLessThanOrEqual(760)
     expect(mainWindow?.minHeight).toBeLessThanOrEqual(520)
+  })
+
+  it('pins a signed HTTPS updater trust boundary', () => {
+    const config = JSON.parse(readFileSync(tauriConfigPath, 'utf8')) as {
+      bundle?: { createUpdaterArtifacts?: boolean }
+      plugins?: { updater?: { endpoints?: string[]; pubkey?: string } }
+    }
+    const capability = JSON.parse(readFileSync(capabilityPath, 'utf8')) as { permissions?: string[] }
+    const cargo = readFileSync(cargoManifestPath, 'utf8')
+    const pkg = JSON.parse(readFileSync(packageManifestPath, 'utf8')) as {
+      dependencies?: Record<string, string>
+    }
+
+    expect(config.bundle?.createUpdaterArtifacts).toBe(true)
+    expect(config.plugins?.updater?.endpoints).toEqual([
+      'https://github.com/whz211417/cuoti-zhiku/releases/latest/download/latest.json',
+    ])
+    const decodedPublicKey = Buffer.from(config.plugins?.updater?.pubkey ?? '', 'base64').toString('utf8')
+    expect(decodedPublicKey).toMatch(/^untrusted comment: minisign public key:/)
+    expect(capability.permissions).toContain('updater:default')
+    expect(cargo).toContain('tauri-plugin-updater')
+    expect(pkg.dependencies?.['@tauri-apps/plugin-updater']).toBe('2.12.0')
   })
 })
