@@ -46,17 +46,54 @@ jobs:
           releaseBody: 请先完成安装、启动、数据保留与应用内更新检查，再将此草稿发布给用户。
           releaseDraft: true
           prerelease: false
-          includeUpdaterJson: true
+          includeUpdaterJson: false
           updaterJsonPreferNsis: true
 
-      - name: Publish installer checksum
+      - name: Publish stable Windows assets and updater manifest
         shell: pwsh
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           $installer = Get-ChildItem -LiteralPath 'src-tauri/target/release/bundle/nsis' -Filter '*.exe' | Select-Object -First 1
           if (-not $installer) { throw 'NSIS installer was not produced' }
-          $checksumPath = "$($installer.FullName).sha256"
+          $signature = "$($installer.FullName).sig"
+          if (-not (Test-Path -LiteralPath $signature)) { throw 'Updater signature was not produced' }
+
+          $version = (Get-Content -Raw -LiteralPath 'package.json' | ConvertFrom-Json).version
+          $assetName = "cuoti-zhiku_${version}_x64-setup.exe"
+          $assetDirectory = Join-Path $env:RUNNER_TEMP 'cuoti-release-assets'
+          [System.IO.Directory]::CreateDirectory($assetDirectory) | Out-Null
+          $assetPath = Join-Path $assetDirectory $assetName
+          $signaturePath = "$assetPath.sig"
+          $checksumPath = "$assetPath.sha256"
+          $manifestPath = Join-Path $assetDirectory 'latest.json'
+
+          [System.IO.File]::Copy($installer.FullName, $assetPath, $true)
+          [System.IO.File]::Copy($signature, $signaturePath, $true)
           $hash = (Get-FileHash -Algorithm SHA256 -LiteralPath $installer.FullName).Hash.ToLowerInvariant()
-          [System.IO.File]::WriteAllText($checksumPath, "$hash  $($installer.Name)`n")
-          gh release upload $env:GITHUB_REF_NAME $checksumPath --clobber
+          $utf8 = [System.Text.UTF8Encoding]::new($false)
+          [System.IO.File]::WriteAllText($checksumPath, "$hash  $assetName`n", $utf8)
+
+          $downloadUrl = "https://github.com/$env:GITHUB_REPOSITORY/releases/download/$env:GITHUB_REF_NAME/$assetName"
+          $manifest = [ordered]@{
+            version = $version
+            notes = '安全更新与体验改进。'
+            pub_date = [DateTimeOffset]::UtcNow.ToString('o')
+            platforms = [ordered]@{
+              'windows-x86_64' = [ordered]@{
+                signature = ([System.IO.File]::ReadAllText($signaturePath)).Trim()
+                url = $downloadUrl
+              }
+            }
+          }
+          [System.IO.File]::WriteAllText($manifestPath, ($manifest | ConvertTo-Json -Depth 5), $utf8)
+
+          gh release upload $env:GITHUB_REF_NAME $assetPath $signaturePath $checksumPath $manifestPath --clobber
+
+          $legacyPrefix = "_${version}_x64-setup"
+          $releaseAssets = gh release view $env:GITHUB_REF_NAME --json assets | ConvertFrom-Json
+          foreach ($asset in $releaseAssets.assets) {
+            if ($asset.name.StartsWith($legacyPrefix)) {
+              gh release delete-asset $env:GITHUB_REF_NAME $asset.name --yes
+            }
+          }
