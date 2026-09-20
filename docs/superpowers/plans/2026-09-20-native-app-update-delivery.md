@@ -158,25 +158,25 @@ type UpdateState =
   | { status: 'error'; currentVersion: string | null; message: string; lastCheckedAt: string | null };
 ```
 
-- [ ] **Step 1: Write policy tests**
+- [x] **Step 1: Write policy tests**
 
 Assert that no prior check is eligible, 23h59m is not eligible, 24h is eligible, invalid stored timestamps are eligible, and time moving backwards is eligible without throwing.
 
-- [ ] **Step 2: Write controller tests**
+- [x] **Step 2: Write controller tests**
 
 Use a fake client and fake timers. Assert the automatic check runs once after 15 seconds only when eligible; manual check ignores the throttle; concurrent checks coalesce; offline errors remain retryable; unmount closes a retained descriptor.
 
-- [ ] **Step 3: Run the red tests**
+- [x] **Step 3: Run the red tests**
 
 Run: `npm.cmd test -- --run src/features/settings/updatePolicy.test.ts src/features/settings/useUpdateController.test.tsx`
 
 Expected: FAIL because the modules do not exist.
 
-- [ ] **Step 4: Implement policy and controller**
+- [x] **Step 4: Implement policy and controller**
 
 Use local-storage key `cuoti-zhiku:last-update-check`. Write the timestamp only after a completed check response, never after a network error. Store the native descriptor only in a ref and expose serializable state plus `checkNow()` and `install()` actions.
 
-- [ ] **Step 5: Verify and commit**
+- [x] **Step 5: Verify and commit**
 
 Run focused tests, typecheck, and lint. Commit only Task 3 files as `feat: coordinate low interruption updates`.
 
