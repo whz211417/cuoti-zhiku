@@ -154,17 +154,20 @@ vi.mock('../features/archive/ArchiveLibrary', () => ({
   ArchiveLibrary: ({
     courseId,
     initialQuery = '',
+    onExport,
     onOpenProblem,
     onSaved,
   }: {
     courseId: string | null;
     initialQuery?: string;
+    onExport?: () => void;
     onOpenProblem: (id: string) => void;
     onSaved?: () => void;
   }) => (
     <section aria-label="全部档案浏览器">
       <p>{`materials:${courseId ?? ''}:${initialQuery}`}</p>
       <button onClick={() => onOpenProblem('problem-archive')} type="button">打开档案题目</button>
+      <button onClick={onExport} type="button">档案导出题册</button>
       <button onClick={onSaved} type="button">保存课程资料</button>
     </section>
   ),
@@ -175,6 +178,8 @@ vi.mock('../features/review/ReviewReader', () => ({
     gradeError,
     isGrading,
     onGrade,
+    onDefer,
+    onEnd,
     onRetry,
     position,
     stem,
@@ -183,6 +188,8 @@ vi.mock('../features/review/ReviewReader', () => ({
     gradeError?: string | null;
     isGrading?: boolean;
     onGrade: (grade: 'mastered') => void;
+    onDefer?: () => void;
+    onEnd?: () => void;
     onRetry?: () => void;
     position?: number;
     stem?: string;
@@ -192,6 +199,8 @@ vi.mock('../features/review/ReviewReader', () => ({
       <p>{stem}</p>
       {position && total ? <output aria-label="复习位置">第 {position} / {total} 道</output> : null}
       <button disabled={isGrading} onClick={() => onGrade('mastered')} type="button">完成评分</button>
+      <button onClick={onDefer} type="button">稍后再看</button>
+      <button onClick={onEnd} type="button">结束本次</button>
       {gradeError ? <div role="alert">{gradeError}<button onClick={onRetry} type="button">重新保存评分</button></div> : null}
     </section>
   ),
@@ -429,6 +438,47 @@ test('passes the active review position into the focused reader', async () => {
   await user.click(screen.getByRole('button', { name: '开始复习' }));
 
   expect(await screen.findByRole('status', { name: '复习位置' })).toHaveTextContent('第 1 / 2 道');
+});
+
+test('defers the current review to the queue tail and can end without grading', async () => {
+  const user = userEvent.setup();
+  getDueReviewProblems.mockResolvedValue([
+    { id: 'review-first', stem: '第一题', ownAnswer: '', standardAnswer: '', explanation: '' },
+    { id: 'review-second', stem: '第二题', ownAnswer: '', standardAnswer: '', explanation: '' },
+  ]);
+  render(<App />);
+  await user.click(screen.getByRole('button', { name: '开始复习' }));
+
+  expect(await screen.findByText('第一题')).toBeVisible();
+  await user.click(screen.getByRole('button', { name: '稍后再看' }));
+  expect(await screen.findByText('第二题')).toBeVisible();
+  expect(completeReview).not.toHaveBeenCalled();
+
+  await user.click(screen.getByRole('button', { name: '结束本次' }));
+  expect(await screen.findByRole('region', { name: '本次复习总结' })).toBeVisible();
+  expect(completeReview).not.toHaveBeenCalled();
+});
+
+test('exports a question book directly from the archive', async () => {
+  const user = userEvent.setup();
+  vi.mocked(saveProblemBook).mockResolvedValue({ cancelled: false, problemCount: 2 });
+  render(<App />);
+
+  await user.click(screen.getByRole('button', { name: '全部档案' }));
+  await user.click(screen.getByRole('button', { name: '档案导出题册' }));
+
+  expect(saveProblemBook).toHaveBeenCalledWith('questions');
+});
+
+test('groups secondary workspaces behind a More navigation control', async () => {
+  const user = userEvent.setup();
+  render(<App />);
+
+  const more = screen.getByRole('button', { name: '更多' });
+  expect(more).toHaveAttribute('aria-expanded', 'false');
+  await user.click(more);
+  expect(screen.getByRole('menuitem', { name: '更多菜单中的知识网络', hidden: true })).toBeInTheDocument();
+  expect(screen.getByRole('menuitem', { name: '更多菜单中的全部档案', hidden: true })).toBeInTheDocument();
 });
 
 test('increments one refresh token after every successful mutation', async () => {

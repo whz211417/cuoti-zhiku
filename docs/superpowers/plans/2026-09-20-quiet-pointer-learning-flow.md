@@ -211,19 +211,19 @@ Run focused tests, typecheck, and lint. Stage only Task 4 files and commit `feat
 - `ArchiveLibrary` gains `onExport?: () => void`.
 - `ReviewReader` gains `onDefer?: () => void` and `onEnd?: () => void`; defer never calls `onGrade`.
 
-- [ ] **Step 1: Write failing discoverability and exit tests**
+- [x] **Step 1: Write failing discoverability and exit tests**
 
 Assert the archive has a visible `导出题册` action without opening settings. Assert review exposes `稍后再看` and `结束本次`; both avoid grading. Assert clicking command-palette scrim closes it. Assert the mobile navigation does not render five equal top-level items.
 
-- [ ] **Step 2: Run red tests**
+- [x] **Step 2: Run red tests**
 
 Run archive, review, search, and App tests; expect failures for missing callbacks and scrim behavior.
 
-- [ ] **Step 3: Implement the minimal exits and responsive grouping**
+- [x] **Step 3: Implement the minimal exits and responsive grouping**
 
 Reuse the existing export choice UI by opening it from the archive action. Defer rotates the current problem to the queue tail in memory; end displays the existing review summary for completed items. Add scrim click dismissal while stopping propagation inside the palette. At `max-width: 780px`, show overview/inbox/review plus one `更多` control containing knowledge/archive; keep 44px targets. Compress the persistent toolbar to 56–60px, move greeting copy into overview content, keep Today Focus to one primary action plus one supporting line, and style review grades as one segmented control with the `1–4` keycaps inside each option.
 
-- [ ] **Step 4: Verify and commit**
+- [x] **Step 4: Verify and commit**
 
 Run focused tests, typecheck, lint, and production build. Stage only Task 5 files and commit `feat: make core learning exits discoverable`.
 

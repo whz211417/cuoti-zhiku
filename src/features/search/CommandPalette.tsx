@@ -163,7 +163,7 @@ export function CommandPalette({
   if (!open) return null;
 
   return (
-    <div className="command-palette-backdrop">
+    <div className="command-palette-backdrop" onClick={(event) => { if (event.target === event.currentTarget) dismiss(); }}>
       <section
         aria-labelledby="library-search-title"
         aria-modal="true"

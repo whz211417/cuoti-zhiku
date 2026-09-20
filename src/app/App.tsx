@@ -1,6 +1,6 @@
 import { useGSAP } from '@gsap/react';
 import { gsap } from 'gsap';
-import { AlertCircle, Archive, BookOpenCheck, ChevronLeft, Inbox, LayoutDashboard, Network, RefreshCw, Search, Settings, ShieldCheck, Upload, X } from 'lucide-react';
+import { AlertCircle, Archive, BookOpenCheck, ChevronLeft, Inbox, LayoutDashboard, MoreHorizontal, Network, RefreshCw, Search, Settings, ShieldCheck, Upload, X } from 'lucide-react';
 import { type CSSProperties, useCallback, useEffect, useRef, useState } from 'react';
 import { DynamicControlSurface } from '../components/material/DynamicControlSurface';
 import { InspectorSurface } from '../components/material/InspectorSurface';
@@ -56,6 +56,7 @@ export function App() {
   const [workspace, setWorkspace] = useState<Workspace>('overview');
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isSearchOpen, setIsSearchOpen] = useState(false);
+  const [isMoreNavOpen, setIsMoreNavOpen] = useState(false);
   const [isIngesting, setIsIngesting] = useState(false);
   const [courseCreateRequestToken, setCourseCreateRequestToken] = useState(0);
   const [materialImportError, setMaterialImportError] = useState<string | null>(null);
@@ -68,6 +69,7 @@ export function App() {
   const [gradeError, setGradeError] = useState<string | null>(null);
   const [failedGrade, setFailedGrade] = useState<'forgot' | 'hard' | 'familiar' | 'mastered' | null>(null);
   const [reviewSession, setReviewSession] = useState<ReviewSession | null>(null);
+  const [isReviewEnded, setIsReviewEnded] = useState(false);
   const [recentProblems, setRecentProblems] = useState<RecentProblem[]>([]);
   const [exportStatus, setExportStatus] = useState<string | null>(null);
   const [exportingBook, setExportingBook] = useState<BookKind | null>(null);
@@ -133,6 +135,7 @@ export function App() {
     setGradeError(null);
     setFailedGrade(null);
     setReviewSession(null);
+    setIsReviewEnded(false);
     const today = localCalendarDate();
     try {
       const queue = await getDueReviewProblems(today);
@@ -253,6 +256,19 @@ export function App() {
       gradeInFlightRef.current = false;
       setIsGrading(false);
     }
+  };
+
+  const deferCurrentReview = () => {
+    setReviewQueue((queue) => queue.length > 1 ? [...queue.slice(1), queue[0]] : queue);
+    setGradeError(null);
+    setFailedGrade(null);
+  };
+
+  const endReviewSession = () => {
+    setReviewQueue([]);
+    setGradeError(null);
+    setFailedGrade(null);
+    setIsReviewEnded(true);
   };
 
   const ingestProblemFiles = async () => {
@@ -377,6 +393,7 @@ export function App() {
   };
 
   const selectWorkspace = (nextWorkspace: Workspace) => {
+    setIsMoreNavOpen(false);
     setMaterialInitialQuery('');
     setSelectedProblemId(null);
     setWorkspace(nextWorkspace);
@@ -429,12 +446,14 @@ export function App() {
           <button aria-current={workspace === 'review' ? 'page' : undefined} className={`nav-item ${workspace === 'review' ? 'is-active' : ''}`} onClick={() => selectWorkspace('review')} type="button">
             <span><BookOpenCheck aria-hidden="true" size={16} />今日复习</span>
           </button>
-          <button aria-current={workspace === 'knowledge' ? 'page' : undefined} className={`nav-item ${workspace === 'knowledge' ? 'is-active' : ''}`} onClick={() => selectWorkspace('knowledge')} type="button">
+          <button aria-current={workspace === 'knowledge' ? 'page' : undefined} className={`nav-item nav-secondary-item ${workspace === 'knowledge' ? 'is-active' : ''}`} onClick={() => selectWorkspace('knowledge')} type="button">
             <span><Network aria-hidden="true" size={16} />知识网络</span>
           </button>
-          <button aria-current={workspace === 'archive' ? 'page' : undefined} className={`nav-item ${workspace === 'archive' ? 'is-active' : ''}`} onClick={() => selectWorkspace('archive')} type="button">
+          <button aria-current={workspace === 'archive' ? 'page' : undefined} className={`nav-item nav-secondary-item ${workspace === 'archive' ? 'is-active' : ''}`} onClick={() => selectWorkspace('archive')} type="button">
             <span><Archive aria-hidden="true" size={16} />全部档案</span>
           </button>
+          <button aria-expanded={isMoreNavOpen} aria-haspopup="menu" aria-label="更多" className={`nav-item nav-more ${workspace === 'knowledge' || workspace === 'archive' ? 'is-active' : ''}`} onClick={() => setIsMoreNavOpen((open) => !open)} type="button"><span><MoreHorizontal aria-hidden="true" size={17} />更多</span></button>
+          {isMoreNavOpen ? <div className="nav-more-menu" role="menu"><button aria-label="更多菜单中的知识网络" onClick={() => selectWorkspace('knowledge')} role="menuitem" type="button"><Network aria-hidden="true" size={16} />知识网络</button><button aria-label="更多菜单中的全部档案" onClick={() => selectWorkspace('archive')} role="menuitem" type="button"><Archive aria-hidden="true" size={16} />全部档案</button></div> : null}
         </nav>
 
         <div className="sidebar-section"><CourseSidebar onCancelCourseCreate={cancelCourseCreation} onCourseCreated={handleCourseCreated} onSelectCourse={setSelectedCourseId} openCreateToken={courseCreateRequestToken} selectedCourseId={selectedCourseId} /></div>
@@ -501,6 +520,8 @@ export function App() {
               explanation={reviewQueue[0].explanation}
               gradeError={gradeError}
               isGrading={isGrading}
+              onDefer={deferCurrentReview}
+              onEnd={endReviewSession}
               onGrade={(grade) => void gradeCurrentReview(grade)}
               onRetry={failedGrade ? () => void gradeCurrentReview(failedGrade) : undefined}
               ownAnswer={reviewQueue[0].ownAnswer}
@@ -509,11 +530,11 @@ export function App() {
               stem={reviewQueue[0].stem}
               total={reviewSession?.initialCount}
             />
-          ) : workspace === 'review' && !isReviewLoading && reviewSession && reviewSession.completed > 0 ? (
+          ) : workspace === 'review' && !isReviewLoading && reviewSession && (reviewSession.completed > 0 || isReviewEnded) ? (
             <section className="review-summary" aria-label="本次复习总结">
               <div className="review-summary__mark"><ShieldCheck aria-hidden="true" size={27} /></div>
               <p className="eyebrow">本次复习已保存 · {reviewSession.completed}/{reviewSession.initialCount}</p>
-              <h2>完成 {reviewSession.completed} 道，今天收得很好。</h2>
+              <h2>{reviewSession.completed > 0 ? `完成 ${reviewSession.completed} 道，今天收得很好。` : '本次复习已结束，进度没有丢失。'}</h2>
               <div className="review-summary__stats" aria-label="评分分布">
                 <span><strong>{reviewSession.grades.forgot}</strong><small>忘记</small></span>
                 <span><strong>{reviewSession.grades.hard}</strong><small>困难</small></span>
@@ -538,6 +559,7 @@ export function App() {
             <ArchiveLibrary
               courseId={selectedCourseId}
               initialQuery={materialInitialQuery}
+              onExport={() => void exportBook('questions')}
               onOpenProblem={openProblem}
               onSaved={refreshOverview}
             />

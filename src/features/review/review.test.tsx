@@ -26,6 +26,21 @@ test('submits a grade only after the answer is revealed', async () => {
   expect(onGrade).toHaveBeenCalledWith('familiar');
 });
 
+test('can defer or end a review without grading the problem', async () => {
+  const user = userEvent.setup();
+  const onDefer = vi.fn();
+  const onEnd = vi.fn();
+  const onGrade = vi.fn();
+  render(<ReviewReader onDefer={onDefer} onEnd={onEnd} onGrade={onGrade} stem="测试题" />);
+
+  await user.click(screen.getByRole('button', { name: '稍后再看' }));
+  await user.click(screen.getByRole('button', { name: '结束本次' }));
+
+  expect(onDefer).toHaveBeenCalledOnce();
+  expect(onEnd).toHaveBeenCalledOnce();
+  expect(onGrade).not.toHaveBeenCalled();
+});
+
 test('hides the previous answer when the reader advances to a new question', async () => {
   const user = userEvent.setup();
   const { rerender } = render(<ReviewReader standardAnswer="第一题答案" stem="第一题题干" />);

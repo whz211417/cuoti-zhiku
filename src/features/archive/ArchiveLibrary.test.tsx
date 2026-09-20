@@ -28,6 +28,16 @@ test('loads all non-trashed problems, opens one, and keeps course materials acce
   expect(screen.getByRole('region', { name: '课程资料库' })).toHaveTextContent('materials:macro');
 });
 
+test('exposes book export directly from the archive heading', async () => {
+  getAllProblems.mockResolvedValue([]);
+  const onExport = vi.fn();
+  render(<ArchiveLibrary courseId={null} onExport={onExport} onOpenProblem={vi.fn()} />);
+
+  await userEvent.click(await screen.findByRole('button', { name: '导出题册' }));
+
+  expect(onExport).toHaveBeenCalledOnce();
+});
+
 test('shows loading and empty archive states', async () => {
   let resolve!: (value: []) => void;
   getAllProblems.mockReturnValue(new Promise<[]>((next) => { resolve = next; }));

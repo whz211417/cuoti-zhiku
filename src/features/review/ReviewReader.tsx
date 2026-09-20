@@ -11,6 +11,8 @@ type ReviewReaderProps = {
   gradeError?: string | null;
   isGrading?: boolean;
   onGrade?: (grade: 'forgot' | 'hard' | 'familiar' | 'mastered') => void;
+  onDefer?: () => void;
+  onEnd?: () => void;
   onRetry?: () => void;
 };
 
@@ -34,6 +36,8 @@ export function ReviewReader({
   explanation,
   gradeError,
   isGrading = false,
+  onDefer,
+  onEnd,
   onGrade,
   onRetry,
   ownAnswer,
@@ -79,14 +83,17 @@ export function ReviewReader({
     <article className="review-reader" aria-label="专注复习">
       <header className="review-masthead">
         <div className="review-mode"><BookOpenCheck aria-hidden="true" size={15} /><span>专注复习</span></div>
-        {hasProgress ? (
-          <div className="review-session-progress">
-            <span>第 {position} / {total} 道</span>
-            <span aria-label="复习进度" aria-valuemax={total} aria-valuemin={1} aria-valuenow={position} className="review-progress-track" role="progressbar">
-              <span style={{ width: `${Math.min(100, (position! / total!) * 100)}%` }} />
-            </span>
-          </div>
-        ) : <p>先独立回忆，再展开对照</p>}
+        <div className="review-session-tools">
+          {hasProgress ? (
+            <div className="review-session-progress">
+              <span>第 {position} / {total} 道</span>
+              <span aria-label="复习进度" aria-valuemax={total} aria-valuemin={1} aria-valuenow={position} className="review-progress-track" role="progressbar">
+                <span style={{ width: `${Math.min(100, (position! / total!) * 100)}%` }} />
+              </span>
+            </div>
+          ) : <p>先独立回忆，再展开对照</p>}
+          {onDefer || onEnd ? <div className="review-exit-actions">{onDefer ? <button onClick={onDefer} type="button">稍后再看</button> : null}{onEnd ? <button onClick={onEnd} type="button">结束本次</button> : null}</div> : null}
+        </div>
       </header>
       <div className="review-question">
         <p className="eyebrow">题目</p>
@@ -106,12 +113,11 @@ export function ReviewReader({
           {onGrade ? (
             <>
               <div aria-label="复习评分" aria-busy={isGrading} className="review-grades">
-                <button disabled={isGrading} onClick={() => onGrade('forgot')} type="button">忘记</button>
-                <button disabled={isGrading} onClick={() => onGrade('hard')} type="button">困难</button>
-                <button disabled={isGrading} onClick={() => onGrade('familiar')} type="button">熟悉</button>
-                <button disabled={isGrading} onClick={() => onGrade('mastered')} type="button">掌握</button>
+                <button disabled={isGrading} onClick={() => onGrade('forgot')} type="button"><kbd aria-hidden="true">1</kbd><span>忘记</span></button>
+                <button disabled={isGrading} onClick={() => onGrade('hard')} type="button"><kbd aria-hidden="true">2</kbd><span>困难</span></button>
+                <button disabled={isGrading} onClick={() => onGrade('familiar')} type="button"><kbd aria-hidden="true">3</kbd><span>熟悉</span></button>
+                <button disabled={isGrading} onClick={() => onGrade('mastered')} type="button"><kbd aria-hidden="true">4</kbd><span>掌握</span></button>
               </div>
-              <p className="review-shortcuts">快捷键：<kbd>1</kbd> 忘记 · <kbd>2</kbd> 困难 · <kbd>3</kbd> 熟悉 · <kbd>4</kbd> 掌握</p>
               {gradeError ? (
                 <div className="review-grade-error" role="alert">
                   <span>{gradeError}</span>

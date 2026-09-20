@@ -69,6 +69,17 @@ test('renders the accessible Spotlight dialog and focuses its searchbox', () => 
   expect(screen.getByRole('searchbox', { name: '搜索本地资料库' })).toHaveFocus();
 });
 
+test('clicking the dimmed scrim closes the palette without selecting content', async () => {
+  const onClose = vi.fn();
+  const view = render(<CommandPalette {...props} onClose={onClose} open />);
+  const backdrop = view.container.querySelector('.command-palette-backdrop');
+
+  await userEvent.click(backdrop!);
+
+  expect(onClose).toHaveBeenCalledOnce();
+  expect(props.onOpenProblem).not.toHaveBeenCalled();
+});
+
 test('waits 180ms and searches only queries with two trimmed characters', async () => {
   vi.useFakeTimers();
   searchLibrary.mockResolvedValue(results);
