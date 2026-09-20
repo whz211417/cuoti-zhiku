@@ -9,7 +9,7 @@ export function IngestDropzone({
   onOpenProblem,
 }: {
   courseId: string | null;
-  onImported?: () => void;
+  onImported?: (problemIds: string[]) => void;
   onOpenProblem?: (problemId: string) => void;
 }) {
   const [items, setItems] = useState<ImportFileResult[]>([]);
@@ -29,7 +29,11 @@ export function IngestDropzone({
       const results = await selectProblemFiles(courseId);
       if (results.length === 0) return;
       setItems((current) => [...results, ...current]);
-      if (results.some((result) => result.item)) onImported?.();
+      const problemIds = results.flatMap((result) => result.item ? [result.item.problemId] : []);
+      if (problemIds.length > 0) {
+        onImported?.(problemIds);
+        onOpenProblem?.(problemIds[0]);
+      }
     } catch {
       setSelectionError('导入没有完成。请稍后重试。之前的题目仍然安全保留。');
     } finally {

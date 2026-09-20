@@ -17,7 +17,7 @@ export function GlobalFileDrop({
   onOpenInbox,
 }: {
   courseId: string | null;
-  onImported: () => void;
+  onImported: (problemIds: string[]) => void;
   onOpenInbox: () => void;
 }) {
   const [phase, setPhase] = useState<Phase>('idle');
@@ -62,7 +62,8 @@ export function GlobalFileDrop({
           if (!active) return;
           setResults(nextResults);
           setPhase('complete');
-          if (nextResults.some((result) => result.item)) onImported();
+          const problemIds = nextResults.flatMap((result) => result.item ? [result.item.problemId] : []);
+          if (problemIds.length > 0) onImported(problemIds);
         })
         .catch(() => {
           if (!active) return;

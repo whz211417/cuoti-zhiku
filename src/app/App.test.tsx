@@ -6,8 +6,9 @@ import { selectProblemFiles } from '../features/inbox/selectProblemFiles';
 import { selectCourseMaterialFile } from '../features/materials/selectCourseMaterialFile';
 import { App } from './App';
 
-const { completeReview, getDueReviewProblems, importCourseMaterialFile, localCalendarDate, searchLibraryMock } = vi.hoisted(() => ({
+const { completeReview, getCourses, getDueReviewProblems, importCourseMaterialFile, localCalendarDate, searchLibraryMock } = vi.hoisted(() => ({
   completeReview: vi.fn(),
+  getCourses: vi.fn(),
   getDueReviewProblems: vi.fn(),
   importCourseMaterialFile: vi.fn(),
   localCalendarDate: vi.fn(() => '2026-07-30'),
@@ -33,6 +34,7 @@ vi.mock('../lib/preferences', () => ({
 }));
 vi.mock('../lib/tauri', () => ({
   completeReview,
+  getCourses,
   getDueReviewProblems,
   importCourseMaterialFile,
   searchLibrary: searchLibraryMock,
@@ -207,6 +209,7 @@ beforeEach(() => {
   completeReview.mockResolvedValue(undefined);
   localCalendarDate.mockReturnValue('2026-07-30');
   searchLibraryMock.mockResolvedValue([]);
+  getCourses.mockResolvedValue([{ id: 'course-sidebar', name: '宏观经济学', term: '', color: '#7895A5', kind: 'school' }]);
   importCourseMaterialFile.mockResolvedValue({ id: 'material-1' });
 });
 
@@ -437,7 +440,9 @@ test('increments one refresh token after every successful mutation', async () =>
   expect(screen.getByRole('status', { name: '总览刷新令牌' })).toHaveTextContent('0');
 
   await user.click(screen.getByRole('button', { name: '投进题目' }));
-  expect(await screen.findByRole('heading', { name: '待整理' })).toBeVisible();
+  expect(await screen.findByText('problem:problem-1')).toBeVisible();
+  await user.click(screen.getByRole('button', { name: '返回学习总览' }));
+  await user.click(screen.getByRole('button', { name: /^待整理/ }));
   await user.click(screen.getByRole('button', { name: '完成收件箱导入' }));
   await user.click(screen.getByRole('button', { name: '学习总览' }));
   expect(screen.getByRole('status', { name: '总览刷新令牌' })).toHaveTextContent('2');
@@ -464,6 +469,22 @@ test('increments one refresh token after every successful mutation', async () =>
   await user.click(screen.getByRole('button', { name: '保存课程资料' }));
   await user.click(screen.getByRole('button', { name: '学习总览' }));
   expect(screen.getByRole('status', { name: '总览刷新令牌' })).toHaveTextContent('7');
+});
+
+test('shows the selected import destination and opens the first imported problem', async () => {
+  const user = userEvent.setup();
+  vi.mocked(selectProblemFiles).mockResolvedValue([
+    { sourcePath: 'bad.exe', item: null, error: '暂不支持' },
+    ...savedImport,
+  ]);
+  render(<App />);
+
+  await user.click(screen.getByRole('button', { name: '选择课程' }));
+  expect(await screen.findByText('保存到：宏观经济学')).toBeVisible();
+  await user.click(screen.getByRole('button', { name: '投进题目' }));
+
+  expect(await screen.findByText('problem:problem-1')).toBeVisible();
+  expect(screen.queryByText('problem:bad.exe')).not.toBeInTheDocument();
 });
 
 test('does not refresh or leave the overview after cancelled and failed file selection', async () => {

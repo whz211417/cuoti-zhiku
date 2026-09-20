@@ -26,7 +26,7 @@ function readAsBase64(file: File): Promise<string> {
 
 export function ClipboardImageCapture({ courseId, onImported, onOpenInbox }: {
   courseId: string | null;
-  onImported: () => void;
+  onImported: (problemIds: string[]) => void;
   onOpenInbox: () => void;
 }) {
   const [state, setState] = useState<CaptureState>('idle');
@@ -50,11 +50,11 @@ export function ClipboardImageCapture({ courseId, onImported, onOpenInbox }: {
       setMessage('正在把剪贴板截图安全保存到待整理…');
       void readAsBase64(file)
         .then((dataBase64) => importClipboardImage(dataBase64, file.type, courseIdRef.current ?? undefined))
-        .then(() => {
+        .then((item) => {
           if (requestRef.current !== request) return;
           setState('saved');
           setMessage('截图已保存到待整理');
-          onImported();
+          onImported([item.problemId]);
         })
         .catch(() => {
           if (requestRef.current !== request) return;

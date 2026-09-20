@@ -29,7 +29,7 @@ test('pastes an image into the active course without disturbing text inputs', as
   fireEvent.paste(view.container, { clipboardData });
   await waitFor(() => expect(importClipboardImage).toHaveBeenCalledWith('iVBORw0KGgo=', 'image/png', 'macro'));
   expect(await screen.findByText('截图已保存到待整理')).toBeVisible();
-  expect(onImported).toHaveBeenCalledOnce();
+  expect(onImported).toHaveBeenCalledWith(['problem-clip']);
 
   fireEvent.paste(screen.getByLabelText('题干'), { clipboardData });
   expect(importClipboardImage).toHaveBeenCalledTimes(1);

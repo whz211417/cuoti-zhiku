@@ -178,19 +178,19 @@ Run problems and App tests, typecheck, and lint. Stage only Task 3 files and com
 - Successful import callbacks produce ordered `problemId[]` while preserving the existing refresh callback.
 - `App` opens the first imported problem and tracks remaining ids only in memory.
 
-- [ ] **Step 1: Write failing continuation tests**
+- [x] **Step 1: Write failing continuation tests**
 
 Assert single-file import invokes `onOpenProblem(problemId)` immediately. Assert multiple results open the first successful item in source order and do not open failures. Assert toolbar copy includes `保存到：<selected course name>` or `保存到：未分类`.
 
-- [ ] **Step 2: Run red tests**
+- [x] **Step 2: Run red tests**
 
 Run inbox, global-drop, clipboard, and App test files; expect failures because current callbacks only navigate to the inbox.
 
-- [ ] **Step 3: Implement ordered continuation**
+- [x] **Step 3: Implement ordered continuation**
 
 After all import results settle, extract `results.flatMap(result => result.item ? [result.item.problemId] : [])`; refresh counts, then open the first id. Keep all results rendered in the inbox for recovery. Resolve the selected course name from existing `courses` state and place destination copy beside the ingest action.
 
-- [ ] **Step 4: Verify and commit**
+- [x] **Step 4: Verify and commit**
 
 Run focused tests, typecheck, and lint. Stage only Task 4 files and commit `feat: continue directly from local import`.
 

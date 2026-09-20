@@ -23,7 +23,7 @@ import { AiProviderSettings } from '../features/settings/AiProviderSettings';
 import { ObsidianSettings } from '../features/settings/ObsidianSettings';
 import { localCalendarDate, timeGreeting } from '../lib/dates';
 import { getMotionPreferences } from '../lib/preferences';
-import { completeReview, getDueReviewProblems, importCourseMaterialFile, type Course, type DashboardOverview, type RecentProblem, type ReviewProblem } from '../lib/tauri';
+import { completeReview, getCourses, getDueReviewProblems, importCourseMaterialFile, type Course, type DashboardOverview, type RecentProblem, type ReviewProblem } from '../lib/tauri';
 
 type Workspace = 'overview' | 'inbox' | 'review' | 'knowledge' | 'archive';
 type ReviewGrade = 'forgot' | 'hard' | 'familiar' | 'mastered';
@@ -52,6 +52,7 @@ const workspaceTitles: Record<Workspace, { eyebrow: string; title: string }> = {
 export function App() {
   const [selectedProblemId, setSelectedProblemId] = useState<string | null>(null);
   const [selectedCourseId, setSelectedCourseId] = useState<string | null>(null);
+  const [courses, setCourses] = useState<Course[]>([]);
   const [workspace, setWorkspace] = useState<Workspace>('overview');
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isSearchOpen, setIsSearchOpen] = useState(false);
@@ -101,9 +102,21 @@ export function App() {
             ? 3
             : 4;
 
-  const refreshOverview = () => setRefreshToken((token) => token + 1);
+  const refreshOverview = useCallback(() => setRefreshToken((token) => token + 1), []);
+  const selectedCourseName = selectedCourseId
+    ? courses.find((course) => course.id === selectedCourseId)?.name ?? '当前课程'
+    : '未分类';
+  const continueImportedProblems = useCallback((problemIds: string[]) => {
+    if (problemIds.length === 0) return;
+    refreshOverview();
+    setSelectedProblemId(problemIds[0]);
+  }, [refreshOverview]);
   const rememberOverview = useCallback((overview: DashboardOverview) => {
     setRecentProblems(overview.recentProblems);
+  }, []);
+
+  useEffect(() => {
+    void getCourses().then(setCourses).catch(() => undefined);
   }, []);
 
   const closeSearch = () => {
@@ -246,10 +259,8 @@ export function App() {
     setIsIngesting(true);
     try {
       const results = await selectProblemFiles(selectedCourseId);
-      if (!results.some((result) => result.item)) return;
-      refreshOverview();
-      setSelectedProblemId(null);
-      setWorkspace('inbox');
+      const problemIds = results.flatMap((result) => result.item ? [result.item.problemId] : []);
+      continueImportedProblems(problemIds);
     } catch {
       // Native dialog and import errors remain local to the initiating action.
     } finally {
@@ -301,6 +312,7 @@ export function App() {
   };
 
   const handleCourseCreated = (course: Course) => {
+    setCourses((current) => current.some((candidate) => candidate.id === course.id) ? current : [...current, course]);
     refreshOverview();
     const pendingPath = pendingMaterialPathRef.current;
     pendingMaterialPathRef.current = null;
@@ -388,12 +400,12 @@ export function App() {
     <main aria-label="错题智库" className="app-shell" role="application">
       <GlobalFileDrop
         courseId={selectedCourseId}
-        onImported={refreshOverview}
+        onImported={continueImportedProblems}
         onOpenInbox={() => selectWorkspace('inbox')}
       />
       <ClipboardImageCapture
         courseId={selectedCourseId}
-        onImported={refreshOverview}
+        onImported={continueImportedProblems}
         onOpenInbox={() => selectWorkspace('inbox')}
       />
       <DynamicControlSurface as="aside" className="sidebar">
@@ -437,7 +449,7 @@ export function App() {
             {workspace === 'overview' && !selectedProblemId ? <p className="toolbar-greeting">{timeGreeting()}</p> : null}
           </div>
           <div aria-label="工具" className="toolbar-actions">
-            <button aria-label="投进题目" className="toolbar-button toolbar-ingest-action" disabled={isIngesting} onClick={() => void ingestProblemFiles()} type="button"><Upload aria-hidden="true" size={16} /><span>{isIngesting ? '正在导入…' : '投进题目'}</span></button>
+            <button aria-label="投进题目" className="toolbar-button toolbar-ingest-action" disabled={isIngesting} onClick={() => void ingestProblemFiles()} type="button"><Upload aria-hidden="true" size={16} /><span className="toolbar-ingest-copy"><span>{isIngesting ? '正在导入…' : '投进题目'}</span><small>{`保存到：${selectedCourseName}`}</small></span></button>
             <button aria-label="全局搜索" className="toolbar-button icon-button" onClick={() => setIsSearchOpen(true)} ref={searchTriggerRef} type="button"><Search aria-hidden="true" size={17} /></button>
             <button aria-label="设置" className="toolbar-button icon-button" onClick={openSettings} ref={settingsTriggerRef} type="button"><Settings aria-hidden="true" size={17} /></button>
           </div>

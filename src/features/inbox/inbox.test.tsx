@@ -38,9 +38,29 @@ test('shows each successfully stored file in the inbox after selection', async (
     },
   ]);
 
-  render(<IngestDropzone courseId={null} />);
+  const onOpenProblem = vi.fn();
+  render(<IngestDropzone courseId={null} onOpenProblem={onOpenProblem} />);
   await userEvent.click(screen.getByRole('button', { name: '投进题目' }));
 
   expect(await screen.findByText('is-lm.pdf')).toBeVisible();
   expect(screen.getByText('已安全保存')).toBeVisible();
+  expect(onOpenProblem).toHaveBeenCalledWith('problem-1');
+});
+
+test('opens the first successful import in source order and skips failures', async () => {
+  open.mockResolvedValue(['C:/bad.exe', 'C:/first.pdf', 'C:/second.png']);
+  importFiles.mockResolvedValue([
+    { sourcePath: 'C:/bad.exe', item: null, error: '暂不支持' },
+    { sourcePath: 'C:/first.pdf', item: { id: 'i1', problemId: 'problem-first', attachmentId: 'a1', filename: 'first.pdf', createdAt: '1' }, error: null },
+    { sourcePath: 'C:/second.png', item: { id: 'i2', problemId: 'problem-second', attachmentId: 'a2', filename: 'second.png', createdAt: '2' }, error: null },
+  ]);
+  const onImported = vi.fn();
+  const onOpenProblem = vi.fn();
+
+  render(<IngestDropzone courseId="macro" onImported={onImported} onOpenProblem={onOpenProblem} />);
+  await userEvent.click(screen.getByRole('button', { name: '投进题目' }));
+
+  expect(onImported).toHaveBeenCalledWith(['problem-first', 'problem-second']);
+  expect(onOpenProblem).toHaveBeenCalledOnce();
+  expect(onOpenProblem).toHaveBeenCalledWith('problem-first');
 });
