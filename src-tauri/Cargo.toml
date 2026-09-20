@@ -1,6 +1,6 @@
 [package]
 name = "cuoti-zhiku"
-version = "0.5.1"
+version = "0.5.2"
 description = "本地错题学习资料库"
 authors = ["Codex"]
 edition = "2021"

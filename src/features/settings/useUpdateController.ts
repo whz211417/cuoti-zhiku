@@ -153,11 +153,14 @@ export function useUpdateController(client: UpdateClient, options: UpdateControl
     return () => window.clearTimeout(timer);
   }, [automaticDelayMs, checkNow, now]);
 
-  useEffect(() => () => {
-    mountedRef.current = false;
-    const descriptor = descriptorRef.current;
-    descriptorRef.current = null;
-    if (descriptor) void descriptor.close();
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+      const descriptor = descriptorRef.current;
+      descriptorRef.current = null;
+      if (descriptor) void descriptor.close();
+    };
   }, []);
 
   return { state, checkNow, install };

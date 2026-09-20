@@ -1,4 +1,5 @@
 import { act, renderHook, waitFor } from '@testing-library/react';
+import { StrictMode, type ReactNode } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { UpdateClient, UpdateDescriptor } from './updateClient';
 import { LAST_UPDATE_CHECK_KEY, useUpdateController } from './useUpdateController';
@@ -83,6 +84,16 @@ describe('useUpdateController', () => {
     expect(updateClient.check).toHaveBeenCalledOnce();
     pending.resolve(null);
     await act(async () => Promise.all([first, second]));
+  });
+
+  it('keeps state updates active across the StrictMode effect replay', async () => {
+    const updateClient = client();
+    const wrapper = ({ children }: { children: ReactNode }) => <StrictMode>{children}</StrictMode>;
+    const { result } = renderHook(() => useUpdateController(updateClient), { wrapper });
+
+    await act(async () => result.current.checkNow());
+
+    expect(result.current.state).toMatchObject({ status: 'current', currentVersion: '0.5.1' });
   });
 
   it('keeps offline failures retryable without advancing the throttle', async () => {

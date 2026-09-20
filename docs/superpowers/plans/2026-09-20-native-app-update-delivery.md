@@ -307,33 +307,33 @@ Run focused tests plus a YAML parse check. Commit Task 6 files as `ci: publish s
 **Interfaces:**
 - Produces: one migration installer that establishes the updater trust root and one verified standard Windows installation.
 
-- [ ] **Step 1: Set version 0.5.2 consistently**
+- [x] **Step 1: Set version 0.5.2 consistently**
 
 Update all four version sources, run `node scripts/verify-release-version.mjs --version 0.5.2`, and expect a zero exit code.
 
-- [ ] **Step 2: Run the complete quality gate**
+- [x] **Step 2: Run the complete quality gate**
 
 Run `npm.cmd test`, `npm.cmd run lint`, `npm.cmd run typecheck`, `npm.cmd run build`, `npm.cmd run test:rust`, and dependency audits. Expected: all tests pass, no new warnings attributable to this work, and no critical/high dependency advisory accepted without documentation.
 
-- [ ] **Step 3: Build signed updater artifacts**
+- [x] **Step 3: Build signed updater artifacts**
 
 Set `TAURI_SIGNING_PRIVATE_KEY` and `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` only in the build process, then run the fixed GNU Tauri build command. Verify the NSIS installer and matching `.sig` exist and hash the final copied release artifact, not an intermediate file.
 
-- [ ] **Step 4: Perform the one-time standard installation**
+- [x] **Step 4: Perform the one-time standard installation**
 
 Back up the current local library first. Stop only the running Cuoti Zhiku process, install 0.5.2 in `currentUser` mode without a custom `/D` desktop path, and verify the installed executable resolves under `%LOCALAPPDATA%`. Verify desktop and Start Menu shortcuts target the new executable. Do not delete `C:\Users\whz21\Desktop\错题智库` automatically.
 
-- [ ] **Step 5: Verify launch, data, and updater UI**
+- [x] **Step 5: Verify launch, data, and updater UI**
 
 Launch from the desktop shortcut. Confirm title, process response, installed file version, `WebView2Loader.dll`, existing courses/problems/materials, and the “关于与更新” state. Use a signed local/static test manifest to verify signature rejection and one successful update simulation without exposing the private key.
 
-- [ ] **Step 6: Record evidence and commit**
+- [x] **Step 6: Record evidence and commit**
 
 Write exact counts, file sizes, final SHA-256, installation path, shortcut targets, and every unperformed boundary. Mark all plan checkboxes. Stage only Task 7 files and commit `chore: prepare windows 0.5.2 migration release`.
 
 ## Final Review
 
-- [ ] Review the full branch diff against the design spec.
-- [ ] Confirm all unrelated dirty AI, credential, schema, and Obsidian files remain unstaged and unchanged by this plan.
-- [ ] Confirm no updater private key, password, API key, or GitHub token appears in Git history, frontend assets, logs, release notes, or installer resources.
-- [ ] Confirm the ordinary launch path is the desktop or Start Menu shortcut, while the installer is documented only for first install, repair, and offline recovery.
+- [x] Review the full branch diff against the design spec.
+- [x] Confirm all unrelated dirty AI, credential, schema, and Obsidian files remain unstaged and unchanged by this plan.
+- [x] Confirm no updater private key, password, API key, or GitHub token appears in Git history, frontend assets, logs, release notes, or installer resources.
+- [x] Confirm the ordinary launch path is the desktop or Start Menu shortcut, while the installer is documented only for first install, repair, and offline recovery.

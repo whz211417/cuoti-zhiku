@@ -14,8 +14,9 @@ describe('public repository presentation', () => {
     )
 
     expect(readme).toContain('releases/latest')
-    expect(readme).toContain('Cuoti-Zhiku-0.4.0-x64-setup.exe')
-    expect(installationGuide).toContain('09B0EE82B23A94CBD08AC5D168F8202B62CD1FB63CB6EB3F7E8BC9B1CE18C772')
+    expect(readme).toContain('首次安装完成后，日常直接从桌面或开始菜单打开')
+    expect(installationGuide).toContain('同一 Release 附带的 `.sha256` 文件')
+    expect(installationGuide).not.toContain('v0.4.0')
   })
 
   it('provides an honest path for feedback, contribution, security reports, and CI', () => {
