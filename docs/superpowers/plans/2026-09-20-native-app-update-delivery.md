@@ -193,25 +193,25 @@ Run focused tests, typecheck, and lint. Commit only Task 3 files as `feat: coord
 - Consumes: controller state/actions and `hasUnsavedProblemDraft: boolean`.
 - Produces: accessible “关于与更新” settings section with manual check and explicit install.
 
-- [ ] **Step 1: Write failing component tests**
+- [x] **Step 1: Write failing component tests**
 
 Assert current version rendering, “检查更新”, “已是最新版本”, release notes, determinate/indeterminate progress, retryable error, and install disabled with copy `请先保存正在编辑的题目` when dirty.
 
-- [ ] **Step 2: Write failing App integration test**
+- [x] **Step 2: Write failing App integration test**
 
 Open settings and assert the new section appears after local-library status and before AI configuration. Verify opening settings does not itself cause a second check when the controller already checked in the background.
 
-- [ ] **Step 3: Run red tests**
+- [x] **Step 3: Run red tests**
 
 Run: `npm.cmd test -- --run src/features/settings/UpdatePanel.test.tsx src/app/App.test.tsx`
 
 Expected: FAIL because the panel is missing.
 
-- [ ] **Step 4: Implement the compact panel**
+- [x] **Step 4: Implement the compact panel**
 
 Render one quiet row in the existing inspector. Do not create a second modal. Use `aria-live="polite"` for state, a native `<progress>` when total size is known, and existing button tokens. Add no looping animation. Respect reduced motion and reduced transparency through existing global fallbacks.
 
-- [ ] **Step 5: Verify and commit**
+- [x] **Step 5: Verify and commit**
 
 Run focused tests, typecheck, lint, and a 760px browser screenshot check. Commit Task 4 files as `feat: add in-app update center`.
 

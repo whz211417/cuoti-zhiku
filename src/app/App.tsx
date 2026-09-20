@@ -21,6 +21,9 @@ import { ReviewReader } from '../features/review/ReviewReader';
 import { CommandPalette } from '../features/search/CommandPalette';
 import { AiProviderSettings } from '../features/settings/AiProviderSettings';
 import { ObsidianSettings } from '../features/settings/ObsidianSettings';
+import { UpdatePanel } from '../features/settings/UpdatePanel';
+import { nativeUpdateClient } from '../features/settings/updateClient';
+import { useUpdateController } from '../features/settings/useUpdateController';
 import { localCalendarDate, timeGreeting } from '../lib/dates';
 import { getMotionPreferences } from '../lib/preferences';
 import { completeReview, getCourses, getDueReviewProblems, importCourseMaterialFile, type Course, type DashboardOverview, type RecentProblem, type ReviewProblem } from '../lib/tauri';
@@ -75,6 +78,8 @@ export function App() {
   const [exportingBook, setExportingBook] = useState<BookKind | null>(null);
   const [isBackingUp, setIsBackingUp] = useState(false);
   const [isRestoring, setIsRestoring] = useState(false);
+  const [hasUnsavedProblemDraft] = useState(false);
+  const updateController = useUpdateController(nativeUpdateClient);
   const contentRef = useRef<HTMLDivElement>(null);
   const searchTriggerRef = useRef<HTMLButtonElement>(null);
   const settingsTriggerRef = useRef<HTMLButtonElement>(null);
@@ -588,6 +593,14 @@ export function App() {
                 <div className="preference-row">
                   <div><strong>本地资料库</strong><span>题目、附件和记录只保存在此设备。</span></div>
                   <span className="preference-status">已启用</span>
+                </div>
+                <div className="preference-row preference-update">
+                  <UpdatePanel
+                    hasUnsavedProblemDraft={hasUnsavedProblemDraft}
+                    onCheck={updateController.checkNow}
+                    onInstall={updateController.install}
+                    state={updateController.state}
+                  />
                 </div>
                 <div className="preference-row preference-ai"><AiProviderSettings /></div>
                 <div className="preference-row preference-export">

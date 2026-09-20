@@ -6,11 +6,13 @@ import { selectProblemFiles } from '../features/inbox/selectProblemFiles';
 import { selectCourseMaterialFile } from '../features/materials/selectCourseMaterialFile';
 import { App } from './App';
 
-const { completeReview, getCourses, getDueReviewProblems, importCourseMaterialFile, localCalendarDate, searchLibraryMock } = vi.hoisted(() => ({
+const { checkNow, completeReview, getCourses, getDueReviewProblems, importCourseMaterialFile, installUpdate, localCalendarDate, searchLibraryMock } = vi.hoisted(() => ({
+  checkNow: vi.fn(),
   completeReview: vi.fn(),
   getCourses: vi.fn(),
   getDueReviewProblems: vi.fn(),
   importCourseMaterialFile: vi.fn(),
+  installUpdate: vi.fn(),
   localCalendarDate: vi.fn(() => '2026-07-30'),
   searchLibraryMock: vi.fn(),
 }));
@@ -28,6 +30,13 @@ vi.mock('../features/knowledge/KnowledgeNetwork', () => ({
 }));
 vi.mock('../features/settings/AiProviderSettings', () => ({ AiProviderSettings: () => <div>AI 设置</div> }));
 vi.mock('../features/settings/ObsidianSettings', () => ({ ObsidianSettings: () => <div>Obsidian 导出</div> }));
+vi.mock('../features/settings/useUpdateController', () => ({
+  useUpdateController: () => ({
+    state: { status: 'idle', currentVersion: '0.5.1', lastCheckedAt: null },
+    checkNow,
+    install: installUpdate,
+  }),
+}));
 vi.mock('../lib/dates', () => ({ localCalendarDate, timeGreeting: () => '早上好' }));
 vi.mock('../lib/preferences', () => ({
   getMotionPreferences: () => ({ reduceMotion: true, reduceTransparency: false }),
@@ -607,6 +616,19 @@ test('traps focus in preferences, closes on Escape, and restores the settings tr
   await user.keyboard('{Escape}');
   expect(screen.queryByRole('dialog', { name: '偏好设置' })).not.toBeInTheDocument();
   expect(settingsTrigger).toHaveFocus();
+});
+
+test('shows one about and update section inside preferences', async () => {
+  const user = userEvent.setup();
+  render(<App />);
+
+  await user.click(screen.getByRole('button', { name: '设置' }));
+  const dialog = screen.getByRole('dialog', { name: '偏好设置' });
+  expect(within(dialog).getByRole('region', { name: '关于与更新' })).toBeVisible();
+  expect(within(dialog).getByText('当前版本 0.5.1')).toBeVisible();
+
+  await user.click(within(dialog).getByRole('button', { name: '检查更新' }));
+  expect(checkNow).toHaveBeenCalledOnce();
 });
 
 test('exports the question book only after the user requests it from preferences', async () => {
