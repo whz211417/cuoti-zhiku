@@ -110,7 +110,7 @@ export type UpdateClient = {
 };
 ```
 
-- [ ] **Step 1: Write failing adapter tests**
+- [x] **Step 1: Write failing adapter tests**
 
 Mock `@tauri-apps/api/app` and `@tauri-apps/plugin-updater`. Verify current-version forwarding, null when no update exists, normalized notes, cumulative progress from `Started`/`Progress` events, and `update.close()` forwarding.
 
@@ -122,17 +122,17 @@ expect(progress).toEqual([
 ]);
 ```
 
-- [ ] **Step 2: Run the red test**
+- [x] **Step 2: Run the red test**
 
 Run: `npm.cmd test -- --run src/features/settings/updateClient.test.ts`
 
 Expected: FAIL because `updateClient.ts` does not exist.
 
-- [ ] **Step 3: Implement the adapter**
+- [x] **Step 3: Implement the adapter**
 
 Import `getVersion` and `check`. Wrap the native `Update` object without exposing it to React. Accumulate `chunkLength`, preserve missing `contentLength` as `null`, and call native `downloadAndInstall` only from the explicit descriptor method.
 
-- [ ] **Step 4: Verify and commit**
+- [x] **Step 4: Verify and commit**
 
 Run the focused test and typecheck. Stage only the two Task 2 files and commit `feat: add native update client`.
 
