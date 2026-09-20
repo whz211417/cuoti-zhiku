@@ -231,16 +231,16 @@ Run focused tests, typecheck, lint, and production build. Stage only Task 5 file
 
 **Files:**
 - Modify: `docs/superpowers/plans/2026-09-20-quiet-pointer-learning-flow.md`
-- Modify: `CHANGELOG.md` if present, otherwise `docs/release/0.5.1.md`
+- Modify: `CHANGELOG.md` if present, otherwise add the next repository release note
 
-- [ ] **Step 1: Run complete automated verification**
+- [x] **Step 1: Run complete automated verification**
 
 Run `npm.cmd test`, `npm.cmd run lint`, `npm.cmd run typecheck`, `npm.cmd run build`, and the repository Rust test command. All must exit 0 with no new warnings attributable to this work.
 
-- [ ] **Step 2: Run visual verification**
+- [x] **Step 2: Run visual verification**
 
 Launch the Vite/Tauri UI and inspect 1440×900, 1024×768, and 780px-or-narrower views. Verify native cursor semantics, no halo, no mobile navigation wrap, completion feedback, import continuation, archive export, and review exits. Verify dark/light and reduced motion/transparency.
 
-- [ ] **Step 3: Record completion**
+- [x] **Step 3: Record completion**
 
 Mark plan checkboxes, document user-visible changes and verification commands, review the staged diff for unrelated files and secrets, then commit `docs: record quiet learning flow verification`.
