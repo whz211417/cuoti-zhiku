@@ -145,19 +145,19 @@ Run focused Rust tests, `npm.cmd test -- --run src/lib/tauri.test.ts`, and `npm.
 - `ProblemDocument` gains `onOrganized?: (document: ProblemDocument) => void`.
 - Consumes `completeProblemOrganization` and `localCalendarDate()`.
 
-- [ ] **Step 1: Write failing UI tests**
+- [x] **Step 1: Write failing UI tests**
 
 For an inbox document with stem and standard answer, click `完成整理并加入复习` and assert the narrow wrapper receives document id/version/today, success copy appears, and `onOrganized` receives the returned active document. For missing fields, assert an accessible checklist names the missing field and the command is not called. For command rejection, assert the page remains open with a retry button. Render courses, change the course selector, and assert `updateProblemCourse` receives the current version and replaces the document with the returned version.
 
-- [ ] **Step 2: Run red test**
+- [x] **Step 2: Run red test**
 
 Run `npm.cmd test -- --run src/features/problems/problems.test.tsx`; expect failure because no completion action exists.
 
-- [ ] **Step 3: Implement minimal UI and refresh flow**
+- [x] **Step 3: Implement minimal UI and refresh flow**
 
 Derive `stemReady`, `answerReady`, and `canComplete` from the current field map. Render one footer action after document pages. On success replace local document with the returned value, call `onOrganized`, and keep the page readable with `已加入复习计划`. Pass existing courses to the document and render an accessible course selector in the header; use the narrow version-checked course command. In `App`, clear any queued inbox state, refresh dashboard/inbox data through existing callbacks, and keep the organized problem open.
 
-- [ ] **Step 4: Verify and commit**
+- [x] **Step 4: Verify and commit**
 
 Run problems and App tests, typecheck, and lint. Stage only Task 3 files and commit `feat: close the organize to review loop`.
 

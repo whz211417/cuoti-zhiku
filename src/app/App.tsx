@@ -447,7 +447,7 @@ export function App() {
           {selectedProblemId ? (
             <div className="document-stage">
               <button className="back-to-inbox" onClick={() => setSelectedProblemId(null)} type="button"><ChevronLeft aria-hidden="true" size={17} />{problemBackLabel}</button>
-              <ProblemDocument onOpenAiSettings={openSettings} onSaved={refreshOverview} problemId={selectedProblemId} />
+              <ProblemDocument onOpenAiSettings={openSettings} onOrganized={refreshOverview} onSaved={refreshOverview} problemId={selectedProblemId} />
             </div>
           ) : workspace === 'overview' ? (
             <div className="dashboard-stage">

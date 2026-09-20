@@ -84,6 +84,18 @@ h1 { font-size: clamp(34px, 4vw, 46px); line-height: 1.07; }.toolbar-actions { d
 .document-ai-action:active { transform: scale(.98); }
 .document-ai-notice, .ai-error { margin: 14px 0 0; color: #c9342f; font-size: 12px; line-height: 1.55; }
 .document-ai-success { margin: 14px 0 0; color: #237a45; font-size: 12px; font-weight: 600; line-height: 1.55; }
+.document-course { display: inline-flex; align-items: center; gap: 9px; margin-top: 18px; color: var(--tertiary); font-size: 11px; font-weight: 650; }
+.document-course select { min-height: 36px; border: 1px solid rgb(60 60 67 / .13); border-radius: 9px; padding: 0 30px 0 11px; color: var(--secondary); background: rgb(255 255 255 / .72); font: inherit; }
+.document-course select:focus-visible { border-color: rgb(0 122 255 / .42); outline: 3px solid rgb(0 122 255 / .11); }
+.document-completion { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 12px 24px; margin-top: 10px; padding: 22px 0 0; border-top: 1px solid var(--separator); }
+.document-completion strong { display: block; color: var(--ink); font-size: 14px; }
+.document-completion p { margin: 6px 0 0; color: var(--tertiary); font-size: 12px; line-height: 1.55; }
+.document-completion .eyebrow { margin: 0 0 6px; }
+.document-completion .primary-action { min-height: 42px; }
+.document-completion .primary-action:disabled { cursor: default; filter: saturate(.45); opacity: .48; }
+.document-completion-error { grid-column: 1 / -1; color: #c9342f !important; }
+.document-completion.is-complete { grid-template-columns: auto minmax(0, 1fr); color: #237a45; }
+.document-completion.is-complete p { margin-top: 3px; }
 .ai-review-inspector { padding: 20px; }
 .ai-review-inspector .preferences-header h2 { font-size: 24px; }
 .ai-review-inspector .inspector-close { width: 44px; height: 44px; }.ai-review-inspector .primary-action { min-height: 44px; }
