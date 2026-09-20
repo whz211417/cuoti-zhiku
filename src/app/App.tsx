@@ -78,7 +78,7 @@ export function App() {
   const [exportingBook, setExportingBook] = useState<BookKind | null>(null);
   const [isBackingUp, setIsBackingUp] = useState(false);
   const [isRestoring, setIsRestoring] = useState(false);
-  const [hasUnsavedProblemDraft] = useState(false);
+  const [hasUnsavedProblemDraft, setHasUnsavedProblemDraft] = useState(false);
   const updateController = useUpdateController(nativeUpdateClient);
   const contentRef = useRef<HTMLDivElement>(null);
   const searchTriggerRef = useRef<HTMLButtonElement>(null);
@@ -483,7 +483,7 @@ export function App() {
           {selectedProblemId ? (
             <div className="document-stage">
               <button className="back-to-inbox" onClick={() => setSelectedProblemId(null)} type="button"><ChevronLeft aria-hidden="true" size={17} />{problemBackLabel}</button>
-              <ProblemDocument onOpenAiSettings={openSettings} onOrganized={refreshOverview} onSaved={refreshOverview} problemId={selectedProblemId} />
+              <ProblemDocument onDirtyChange={setHasUnsavedProblemDraft} onOpenAiSettings={openSettings} onOrganized={refreshOverview} onSaved={refreshOverview} problemId={selectedProblemId} />
             </div>
           ) : workspace === 'overview' ? (
             <div className="dashboard-stage">

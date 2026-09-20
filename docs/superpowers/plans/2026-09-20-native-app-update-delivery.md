@@ -227,21 +227,21 @@ Run focused tests, typecheck, lint, and a 760px browser screenshot check. Commit
 - `ProblemDocument` gains `onDirtyChange?: (dirty: boolean) => void`.
 - Dirty means `editingKind !== null` and the draft differs from the persisted value for that field, or a field/AI save is currently in progress.
 
-- [ ] **Step 1: Write failing dirty-state tests**
+- [x] **Step 1: Write failing dirty-state tests**
 
 Assert editing without changing text remains clean, changed text reports dirty, successful save reports clean, switching problems clears dirty, and an in-flight save remains dirty until it settles.
 
-- [ ] **Step 2: Run red tests**
+- [x] **Step 2: Run red tests**
 
 Run: `npm.cmd test -- --run src/features/problems/problems.test.tsx src/app/App.test.tsx`
 
 Expected: FAIL because `onDirtyChange` is not supported.
 
-- [ ] **Step 3: Implement dirty propagation**
+- [x] **Step 3: Implement dirty propagation**
 
 Derive the persisted value from the current `document.fields`; emit changes from an effect and emit `false` during problem cleanup/unmount. App passes the value to `UpdatePanel`. Download may continue, but the install action stays disabled while dirty or saving.
 
-- [ ] **Step 4: Verify and commit**
+- [x] **Step 4: Verify and commit**
 
 Run focused tests, typecheck, and lint. Commit Task 5 files as `feat: protect drafts during app updates`.
 

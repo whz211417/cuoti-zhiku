@@ -233,6 +233,58 @@ test('saves an added stem with the document version', async () => {
   expect(onSaved).toHaveBeenCalledOnce();
 });
 
+test('reports a changed field draft and clears the dirty state after cancel', async () => {
+  getProblemDocument.mockResolvedValue({
+    id: 'problem-dirty', title: '', status: 'inbox', updatedAt: '2026-07-30T08:00:00Z', version: 'v1',
+    fields: [{ kind: 'stem', value: '原题干', updatedAt: '2026-07-30T08:00:00Z' }],
+  });
+  const onDirtyChange = vi.fn();
+  const user = userEvent.setup();
+
+  render(<ProblemDocument onDirtyChange={onDirtyChange} problemId="problem-dirty" />);
+  await user.click(await screen.findByRole('button', { name: '编辑题干' }));
+  await user.type(screen.getByLabelText('编辑题干'), '补充');
+  await waitFor(() => expect(onDirtyChange).toHaveBeenLastCalledWith(true));
+
+  await user.click(screen.getByRole('button', { name: '取消' }));
+  await waitFor(() => expect(onDirtyChange).toHaveBeenLastCalledWith(false));
+});
+
+test('keeps the problem dirty while saving and clears it after persistence', async () => {
+  const pendingSave = deferred<{ problemId: string; kind: string; value: string; updatedAt: string; version: string }>();
+  getProblemDocument.mockResolvedValue({
+    id: 'problem-saving', title: '', status: 'inbox', updatedAt: '2026-07-30T08:00:00Z', version: 'v1', fields: [],
+  });
+  saveProblemField.mockReturnValue(pendingSave.promise);
+  const onDirtyChange = vi.fn();
+  const user = userEvent.setup();
+
+  render(<ProblemDocument onDirtyChange={onDirtyChange} problemId="problem-saving" />);
+  await user.click(await screen.findByRole('button', { name: '补充题干' }));
+  await user.type(screen.getByLabelText('编辑题干'), '新题干');
+  await user.click(screen.getByRole('button', { name: '保存题干' }));
+  expect(onDirtyChange).toHaveBeenLastCalledWith(true);
+
+  await act(async () => pendingSave.resolve({ problemId: 'problem-saving', kind: 'stem', value: '新题干', updatedAt: '2026-07-30T08:01:00Z', version: 'v2' }));
+  await waitFor(() => expect(onDirtyChange).toHaveBeenLastCalledWith(false));
+});
+
+test('clears dirty state when leaving a problem', async () => {
+  getProblemDocument.mockImplementation((id: string) => Promise.resolve({
+    id, title: '', status: 'inbox', updatedAt: '2026-07-30T08:00:00Z', version: 'v1', fields: [],
+  }));
+  const onDirtyChange = vi.fn();
+  const user = userEvent.setup();
+  const view = render(<ProblemDocument onDirtyChange={onDirtyChange} problemId="problem-a" />);
+
+  await user.click(await screen.findByRole('button', { name: '补充题干' }));
+  await user.type(screen.getByLabelText('编辑题干'), '未保存');
+  await waitFor(() => expect(onDirtyChange).toHaveBeenLastCalledWith(true));
+
+  view.rerender(<ProblemDocument onDirtyChange={onDirtyChange} problemId="problem-b" />);
+  await waitFor(() => expect(onDirtyChange).toHaveBeenLastCalledWith(false));
+});
+
 test('opens a compact AI setup before sending and accepts suggestions one field at a time', async () => {
   getProblemDocument.mockResolvedValue({
     id: 'problem-ai',

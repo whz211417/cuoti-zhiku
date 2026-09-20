@@ -4,9 +4,10 @@ import { beforeEach, expect, test, vi } from 'vitest';
 import { saveProblemBook } from '../features/export/exportBooks';
 import { selectProblemFiles } from '../features/inbox/selectProblemFiles';
 import { selectCourseMaterialFile } from '../features/materials/selectCourseMaterialFile';
+import type { UpdateState } from '../features/settings/useUpdateController';
 import { App } from './App';
 
-const { checkNow, completeReview, getCourses, getDueReviewProblems, importCourseMaterialFile, installUpdate, localCalendarDate, searchLibraryMock } = vi.hoisted(() => ({
+const { checkNow, completeReview, getCourses, getDueReviewProblems, importCourseMaterialFile, installUpdate, localCalendarDate, searchLibraryMock, updateControllerState } = vi.hoisted(() => ({
   checkNow: vi.fn(),
   completeReview: vi.fn(),
   getCourses: vi.fn(),
@@ -15,6 +16,7 @@ const { checkNow, completeReview, getCourses, getDueReviewProblems, importCourse
   installUpdate: vi.fn(),
   localCalendarDate: vi.fn(() => '2026-07-30'),
   searchLibraryMock: vi.fn(),
+  updateControllerState: { current: { status: 'idle', currentVersion: '0.5.1', lastCheckedAt: null } as UpdateState },
 }));
 
 vi.mock('../features/export/exportBooks', () => ({ saveProblemBook: vi.fn() }));
@@ -32,7 +34,7 @@ vi.mock('../features/settings/AiProviderSettings', () => ({ AiProviderSettings: 
 vi.mock('../features/settings/ObsidianSettings', () => ({ ObsidianSettings: () => <div>Obsidian 导出</div> }));
 vi.mock('../features/settings/useUpdateController', () => ({
   useUpdateController: () => ({
-    state: { status: 'idle', currentVersion: '0.5.1', lastCheckedAt: null },
+    state: updateControllerState.current,
     checkNow,
     install: installUpdate,
   }),
@@ -134,10 +136,12 @@ vi.mock('../features/inbox/IngestDropzone', () => ({
 }));
 
 vi.mock('../features/problems/ProblemDocument', () => ({
-  ProblemDocument: ({ onSaved, problemId }: { onSaved?: () => void; problemId: string }) => (
+  ProblemDocument: ({ onDirtyChange, onSaved, problemId }: { onDirtyChange?: (dirty: boolean) => void; onSaved?: () => void; problemId: string }) => (
     <article aria-label="题目档案">
       <p>{`problem:${problemId}`}</p>
       <button onClick={onSaved} type="button">保存题目字段</button>
+      <button onClick={() => onDirtyChange?.(true)} type="button">标记题目未保存</button>
+      <button onClick={() => onDirtyChange?.(false)} type="button">标记题目已保存</button>
     </article>
   ),
 }));
@@ -223,6 +227,7 @@ const savedImport = [{
 
 beforeEach(() => {
   vi.clearAllMocks();
+  updateControllerState.current = { status: 'idle', currentVersion: '0.5.1', lastCheckedAt: null };
   getDueReviewProblems.mockResolvedValue([]);
   completeReview.mockResolvedValue(undefined);
   localCalendarDate.mockReturnValue('2026-07-30');
@@ -629,6 +634,21 @@ test('shows one about and update section inside preferences', async () => {
 
   await user.click(within(dialog).getByRole('button', { name: '检查更新' }));
   expect(checkNow).toHaveBeenCalledOnce();
+});
+
+test('prevents installing an update while the open problem has unsaved work', async () => {
+  updateControllerState.current = {
+    status: 'available', currentVersion: '0.5.1', nextVersion: '0.5.2', notes: null, lastCheckedAt: '2026-09-20T12:00:00.000Z',
+  };
+  const user = userEvent.setup();
+  render(<App />);
+
+  await user.click(screen.getByRole('button', { name: '打开最近题目' }));
+  await user.click(screen.getByRole('button', { name: '标记题目未保存' }));
+  await user.click(screen.getByRole('button', { name: '设置' }));
+
+  expect(screen.getByText('请先保存正在编辑的题目')).toBeVisible();
+  expect(screen.getByRole('button', { name: '下载并安装 0.5.2' })).toBeDisabled();
 });
 
 test('exports the question book only after the user requests it from preferences', async () => {

@@ -32,6 +32,7 @@ const fieldOrder = [
 
 type ProblemDocumentProps = {
   courses?: Course[];
+  onDirtyChange?: (dirty: boolean) => void;
   onOpenAiSettings?: () => void;
   onOrganized?: (document: ProblemDocumentModel) => void;
   onSaved?: () => void;
@@ -51,7 +52,7 @@ const errorMessage = (cause: unknown) => (
       : 'AI 请求没有完成，请检查网络与账户后重试。'
 );
 
-export function ProblemDocument({ courses, onOpenAiSettings, onOrganized, onSaved, problemId }: ProblemDocumentProps) {
+export function ProblemDocument({ courses, onDirtyChange, onOpenAiSettings, onOrganized, onSaved, problemId }: ProblemDocumentProps) {
   const [document, setDocument] = useState<ProblemDocumentModel | null>(null);
   const [availableCourses, setAvailableCourses] = useState<Course[]>(courses ?? []);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -85,6 +86,16 @@ export function ProblemDocument({ courses, onOpenAiSettings, onOrganized, onSave
   const isSavingRef = useRef(isSaving);
   isSavingRef.current = isSaving;
   const isAiOpen = aiStage !== 'closed';
+  const persistedEditingValue = editingKind
+    ? document?.fields.find((field) => field.kind === editingKind)?.value ?? ''
+    : '';
+  const hasUnsavedDraft = isSaving || (editingKind !== null && draft !== persistedEditingValue);
+
+  useEffect(() => {
+    onDirtyChange?.(hasUnsavedDraft);
+  }, [hasUnsavedDraft, onDirtyChange]);
+
+  useEffect(() => () => onDirtyChange?.(false), [onDirtyChange]);
 
   useLayoutEffect(() => {
     if (activeProblemRef.current === problemId) return;
