@@ -8,6 +8,7 @@ const tauriMainPath = resolve(process.cwd(), 'src-tauri/src/main.rs')
 const capabilityPath = resolve(process.cwd(), 'src-tauri/capabilities/main.json')
 const cargoManifestPath = resolve(process.cwd(), 'src-tauri/Cargo.toml')
 const packageManifestPath = resolve(process.cwd(), 'package.json')
+const releaseWorkflowPath = resolve(process.cwd(), '.github/workflows/release.yml')
 
 describe('Windows release packaging', () => {
   it('uses the Windows GUI subsystem so the installed app does not open a console window', () => {
@@ -56,5 +57,21 @@ describe('Windows release packaging', () => {
     expect(capability.permissions).toContain('updater:default')
     expect(cargo).toContain('tauri-plugin-updater')
     expect(pkg.dependencies?.['@tauri-apps/plugin-updater']).toBe('2.12.0')
+  })
+
+  it('publishes signed updater artifacts only from version tags into a draft release', () => {
+    const workflow = readFileSync(releaseWorkflowPath, 'utf8')
+
+    expect(workflow).toMatch(/push:\s*\n\s+tags:\s*\['v\*'\]/)
+    expect(workflow).toMatch(/permissions:\s*\n\s+contents:\s+write/)
+    expect(workflow).toContain('pnpm verify:release-version')
+    expect(workflow).toContain('pnpm lint')
+    expect(workflow).toContain('pnpm test')
+    expect(workflow).toContain('pnpm typecheck')
+    expect(workflow).toContain('cargo test --manifest-path src-tauri/Cargo.toml')
+    expect(workflow).toContain('tauri-apps/tauri-action@v0')
+    expect(workflow).toContain('releaseDraft: true')
+    expect(workflow).toContain('TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}')
+    expect(workflow).toContain('TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}')
   })
 })

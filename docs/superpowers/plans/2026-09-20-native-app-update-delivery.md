@@ -259,17 +259,17 @@ Run focused tests, typecheck, and lint. Commit Task 5 files as `feat: protect dr
 - Consumes GitHub Secrets `TAURI_SIGNING_PRIVATE_KEY` and `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`.
 - Produces a draft GitHub Release containing NSIS installer, updater signature, `latest.json`, release notes, and SHA-256 for one identical final artifact.
 
-- [ ] **Step 1: Write failing version and workflow tests**
+- [x] **Step 1: Write failing version and workflow tests**
 
 Test that the verification script rejects any mismatch among `package.json`, `Cargo.toml`, `Cargo.lock`, `tauri.conf.json`, and the `vX.Y.Z` tag. Test that the workflow is tag-only, has `contents: write`, references both signing secrets, runs all quality gates, and uses `tauri-apps/tauri-action@v0` with `releaseDraft: true`.
 
-- [ ] **Step 2: Run red tests**
+- [x] **Step 2: Run red tests**
 
 Run: `npm.cmd test -- --run scripts/verify-release-version.test.ts src/lib/releasePackaging.test.ts`
 
 Expected: FAIL because the script and workflow are missing.
 
-- [ ] **Step 3: Implement the verifier and release workflow**
+- [x] **Step 3: Implement the verifier and release workflow**
 
 The workflow trigger is:
 
@@ -283,11 +283,11 @@ permissions:
 
 Run pnpm install, version verification, lint, frontend tests, typecheck, Rust tests, and Tauri build. Inject the signing secrets only into the build step. Let `tauri-action` generate the signed updater assets and static JSON, with a draft release requiring human promotion after post-build verification.
 
-- [ ] **Step 4: Protect secrets and generated artifacts**
+- [x] **Step 4: Protect secrets and generated artifacts**
 
 Add updater private-key filenames and local signing output to `.gitignore`. Run a staged-diff scan for private-key headers, GitHub tokens, provider API keys, and updater passwords; expected: no matches.
 
-- [ ] **Step 5: Verify and commit**
+- [x] **Step 5: Verify and commit**
 
 Run focused tests plus a YAML parse check. Commit Task 6 files as `ci: publish signed desktop updates`.
 

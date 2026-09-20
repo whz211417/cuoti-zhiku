@@ -12,7 +12,8 @@
     "typecheck": "tsc --noEmit",
     "build": "tsc -b && vite build",
     "tauri": "tauri",
-    "tauri:build": "tauri build"
+    "tauri:build": "tauri build",
+    "verify:release-version": "node scripts/verify-release-version.mjs"
   },
   "dependencies": {
     "@gsap/react": "^2.1.2",
