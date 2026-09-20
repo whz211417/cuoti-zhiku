@@ -1,0 +1,62 @@
+name: Publish Windows release
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+jobs:
+  windows-release:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.17.1
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Verify release version
+        run: pnpm verify:release-version
+      - name: Lint
+        run: pnpm lint
+      - name: Test frontend
+        run: pnpm test
+      - name: Typecheck
+        run: pnpm typecheck
+      - name: Test Rust core
+        run: cargo test --manifest-path src-tauri/Cargo.toml
+
+      - name: Build signed app and draft release
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        with:
+          tagName: v__VERSION__
+          releaseName: 错题智库 v__VERSION__
+          releaseBody: 请先完成安装、启动、数据保留与应用内更新检查，再将此草稿发布给用户。
+          releaseDraft: true
+          prerelease: false
+          includeUpdaterJson: true
+          updaterJsonPreferNsis: true
+
+      - name: Publish installer checksum
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          $installer = Get-ChildItem -LiteralPath 'src-tauri/target/release/bundle/nsis' -Filter '*.exe' | Select-Object -First 1
+          if (-not $installer) { throw 'NSIS installer was not produced' }
+          $checksumPath = "$($installer.FullName).sha256"
+          $hash = (Get-FileHash -Algorithm SHA256 -LiteralPath $installer.FullName).Hash.ToLowerInvariant()
+          [System.IO.File]::WriteAllText($checksumPath, "$hash  $($installer.Name)`n")
+          gh release upload $env:GITHUB_REF_NAME $checksumPath --clobber

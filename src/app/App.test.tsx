@@ -4,14 +4,19 @@ import { beforeEach, expect, test, vi } from 'vitest';
 import { saveProblemBook } from '../features/export/exportBooks';
 import { selectProblemFiles } from '../features/inbox/selectProblemFiles';
 import { selectCourseMaterialFile } from '../features/materials/selectCourseMaterialFile';
+import type { UpdateState } from '../features/settings/useUpdateController';
 import { App } from './App';
 
-const { completeReview, getDueReviewProblems, importCourseMaterialFile, localCalendarDate, searchLibraryMock } = vi.hoisted(() => ({
+const { checkNow, completeReview, getCourses, getDueReviewProblems, importCourseMaterialFile, installUpdate, localCalendarDate, searchLibraryMock, updateControllerState } = vi.hoisted(() => ({
+  checkNow: vi.fn(),
   completeReview: vi.fn(),
+  getCourses: vi.fn(),
   getDueReviewProblems: vi.fn(),
   importCourseMaterialFile: vi.fn(),
+  installUpdate: vi.fn(),
   localCalendarDate: vi.fn(() => '2026-07-30'),
   searchLibraryMock: vi.fn(),
+  updateControllerState: { current: { status: 'idle', currentVersion: '0.5.1', lastCheckedAt: null } as UpdateState },
 }));
 
 vi.mock('../features/export/exportBooks', () => ({ saveProblemBook: vi.fn() }));
@@ -27,12 +32,20 @@ vi.mock('../features/knowledge/KnowledgeNetwork', () => ({
 }));
 vi.mock('../features/settings/AiProviderSettings', () => ({ AiProviderSettings: () => <div>AI 设置</div> }));
 vi.mock('../features/settings/ObsidianSettings', () => ({ ObsidianSettings: () => <div>Obsidian 导出</div> }));
+vi.mock('../features/settings/useUpdateController', () => ({
+  useUpdateController: () => ({
+    state: updateControllerState.current,
+    checkNow,
+    install: installUpdate,
+  }),
+}));
 vi.mock('../lib/dates', () => ({ localCalendarDate, timeGreeting: () => '早上好' }));
 vi.mock('../lib/preferences', () => ({
   getMotionPreferences: () => ({ reduceMotion: true, reduceTransparency: false }),
 }));
 vi.mock('../lib/tauri', () => ({
   completeReview,
+  getCourses,
   getDueReviewProblems,
   importCourseMaterialFile,
   searchLibrary: searchLibraryMock,
@@ -123,10 +136,12 @@ vi.mock('../features/inbox/IngestDropzone', () => ({
 }));
 
 vi.mock('../features/problems/ProblemDocument', () => ({
-  ProblemDocument: ({ onSaved, problemId }: { onSaved?: () => void; problemId: string }) => (
+  ProblemDocument: ({ onDirtyChange, onSaved, problemId }: { onDirtyChange?: (dirty: boolean) => void; onSaved?: () => void; problemId: string }) => (
     <article aria-label="题目档案">
       <p>{`problem:${problemId}`}</p>
       <button onClick={onSaved} type="button">保存题目字段</button>
+      <button onClick={() => onDirtyChange?.(true)} type="button">标记题目未保存</button>
+      <button onClick={() => onDirtyChange?.(false)} type="button">标记题目已保存</button>
     </article>
   ),
 }));
@@ -152,17 +167,20 @@ vi.mock('../features/archive/ArchiveLibrary', () => ({
   ArchiveLibrary: ({
     courseId,
     initialQuery = '',
+    onExport,
     onOpenProblem,
     onSaved,
   }: {
     courseId: string | null;
     initialQuery?: string;
+    onExport?: () => void;
     onOpenProblem: (id: string) => void;
     onSaved?: () => void;
   }) => (
     <section aria-label="全部档案浏览器">
       <p>{`materials:${courseId ?? ''}:${initialQuery}`}</p>
       <button onClick={() => onOpenProblem('problem-archive')} type="button">打开档案题目</button>
+      <button onClick={onExport} type="button">档案导出题册</button>
       <button onClick={onSaved} type="button">保存课程资料</button>
     </section>
   ),
@@ -173,6 +191,8 @@ vi.mock('../features/review/ReviewReader', () => ({
     gradeError,
     isGrading,
     onGrade,
+    onDefer,
+    onEnd,
     onRetry,
     position,
     stem,
@@ -181,6 +201,8 @@ vi.mock('../features/review/ReviewReader', () => ({
     gradeError?: string | null;
     isGrading?: boolean;
     onGrade: (grade: 'mastered') => void;
+    onDefer?: () => void;
+    onEnd?: () => void;
     onRetry?: () => void;
     position?: number;
     stem?: string;
@@ -190,6 +212,8 @@ vi.mock('../features/review/ReviewReader', () => ({
       <p>{stem}</p>
       {position && total ? <output aria-label="复习位置">第 {position} / {total} 道</output> : null}
       <button disabled={isGrading} onClick={() => onGrade('mastered')} type="button">完成评分</button>
+      <button onClick={onDefer} type="button">稍后再看</button>
+      <button onClick={onEnd} type="button">结束本次</button>
       {gradeError ? <div role="alert">{gradeError}<button onClick={onRetry} type="button">重新保存评分</button></div> : null}
     </section>
   ),
@@ -203,10 +227,12 @@ const savedImport = [{
 
 beforeEach(() => {
   vi.clearAllMocks();
+  updateControllerState.current = { status: 'idle', currentVersion: '0.5.1', lastCheckedAt: null };
   getDueReviewProblems.mockResolvedValue([]);
   completeReview.mockResolvedValue(undefined);
   localCalendarDate.mockReturnValue('2026-07-30');
   searchLibraryMock.mockResolvedValue([]);
+  getCourses.mockResolvedValue([{ id: 'course-sidebar', name: '宏观经济学', term: '', color: '#7895A5', kind: 'school' }]);
   importCourseMaterialFile.mockResolvedValue({ id: 'material-1' });
 });
 
@@ -428,6 +454,47 @@ test('passes the active review position into the focused reader', async () => {
   expect(await screen.findByRole('status', { name: '复习位置' })).toHaveTextContent('第 1 / 2 道');
 });
 
+test('defers the current review to the queue tail and can end without grading', async () => {
+  const user = userEvent.setup();
+  getDueReviewProblems.mockResolvedValue([
+    { id: 'review-first', stem: '第一题', ownAnswer: '', standardAnswer: '', explanation: '' },
+    { id: 'review-second', stem: '第二题', ownAnswer: '', standardAnswer: '', explanation: '' },
+  ]);
+  render(<App />);
+  await user.click(screen.getByRole('button', { name: '开始复习' }));
+
+  expect(await screen.findByText('第一题')).toBeVisible();
+  await user.click(screen.getByRole('button', { name: '稍后再看' }));
+  expect(await screen.findByText('第二题')).toBeVisible();
+  expect(completeReview).not.toHaveBeenCalled();
+
+  await user.click(screen.getByRole('button', { name: '结束本次' }));
+  expect(await screen.findByRole('region', { name: '本次复习总结' })).toBeVisible();
+  expect(completeReview).not.toHaveBeenCalled();
+});
+
+test('exports a question book directly from the archive', async () => {
+  const user = userEvent.setup();
+  vi.mocked(saveProblemBook).mockResolvedValue({ cancelled: false, problemCount: 2 });
+  render(<App />);
+
+  await user.click(screen.getByRole('button', { name: '全部档案' }));
+  await user.click(screen.getByRole('button', { name: '档案导出题册' }));
+
+  expect(saveProblemBook).toHaveBeenCalledWith('questions');
+});
+
+test('groups secondary workspaces behind a More navigation control', async () => {
+  const user = userEvent.setup();
+  render(<App />);
+
+  const more = screen.getByRole('button', { name: '更多' });
+  expect(more).toHaveAttribute('aria-expanded', 'false');
+  await user.click(more);
+  expect(screen.getByRole('menuitem', { name: '更多菜单中的知识网络', hidden: true })).toBeInTheDocument();
+  expect(screen.getByRole('menuitem', { name: '更多菜单中的全部档案', hidden: true })).toBeInTheDocument();
+});
+
 test('increments one refresh token after every successful mutation', async () => {
   const user = userEvent.setup();
   vi.mocked(selectProblemFiles).mockResolvedValue(savedImport);
@@ -437,7 +504,9 @@ test('increments one refresh token after every successful mutation', async () =>
   expect(screen.getByRole('status', { name: '总览刷新令牌' })).toHaveTextContent('0');
 
   await user.click(screen.getByRole('button', { name: '投进题目' }));
-  expect(await screen.findByRole('heading', { name: '待整理' })).toBeVisible();
+  expect(await screen.findByText('problem:problem-1')).toBeVisible();
+  await user.click(screen.getByRole('button', { name: '返回学习总览' }));
+  await user.click(screen.getByRole('button', { name: /^待整理/ }));
   await user.click(screen.getByRole('button', { name: '完成收件箱导入' }));
   await user.click(screen.getByRole('button', { name: '学习总览' }));
   expect(screen.getByRole('status', { name: '总览刷新令牌' })).toHaveTextContent('2');
@@ -464,6 +533,22 @@ test('increments one refresh token after every successful mutation', async () =>
   await user.click(screen.getByRole('button', { name: '保存课程资料' }));
   await user.click(screen.getByRole('button', { name: '学习总览' }));
   expect(screen.getByRole('status', { name: '总览刷新令牌' })).toHaveTextContent('7');
+});
+
+test('shows the selected import destination and opens the first imported problem', async () => {
+  const user = userEvent.setup();
+  vi.mocked(selectProblemFiles).mockResolvedValue([
+    { sourcePath: 'bad.exe', item: null, error: '暂不支持' },
+    ...savedImport,
+  ]);
+  render(<App />);
+
+  await user.click(screen.getByRole('button', { name: '选择课程' }));
+  expect(await screen.findByText('保存到：宏观经济学')).toBeVisible();
+  await user.click(screen.getByRole('button', { name: '投进题目' }));
+
+  expect(await screen.findByText('problem:problem-1')).toBeVisible();
+  expect(screen.queryByText('problem:bad.exe')).not.toBeInTheDocument();
 });
 
 test('does not refresh or leave the overview after cancelled and failed file selection', async () => {
@@ -536,6 +621,34 @@ test('traps focus in preferences, closes on Escape, and restores the settings tr
   await user.keyboard('{Escape}');
   expect(screen.queryByRole('dialog', { name: '偏好设置' })).not.toBeInTheDocument();
   expect(settingsTrigger).toHaveFocus();
+});
+
+test('shows one about and update section inside preferences', async () => {
+  const user = userEvent.setup();
+  render(<App />);
+
+  await user.click(screen.getByRole('button', { name: '设置' }));
+  const dialog = screen.getByRole('dialog', { name: '偏好设置' });
+  expect(within(dialog).getByRole('region', { name: '关于与更新' })).toBeVisible();
+  expect(within(dialog).getByText('当前版本 0.5.1')).toBeVisible();
+
+  await user.click(within(dialog).getByRole('button', { name: '检查更新' }));
+  expect(checkNow).toHaveBeenCalledOnce();
+});
+
+test('prevents installing an update while the open problem has unsaved work', async () => {
+  updateControllerState.current = {
+    status: 'available', currentVersion: '0.5.1', nextVersion: '0.5.2', notes: null, lastCheckedAt: '2026-09-20T12:00:00.000Z',
+  };
+  const user = userEvent.setup();
+  render(<App />);
+
+  await user.click(screen.getByRole('button', { name: '打开最近题目' }));
+  await user.click(screen.getByRole('button', { name: '标记题目未保存' }));
+  await user.click(screen.getByRole('button', { name: '设置' }));
+
+  expect(screen.getByText('请先保存正在编辑的题目')).toBeVisible();
+  expect(screen.getByRole('button', { name: '下载并安装 0.5.2' })).toBeDisabled();
 });
 
 test('exports the question book only after the user requests it from preferences', async () => {

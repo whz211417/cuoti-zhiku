@@ -1,10 +1,9 @@
 import { useGSAP } from '@gsap/react';
 import { gsap } from 'gsap';
-import { AlertCircle, Archive, BookOpenCheck, ChevronLeft, Inbox, LayoutDashboard, Network, RefreshCw, Search, Settings, ShieldCheck, Upload, X } from 'lucide-react';
+import { AlertCircle, Archive, BookOpenCheck, ChevronLeft, Inbox, LayoutDashboard, MoreHorizontal, Network, RefreshCw, Search, Settings, ShieldCheck, Upload, X } from 'lucide-react';
 import { type CSSProperties, useCallback, useEffect, useRef, useState } from 'react';
 import { DynamicControlSurface } from '../components/material/DynamicControlSurface';
 import { InspectorSurface } from '../components/material/InspectorSurface';
-import { ImmersiveCursor } from '../components/cursor/ImmersiveCursor';
 import { createBackup } from '../features/backup/createBackup';
 import { restoreBackup } from '../features/backup/restoreBackup';
 import { ArchiveLibrary } from '../features/archive/ArchiveLibrary';
@@ -22,9 +21,12 @@ import { ReviewReader } from '../features/review/ReviewReader';
 import { CommandPalette } from '../features/search/CommandPalette';
 import { AiProviderSettings } from '../features/settings/AiProviderSettings';
 import { ObsidianSettings } from '../features/settings/ObsidianSettings';
+import { UpdatePanel } from '../features/settings/UpdatePanel';
+import { nativeUpdateClient } from '../features/settings/updateClient';
+import { useUpdateController } from '../features/settings/useUpdateController';
 import { localCalendarDate, timeGreeting } from '../lib/dates';
 import { getMotionPreferences } from '../lib/preferences';
-import { completeReview, getDueReviewProblems, importCourseMaterialFile, type Course, type DashboardOverview, type RecentProblem, type ReviewProblem } from '../lib/tauri';
+import { completeReview, getCourses, getDueReviewProblems, importCourseMaterialFile, type Course, type DashboardOverview, type RecentProblem, type ReviewProblem } from '../lib/tauri';
 
 type Workspace = 'overview' | 'inbox' | 'review' | 'knowledge' | 'archive';
 type ReviewGrade = 'forgot' | 'hard' | 'familiar' | 'mastered';
@@ -53,9 +55,11 @@ const workspaceTitles: Record<Workspace, { eyebrow: string; title: string }> = {
 export function App() {
   const [selectedProblemId, setSelectedProblemId] = useState<string | null>(null);
   const [selectedCourseId, setSelectedCourseId] = useState<string | null>(null);
+  const [courses, setCourses] = useState<Course[]>([]);
   const [workspace, setWorkspace] = useState<Workspace>('overview');
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isSearchOpen, setIsSearchOpen] = useState(false);
+  const [isMoreNavOpen, setIsMoreNavOpen] = useState(false);
   const [isIngesting, setIsIngesting] = useState(false);
   const [courseCreateRequestToken, setCourseCreateRequestToken] = useState(0);
   const [materialImportError, setMaterialImportError] = useState<string | null>(null);
@@ -68,11 +72,14 @@ export function App() {
   const [gradeError, setGradeError] = useState<string | null>(null);
   const [failedGrade, setFailedGrade] = useState<'forgot' | 'hard' | 'familiar' | 'mastered' | null>(null);
   const [reviewSession, setReviewSession] = useState<ReviewSession | null>(null);
+  const [isReviewEnded, setIsReviewEnded] = useState(false);
   const [recentProblems, setRecentProblems] = useState<RecentProblem[]>([]);
   const [exportStatus, setExportStatus] = useState<string | null>(null);
   const [exportingBook, setExportingBook] = useState<BookKind | null>(null);
   const [isBackingUp, setIsBackingUp] = useState(false);
   const [isRestoring, setIsRestoring] = useState(false);
+  const [hasUnsavedProblemDraft, setHasUnsavedProblemDraft] = useState(false);
+  const updateController = useUpdateController(nativeUpdateClient);
   const contentRef = useRef<HTMLDivElement>(null);
   const searchTriggerRef = useRef<HTMLButtonElement>(null);
   const settingsTriggerRef = useRef<HTMLButtonElement>(null);
@@ -102,9 +109,21 @@ export function App() {
             ? 3
             : 4;
 
-  const refreshOverview = () => setRefreshToken((token) => token + 1);
+  const refreshOverview = useCallback(() => setRefreshToken((token) => token + 1), []);
+  const selectedCourseName = selectedCourseId
+    ? courses.find((course) => course.id === selectedCourseId)?.name ?? '当前课程'
+    : '未分类';
+  const continueImportedProblems = useCallback((problemIds: string[]) => {
+    if (problemIds.length === 0) return;
+    refreshOverview();
+    setSelectedProblemId(problemIds[0]);
+  }, [refreshOverview]);
   const rememberOverview = useCallback((overview: DashboardOverview) => {
     setRecentProblems(overview.recentProblems);
+  }, []);
+
+  useEffect(() => {
+    void getCourses().then(setCourses).catch(() => undefined);
   }, []);
 
   const closeSearch = () => {
@@ -121,6 +140,7 @@ export function App() {
     setGradeError(null);
     setFailedGrade(null);
     setReviewSession(null);
+    setIsReviewEnded(false);
     const today = localCalendarDate();
     try {
       const queue = await getDueReviewProblems(today);
@@ -243,14 +263,25 @@ export function App() {
     }
   };
 
+  const deferCurrentReview = () => {
+    setReviewQueue((queue) => queue.length > 1 ? [...queue.slice(1), queue[0]] : queue);
+    setGradeError(null);
+    setFailedGrade(null);
+  };
+
+  const endReviewSession = () => {
+    setReviewQueue([]);
+    setGradeError(null);
+    setFailedGrade(null);
+    setIsReviewEnded(true);
+  };
+
   const ingestProblemFiles = async () => {
     setIsIngesting(true);
     try {
       const results = await selectProblemFiles(selectedCourseId);
-      if (!results.some((result) => result.item)) return;
-      refreshOverview();
-      setSelectedProblemId(null);
-      setWorkspace('inbox');
+      const problemIds = results.flatMap((result) => result.item ? [result.item.problemId] : []);
+      continueImportedProblems(problemIds);
     } catch {
       // Native dialog and import errors remain local to the initiating action.
     } finally {
@@ -302,6 +333,7 @@ export function App() {
   };
 
   const handleCourseCreated = (course: Course) => {
+    setCourses((current) => current.some((candidate) => candidate.id === course.id) ? current : [...current, course]);
     refreshOverview();
     const pendingPath = pendingMaterialPathRef.current;
     pendingMaterialPathRef.current = null;
@@ -366,6 +398,7 @@ export function App() {
   };
 
   const selectWorkspace = (nextWorkspace: Workspace) => {
+    setIsMoreNavOpen(false);
     setMaterialInitialQuery('');
     setSelectedProblemId(null);
     setWorkspace(nextWorkspace);
@@ -387,15 +420,14 @@ export function App() {
 
   return (
     <main aria-label="错题智库" className="app-shell" role="application">
-      <ImmersiveCursor />
       <GlobalFileDrop
         courseId={selectedCourseId}
-        onImported={refreshOverview}
+        onImported={continueImportedProblems}
         onOpenInbox={() => selectWorkspace('inbox')}
       />
       <ClipboardImageCapture
         courseId={selectedCourseId}
-        onImported={refreshOverview}
+        onImported={continueImportedProblems}
         onOpenInbox={() => selectWorkspace('inbox')}
       />
       <DynamicControlSurface as="aside" className="sidebar">
@@ -419,12 +451,14 @@ export function App() {
           <button aria-current={workspace === 'review' ? 'page' : undefined} className={`nav-item ${workspace === 'review' ? 'is-active' : ''}`} onClick={() => selectWorkspace('review')} type="button">
             <span><BookOpenCheck aria-hidden="true" size={16} />今日复习</span>
           </button>
-          <button aria-current={workspace === 'knowledge' ? 'page' : undefined} className={`nav-item ${workspace === 'knowledge' ? 'is-active' : ''}`} onClick={() => selectWorkspace('knowledge')} type="button">
+          <button aria-current={workspace === 'knowledge' ? 'page' : undefined} className={`nav-item nav-secondary-item ${workspace === 'knowledge' ? 'is-active' : ''}`} onClick={() => selectWorkspace('knowledge')} type="button">
             <span><Network aria-hidden="true" size={16} />知识网络</span>
           </button>
-          <button aria-current={workspace === 'archive' ? 'page' : undefined} className={`nav-item ${workspace === 'archive' ? 'is-active' : ''}`} onClick={() => selectWorkspace('archive')} type="button">
+          <button aria-current={workspace === 'archive' ? 'page' : undefined} className={`nav-item nav-secondary-item ${workspace === 'archive' ? 'is-active' : ''}`} onClick={() => selectWorkspace('archive')} type="button">
             <span><Archive aria-hidden="true" size={16} />全部档案</span>
           </button>
+          <button aria-expanded={isMoreNavOpen} aria-haspopup="menu" aria-label="更多" className={`nav-item nav-more ${workspace === 'knowledge' || workspace === 'archive' ? 'is-active' : ''}`} onClick={() => setIsMoreNavOpen((open) => !open)} type="button"><span><MoreHorizontal aria-hidden="true" size={17} />更多</span></button>
+          {isMoreNavOpen ? <div className="nav-more-menu" role="menu"><button aria-label="更多菜单中的知识网络" onClick={() => selectWorkspace('knowledge')} role="menuitem" type="button"><Network aria-hidden="true" size={16} />知识网络</button><button aria-label="更多菜单中的全部档案" onClick={() => selectWorkspace('archive')} role="menuitem" type="button"><Archive aria-hidden="true" size={16} />全部档案</button></div> : null}
         </nav>
 
         <div className="sidebar-section"><CourseSidebar onCancelCourseCreate={cancelCourseCreation} onCourseCreated={handleCourseCreated} onSelectCourse={setSelectedCourseId} openCreateToken={courseCreateRequestToken} selectedCourseId={selectedCourseId} /></div>
@@ -439,7 +473,7 @@ export function App() {
             {workspace === 'overview' && !selectedProblemId ? <p className="toolbar-greeting">{timeGreeting()}</p> : null}
           </div>
           <div aria-label="工具" className="toolbar-actions">
-            <button aria-label="投进题目" className="toolbar-button toolbar-ingest-action" disabled={isIngesting} onClick={() => void ingestProblemFiles()} type="button"><Upload aria-hidden="true" size={16} /><span>{isIngesting ? '正在导入…' : '投进题目'}</span></button>
+            <button aria-label="投进题目" className="toolbar-button toolbar-ingest-action" disabled={isIngesting} onClick={() => void ingestProblemFiles()} type="button"><Upload aria-hidden="true" size={16} /><span className="toolbar-ingest-copy"><span>{isIngesting ? '正在导入…' : '投进题目'}</span><small>{`保存到：${selectedCourseName}`}</small></span></button>
             <button aria-label="全局搜索" className="toolbar-button icon-button" onClick={() => setIsSearchOpen(true)} ref={searchTriggerRef} type="button"><Search aria-hidden="true" size={17} /></button>
             <button aria-label="设置" className="toolbar-button icon-button" onClick={openSettings} ref={settingsTriggerRef} type="button"><Settings aria-hidden="true" size={17} /></button>
           </div>
@@ -449,7 +483,7 @@ export function App() {
           {selectedProblemId ? (
             <div className="document-stage">
               <button className="back-to-inbox" onClick={() => setSelectedProblemId(null)} type="button"><ChevronLeft aria-hidden="true" size={17} />{problemBackLabel}</button>
-              <ProblemDocument onOpenAiSettings={openSettings} onSaved={refreshOverview} problemId={selectedProblemId} />
+              <ProblemDocument onDirtyChange={setHasUnsavedProblemDraft} onOpenAiSettings={openSettings} onOrganized={refreshOverview} onSaved={refreshOverview} problemId={selectedProblemId} />
             </div>
           ) : workspace === 'overview' ? (
             <div className="dashboard-stage">
@@ -491,6 +525,8 @@ export function App() {
               explanation={reviewQueue[0].explanation}
               gradeError={gradeError}
               isGrading={isGrading}
+              onDefer={deferCurrentReview}
+              onEnd={endReviewSession}
               onGrade={(grade) => void gradeCurrentReview(grade)}
               onRetry={failedGrade ? () => void gradeCurrentReview(failedGrade) : undefined}
               ownAnswer={reviewQueue[0].ownAnswer}
@@ -499,11 +535,11 @@ export function App() {
               stem={reviewQueue[0].stem}
               total={reviewSession?.initialCount}
             />
-          ) : workspace === 'review' && !isReviewLoading && reviewSession && reviewSession.completed > 0 ? (
+          ) : workspace === 'review' && !isReviewLoading && reviewSession && (reviewSession.completed > 0 || isReviewEnded) ? (
             <section className="review-summary" aria-label="本次复习总结">
               <div className="review-summary__mark"><ShieldCheck aria-hidden="true" size={27} /></div>
               <p className="eyebrow">本次复习已保存 · {reviewSession.completed}/{reviewSession.initialCount}</p>
-              <h2>完成 {reviewSession.completed} 道，今天收得很好。</h2>
+              <h2>{reviewSession.completed > 0 ? `完成 ${reviewSession.completed} 道，今天收得很好。` : '本次复习已结束，进度没有丢失。'}</h2>
               <div className="review-summary__stats" aria-label="评分分布">
                 <span><strong>{reviewSession.grades.forgot}</strong><small>忘记</small></span>
                 <span><strong>{reviewSession.grades.hard}</strong><small>困难</small></span>
@@ -528,6 +564,7 @@ export function App() {
             <ArchiveLibrary
               courseId={selectedCourseId}
               initialQuery={materialInitialQuery}
+              onExport={() => void exportBook('questions')}
               onOpenProblem={openProblem}
               onSaved={refreshOverview}
             />
@@ -556,6 +593,14 @@ export function App() {
                 <div className="preference-row">
                   <div><strong>本地资料库</strong><span>题目、附件和记录只保存在此设备。</span></div>
                   <span className="preference-status">已启用</span>
+                </div>
+                <div className="preference-row preference-update">
+                  <UpdatePanel
+                    hasUnsavedProblemDraft={hasUnsavedProblemDraft}
+                    onCheck={updateController.checkNow}
+                    onInstall={updateController.install}
+                    state={updateController.state}
+                  />
                 </div>
                 <div className="preference-row preference-ai"><AiProviderSettings /></div>
                 <div className="preference-row preference-export">

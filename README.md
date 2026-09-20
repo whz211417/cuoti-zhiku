@@ -47,7 +47,7 @@
 
 ## 三步开始
 
-1. 从 [最新 Release](https://github.com/whz211417/cuoti-zhiku/releases/latest) 下载 `Cuoti-Zhiku-0.5.0-x64-setup.exe`。
+1. 从 [最新 Release](https://github.com/whz211417/cuoti-zhiku/releases/latest) 下载 Windows x64 安装包；首次安装完成后，日常直接从桌面或开始菜单打开。
 2. 新建课程，拖入一张题图或一份 PDF；原件会先保存，再等待你整理。
 3. 到“今日复习”揭示答案并记录掌握程度；不配置 AI 也能完整使用本地学习流程。
 
@@ -74,7 +74,7 @@
 
 ## 当前边界
 
-- 当前只提供 Windows x64 安装包，尚未提供自动更新或商业代码签名；SmartScreen 可能要求你确认来源。
+- 当前提供 Windows x64 安装包和应用内签名更新；安装包尚未购买商业代码签名，首次安装时 SmartScreen 仍可能要求你确认来源。
 - 当前不内置 OCR。扫描版 PDF 需要先 OCR 或手动补充题干；题目 PDF 本身仍可安全保存。
 - AI 不会默认发送 PDF 全文或教材全文，只有本次明确授权的题目内容、题图和少量教材片段会进入请求范围。
 - `.czkbackup` 不包含 Windows 凭据管理器中的 API Key；迁移后需要重新配置。

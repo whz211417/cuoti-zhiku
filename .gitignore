@@ -9,6 +9,11 @@ playwright-report/
 test-results/
 release/*.exe
 release/superseded/
+release/signing/
+*.key
+*.key.pub
+*.sig
+latest.json
 *.log
 .env
 .env.*

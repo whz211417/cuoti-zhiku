@@ -1,4 +1,4 @@
-import { AlertCircle, Archive, FileText, RefreshCw } from 'lucide-react';
+import { AlertCircle, Archive, Download, FileText, RefreshCw } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { readableLocalUpdate } from '../../lib/dates';
 import { getAllProblems, type RecentProblem } from '../../lib/tauri';
@@ -7,6 +7,7 @@ import { MaterialsLibrary } from '../materials/MaterialsLibrary';
 type ArchiveLibraryProps = {
   courseId: string | null;
   initialQuery?: string;
+  onExport?: () => void;
   onOpenProblem: (id: string) => void;
   onSaved?: () => void;
 };
@@ -14,6 +15,7 @@ type ArchiveLibraryProps = {
 export function ArchiveLibrary({
   courseId,
   initialQuery = '',
+  onExport,
   onOpenProblem,
   onSaved,
 }: ArchiveLibraryProps) {
@@ -52,7 +54,10 @@ export function ArchiveLibrary({
             <p className="eyebrow">完整题目索引</p>
             <h2 id="problem-archive-title">题目档案</h2>
           </div>
-          <span><Archive aria-hidden="true" size={16} />{problems.length} 道题</span>
+          <div className="archive-heading-actions">
+            <span><Archive aria-hidden="true" size={16} />{problems.length} 道题</span>
+            {onExport ? <button aria-label="导出题册" onClick={onExport} type="button"><Download aria-hidden="true" size={14} />导出题册</button> : null}
+          </div>
         </header>
 
         {isLoading && problems.length === 0 ? (

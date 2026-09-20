@@ -30,7 +30,8 @@ test('shows drop guidance then preserves partial import results', async () => {
     { sourcePath: 'C:\\bad.exe', item: null, error: '暂不支持此文件' },
   ]);
 
-  render(<GlobalFileDrop courseId={null} onImported={vi.fn()} onOpenInbox={vi.fn()} />);
+  const onImported = vi.fn();
+  render(<GlobalFileDrop courseId={null} onImported={onImported} onOpenInbox={vi.fn()} />);
   await waitFor(() => expect(subscribeToWindowFileDrop).toHaveBeenCalledOnce());
 
   act(() => emitDrop({ type: 'enter', paths: ['C:\\a.png', 'C:\\bad.exe'] }));
@@ -39,6 +40,22 @@ test('shows drop guidance then preserves partial import results', async () => {
 
   await act(async () => emitDrop({ type: 'drop', paths: ['C:\\a.png', 'C:\\bad.exe'] }));
   expect(await screen.findByText('已保存 1 个，1 个未导入')).toBeVisible();
+  expect(onImported).toHaveBeenCalledWith(['p1']);
+});
+
+test('reports successful problem ids in source order without failed entries', async () => {
+  importFiles.mockResolvedValue([
+    { sourcePath: 'C:\\bad.exe', item: null, error: '暂不支持' },
+    { sourcePath: 'C:\\one.pdf', item: { id: 'i1', problemId: 'problem-one', attachmentId: 'a1', filename: 'one.pdf', createdAt: 'now' }, error: null },
+    { sourcePath: 'C:\\two.png', item: { id: 'i2', problemId: 'problem-two', attachmentId: 'a2', filename: 'two.png', createdAt: 'now' }, error: null },
+  ]);
+  const onImported = vi.fn();
+  render(<GlobalFileDrop courseId={null} onImported={onImported} onOpenInbox={vi.fn()} />);
+  await waitFor(() => expect(subscribeToWindowFileDrop).toHaveBeenCalledOnce());
+
+  await act(async () => emitDrop({ type: 'drop', paths: ['C:\\bad.exe', 'C:\\one.pdf', 'C:\\two.png'] }));
+
+  expect(onImported).toHaveBeenCalledWith(['problem-one', 'problem-two']);
 });
 
 test('ignores a second drop while importing and captures the course at drop time', async () => {

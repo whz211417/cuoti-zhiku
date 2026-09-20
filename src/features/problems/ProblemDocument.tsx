@@ -1,16 +1,21 @@
-import { Sparkles } from 'lucide-react';
+import { CheckCircle2, Sparkles } from 'lucide-react';
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { InspectorSurface } from '../../components/material/InspectorSurface';
 import {
+  completeProblemOrganization,
+  getCourses,
   getProblemDocument,
   hasAiProviderKey,
   runProblemAnalysis,
   saveProblemField,
   searchCourseMaterial,
+  updateProblemCourse,
   type AiFieldSuggestion,
+  type Course,
   type MaterialSnippet,
   type ProblemDocument as ProblemDocumentModel,
 } from '../../lib/tauri';
+import { localCalendarDate } from '../../lib/dates';
 import type { AiProviderConfig } from '../settings/aiProviderCatalog';
 import { loadAiProviderState } from '../settings/aiProviderStore';
 import { AiReviewInspector, type AiReviewStage } from './AiReviewInspector';
@@ -26,7 +31,10 @@ const fieldOrder = [
 ] as const;
 
 type ProblemDocumentProps = {
+  courses?: Course[];
+  onDirtyChange?: (dirty: boolean) => void;
   onOpenAiSettings?: () => void;
+  onOrganized?: (document: ProblemDocumentModel) => void;
   onSaved?: () => void;
   problemId: string;
 };
@@ -44,13 +52,18 @@ const errorMessage = (cause: unknown) => (
       : 'AI 请求没有完成，请检查网络与账户后重试。'
 );
 
-export function ProblemDocument({ onOpenAiSettings, onSaved, problemId }: ProblemDocumentProps) {
+export function ProblemDocument({ courses, onDirtyChange, onOpenAiSettings, onOrganized, onSaved, problemId }: ProblemDocumentProps) {
   const [document, setDocument] = useState<ProblemDocumentModel | null>(null);
+  const [availableCourses, setAvailableCourses] = useState<Course[]>(courses ?? []);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [editingKind, setEditingKind] = useState<string | null>(null);
   const [draft, setDraft] = useState('');
   const [isSaving, setIsSaving] = useState(false);
+  const [isCompleting, setIsCompleting] = useState(false);
+  const [isChangingCourse, setIsChangingCourse] = useState(false);
+  const [organizationError, setOrganizationError] = useState<string | null>(null);
+  const [courseError, setCourseError] = useState<string | null>(null);
   const [aiStage, setAiStage] = useState<AiReviewStage | 'closed'>('closed');
   const [aiMode, setAiMode] = useState<'flash' | 'deep'>('flash');
   const [aiSuggestions, setAiSuggestions] = useState<AiFieldSuggestion[]>([]);
@@ -73,6 +86,16 @@ export function ProblemDocument({ onOpenAiSettings, onSaved, problemId }: Proble
   const isSavingRef = useRef(isSaving);
   isSavingRef.current = isSaving;
   const isAiOpen = aiStage !== 'closed';
+  const persistedEditingValue = editingKind
+    ? document?.fields.find((field) => field.kind === editingKind)?.value ?? ''
+    : '';
+  const hasUnsavedDraft = isSaving || (editingKind !== null && draft !== persistedEditingValue);
+
+  useEffect(() => {
+    onDirtyChange?.(hasUnsavedDraft);
+  }, [hasUnsavedDraft, onDirtyChange]);
+
+  useEffect(() => () => onDirtyChange?.(false), [onDirtyChange]);
 
   useLayoutEffect(() => {
     if (activeProblemRef.current === problemId) return;
@@ -86,6 +109,10 @@ export function ProblemDocument({ onOpenAiSettings, onSaved, problemId }: Proble
     setEditingKind(null);
     setDraft('');
     setIsSaving(false);
+    setIsCompleting(false);
+    setIsChangingCourse(false);
+    setOrganizationError(null);
+    setCourseError(null);
     setAiStage('closed');
     setAiSuggestions([]);
     setAiError(null);
@@ -97,6 +124,14 @@ export function ProblemDocument({ onOpenAiSettings, onSaved, problemId }: Proble
     setSelectedMaterials([]);
     setIncludeOriginalImage(false);
   }, [problemId]);
+
+  useEffect(() => {
+    if (courses) {
+      setAvailableCourses(courses);
+      return;
+    }
+    void getCourses().then(setAvailableCourses).catch(() => undefined);
+  }, [courses, problemId]);
 
   useEffect(() => {
     const requestGeneration = requestGenerationRef.current + 1;
@@ -180,6 +215,11 @@ export function ProblemDocument({ onOpenAiSettings, onSaved, problemId }: Proble
   if (!document) return <p className="document-notice">正在打开题目档案…</p>;
 
   const fields = new Map(document.fields.map((field) => [field.kind, field]));
+  const missingRequiredFields = [
+    !fields.get('stem')?.value.trim() ? '题干' : null,
+    !fields.get('standard_answer')?.value.trim() ? '标准答案' : null,
+  ].filter((label): label is string => Boolean(label));
+  const isOrganized = document.status === 'active';
   const beginEditing = (kind: string) => {
     setDraft(fields.get(kind)?.value ?? '');
     setEditingKind(kind);
@@ -224,6 +264,43 @@ export function ProblemDocument({ onOpenAiSettings, onSaved, problemId }: Proble
       }
     } finally {
       if (isActiveRequest()) setIsSaving(false);
+    }
+  };
+
+  const completeOrganization = async () => {
+    if (missingRequiredFields.length > 0 || isOrganized || isCompleting) return;
+    const requestProblemId = document.id;
+    setIsCompleting(true);
+    setOrganizationError(null);
+    try {
+      const completed = await completeProblemOrganization(document.id, document.version, localCalendarDate());
+      if (activeProblemRef.current !== requestProblemId) return;
+      setDocument(completed);
+      onOrganized?.(completed);
+      if (!onOrganized) onSaved?.();
+    } catch {
+      if (activeProblemRef.current === requestProblemId) {
+        setOrganizationError('没有完成整理。内容仍然安全保留，请重试。');
+      }
+    } finally {
+      if (activeProblemRef.current === requestProblemId) setIsCompleting(false);
+    }
+  };
+
+  const changeCourse = async (courseId: string) => {
+    if (!courseId || courseId === document.courseId || isChangingCourse) return;
+    const requestProblemId = document.id;
+    setIsChangingCourse(true);
+    setCourseError(null);
+    try {
+      const updated = await updateProblemCourse(document.id, courseId, document.version);
+      if (activeProblemRef.current !== requestProblemId) return;
+      setDocument(updated);
+      onSaved?.();
+    } catch {
+      if (activeProblemRef.current === requestProblemId) setCourseError('课程没有修改，请重试。');
+    } finally {
+      if (activeProblemRef.current === requestProblemId) setIsChangingCourse(false);
     }
   };
 
@@ -475,9 +552,19 @@ export function ProblemDocument({ onOpenAiSettings, onSaved, problemId }: Proble
     <article className="problem-document" aria-label="题目档案">
       <header className="document-header">
         <div className="document-header-row">
-          <div><p className="eyebrow">待整理题目</p><h2>{fields.get('stem')?.value || '一份待补充的题目'}</h2></div>
+          <div><p className="eyebrow">{isOrganized ? '复习档案' : '待整理题目'}</p><h2>{fields.get('stem')?.value || '一份待补充的题目'}</h2></div>
           <button aria-label="AI 辅助整理" className="document-ai-action" onClick={() => void openAiReview()} ref={aiTriggerRef} type="button"><Sparkles aria-hidden="true" size={15} />AI 辅助整理</button>
         </div>
+        {availableCourses.length > 0 ? (
+          <label className="document-course">
+            <span>所属课程</span>
+            <select aria-label="所属课程" disabled={isChangingCourse} onChange={(event) => void changeCourse(event.target.value)} value={document.courseId ?? ''}>
+              {!document.courseId ? <option value="">选择课程</option> : null}
+              {availableCourses.map((course) => <option key={course.id} value={course.id}>{course.name}</option>)}
+            </select>
+          </label>
+        ) : null}
+        {courseError ? <p className="document-ai-notice" role="alert">{courseError}</p> : null}
         {aiError && aiStage === 'closed' ? <p className="document-ai-notice" role="status">{aiError}</p> : null}
         {aiNotice && aiStage === 'closed' ? <p className="document-ai-success" role="status">{aiNotice}</p> : null}
       </header>
@@ -511,6 +598,24 @@ export function ProblemDocument({ onOpenAiSettings, onSaved, problemId }: Proble
           );
         })}
       </div>
+      {isOrganized ? (
+        <section className="document-completion is-complete" aria-label="整理状态">
+          <CheckCircle2 aria-hidden="true" size={19} />
+          <div><strong>已加入复习计划</strong><p>这道题会按照你的复习节奏再次出现。</p></div>
+        </section>
+      ) : (
+        <section className="document-completion" aria-label="整理状态">
+          <div>
+            <p className="eyebrow">整理进度</p>
+            <strong>{missingRequiredFields.length > 0 ? `还需补充：${missingRequiredFields.join('、')}` : '已经可以进入复习'}</strong>
+            <p>{missingRequiredFields.length > 0 ? '题干和标准答案补齐后，才会进入今日复习。' : '确认内容无误后，把它加入你的复习计划。'}</p>
+          </div>
+          <button aria-label="完成整理并加入复习" className="primary-action" disabled={missingRequiredFields.length > 0 || isCompleting || isSaving} onClick={() => void completeOrganization()} type="button">
+            {isCompleting ? '正在加入…' : '完成整理并加入复习'}
+          </button>
+          {organizationError ? <p className="document-completion-error" role="alert">{organizationError}</p> : null}
+        </section>
+      )}
       {aiStage !== 'closed' ? (
         <InspectorSurface>
           <AiReviewInspector

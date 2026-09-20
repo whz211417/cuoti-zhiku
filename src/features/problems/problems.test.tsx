@@ -5,16 +5,19 @@ import type { ProblemDocument as ProblemDocumentModel } from '../../lib/tauri';
 import type { AiProviderConfig } from '../settings/aiProviderCatalog';
 import { ProblemDocument } from './ProblemDocument';
 
-const { getProblemDocument, hasAiProviderKey, loadAiProviderState, runProblemAnalysis, saveProblemField, searchCourseMaterial } = vi.hoisted(() => ({
+const { completeProblemOrganization, getCourses, getProblemDocument, hasAiProviderKey, loadAiProviderState, runProblemAnalysis, saveProblemField, searchCourseMaterial, updateProblemCourse } = vi.hoisted(() => ({
+  completeProblemOrganization: vi.fn(),
+  getCourses: vi.fn(),
   getProblemDocument: vi.fn(),
   hasAiProviderKey: vi.fn(),
   loadAiProviderState: vi.fn(),
   runProblemAnalysis: vi.fn(),
   saveProblemField: vi.fn(),
   searchCourseMaterial: vi.fn(),
+  updateProblemCourse: vi.fn(),
 }));
 
-vi.mock('../../lib/tauri', () => ({ getProblemDocument, hasAiProviderKey, runProblemAnalysis, saveProblemField, searchCourseMaterial }));
+vi.mock('../../lib/tauri', () => ({ completeProblemOrganization, getCourses, getProblemDocument, hasAiProviderKey, runProblemAnalysis, saveProblemField, searchCourseMaterial, updateProblemCourse }));
 vi.mock('../settings/aiProviderStore', () => ({ loadAiProviderState }));
 
 const deepseekConfig: AiProviderConfig = {
@@ -42,6 +45,7 @@ const visionConfig: AiProviderConfig = {
 
 beforeEach(() => {
   vi.resetAllMocks();
+  getCourses.mockResolvedValue([]);
   loadAiProviderState.mockResolvedValue({ providers: [deepseekConfig], activeProviderId: 'deepseek' });
   hasAiProviderKey.mockResolvedValue(true);
   searchCourseMaterial.mockResolvedValue([]);
@@ -75,6 +79,86 @@ test('renders a saved problem as a reading document', async () => {
   expect(await screen.findByRole('heading', { name: '财政扩张如何影响 IS 曲线？' })).toBeVisible();
   expect(screen.getByText('我的作答')).toBeVisible();
   expect(screen.getByText('我认为 IS 会右移。')).toBeVisible();
+});
+
+test('completes an organized problem and reports the active document', async () => {
+  const inboxDocument = {
+    id: 'problem-ready', courseId: 'macro', hasImageAttachment: false, title: '', status: 'inbox',
+    updatedAt: '2026-09-20T08:00:00Z', version: 'version-1',
+    fields: [
+      { kind: 'stem', value: '财政扩张如何影响 IS 曲线？', updatedAt: 'version-1' },
+      { kind: 'standard_answer', value: 'IS 曲线右移。', updatedAt: 'version-1' },
+    ],
+  };
+  const activeDocument = { ...inboxDocument, status: 'active', version: 'version-2' };
+  getProblemDocument.mockResolvedValue(inboxDocument);
+  completeProblemOrganization.mockResolvedValue(activeDocument);
+  const onOrganized = vi.fn();
+  const user = userEvent.setup();
+
+  render(<ProblemDocument onOrganized={onOrganized} problemId="problem-ready" />);
+  await user.click(await screen.findByRole('button', { name: '完成整理并加入复习' }));
+
+  expect(completeProblemOrganization).toHaveBeenCalledWith('problem-ready', 'version-1', expect.any(String));
+  expect(await screen.findByText('已加入复习计划')).toBeVisible();
+  expect(onOrganized).toHaveBeenCalledWith(activeDocument);
+});
+
+test('explains which required fields are missing before organization can finish', async () => {
+  getProblemDocument.mockResolvedValue({
+    id: 'problem-incomplete', courseId: 'macro', title: '', status: 'inbox', updatedAt: '2026-09-20', version: 'version-1',
+    fields: [{ kind: 'stem', value: '只有题干', updatedAt: 'version-1' }],
+  });
+
+  render(<ProblemDocument problemId="problem-incomplete" />);
+
+  expect(await screen.findByText('还需补充：标准答案')).toBeVisible();
+  expect(screen.getByRole('button', { name: '完成整理并加入复习' })).toBeDisabled();
+  expect(completeProblemOrganization).not.toHaveBeenCalled();
+});
+
+test('keeps the problem open and retries organization after a failure', async () => {
+  const inboxDocument = {
+    id: 'problem-retry', courseId: 'macro', hasImageAttachment: false, title: '', status: 'inbox',
+    updatedAt: '2026-09-20', version: 'version-1',
+    fields: [
+      { kind: 'stem', value: '通货膨胀的成因是什么？', updatedAt: 'version-1' },
+      { kind: 'standard_answer', value: '需求、成本与预期共同作用。', updatedAt: 'version-1' },
+    ],
+  };
+  getProblemDocument.mockResolvedValue(inboxDocument);
+  completeProblemOrganization
+    .mockRejectedValueOnce(new Error('disk busy'))
+    .mockResolvedValueOnce({ ...inboxDocument, status: 'active', version: 'version-2' });
+  const user = userEvent.setup();
+
+  render(<ProblemDocument problemId="problem-retry" />);
+  const action = await screen.findByRole('button', { name: '完成整理并加入复习' });
+  await user.click(action);
+  expect(await screen.findByRole('alert')).toHaveTextContent('内容仍然安全保留');
+
+  await user.click(screen.getByRole('button', { name: '完成整理并加入复习' }));
+  expect(await screen.findByText('已加入复习计划')).toBeVisible();
+  expect(completeProblemOrganization).toHaveBeenCalledTimes(2);
+});
+
+test('changes the problem course with the current document version', async () => {
+  const initialDocument = {
+    id: 'problem-course', courseId: 'macro', title: '', status: 'inbox', updatedAt: '2026-09-20', version: 'version-1',
+    fields: [{ kind: 'stem', value: '题干', updatedAt: 'version-1' }],
+  };
+  getProblemDocument.mockResolvedValue(initialDocument);
+  updateProblemCourse.mockResolvedValue({ ...initialDocument, courseId: 'micro', version: 'version-2' });
+  const user = userEvent.setup();
+
+  render(<ProblemDocument courses={[
+    { id: 'macro', name: '宏观经济学', term: '', color: '#f00', kind: 'school' },
+    { id: 'micro', name: '微观经济学', term: '', color: '#0af', kind: 'school' },
+  ]} problemId="problem-course" />);
+  await user.selectOptions(await screen.findByLabelText('所属课程'), 'micro');
+
+  expect(updateProblemCourse).toHaveBeenCalledWith('problem-course', 'micro', 'version-1');
+  expect(screen.getByLabelText('所属课程')).toHaveValue('micro');
 });
 
 test('ignores an initial document response after a different problem is selected', async () => {
@@ -147,6 +231,58 @@ test('saves an added stem with the document version', async () => {
   expect(saveProblemField).toHaveBeenCalledWith('problem-2', 'stem', 'LM 曲线何时右移？', 'version-1');
   expect(await screen.findByRole('heading', { name: 'LM 曲线何时右移？' })).toBeVisible();
   expect(onSaved).toHaveBeenCalledOnce();
+});
+
+test('reports a changed field draft and clears the dirty state after cancel', async () => {
+  getProblemDocument.mockResolvedValue({
+    id: 'problem-dirty', title: '', status: 'inbox', updatedAt: '2026-07-30T08:00:00Z', version: 'v1',
+    fields: [{ kind: 'stem', value: '原题干', updatedAt: '2026-07-30T08:00:00Z' }],
+  });
+  const onDirtyChange = vi.fn();
+  const user = userEvent.setup();
+
+  render(<ProblemDocument onDirtyChange={onDirtyChange} problemId="problem-dirty" />);
+  await user.click(await screen.findByRole('button', { name: '编辑题干' }));
+  await user.type(screen.getByLabelText('编辑题干'), '补充');
+  await waitFor(() => expect(onDirtyChange).toHaveBeenLastCalledWith(true));
+
+  await user.click(screen.getByRole('button', { name: '取消' }));
+  await waitFor(() => expect(onDirtyChange).toHaveBeenLastCalledWith(false));
+});
+
+test('keeps the problem dirty while saving and clears it after persistence', async () => {
+  const pendingSave = deferred<{ problemId: string; kind: string; value: string; updatedAt: string; version: string }>();
+  getProblemDocument.mockResolvedValue({
+    id: 'problem-saving', title: '', status: 'inbox', updatedAt: '2026-07-30T08:00:00Z', version: 'v1', fields: [],
+  });
+  saveProblemField.mockReturnValue(pendingSave.promise);
+  const onDirtyChange = vi.fn();
+  const user = userEvent.setup();
+
+  render(<ProblemDocument onDirtyChange={onDirtyChange} problemId="problem-saving" />);
+  await user.click(await screen.findByRole('button', { name: '补充题干' }));
+  await user.type(screen.getByLabelText('编辑题干'), '新题干');
+  await user.click(screen.getByRole('button', { name: '保存题干' }));
+  expect(onDirtyChange).toHaveBeenLastCalledWith(true);
+
+  await act(async () => pendingSave.resolve({ problemId: 'problem-saving', kind: 'stem', value: '新题干', updatedAt: '2026-07-30T08:01:00Z', version: 'v2' }));
+  await waitFor(() => expect(onDirtyChange).toHaveBeenLastCalledWith(false));
+});
+
+test('clears dirty state when leaving a problem', async () => {
+  getProblemDocument.mockImplementation((id: string) => Promise.resolve({
+    id, title: '', status: 'inbox', updatedAt: '2026-07-30T08:00:00Z', version: 'v1', fields: [],
+  }));
+  const onDirtyChange = vi.fn();
+  const user = userEvent.setup();
+  const view = render(<ProblemDocument onDirtyChange={onDirtyChange} problemId="problem-a" />);
+
+  await user.click(await screen.findByRole('button', { name: '补充题干' }));
+  await user.type(screen.getByLabelText('编辑题干'), '未保存');
+  await waitFor(() => expect(onDirtyChange).toHaveBeenLastCalledWith(true));
+
+  view.rerender(<ProblemDocument onDirtyChange={onDirtyChange} problemId="problem-b" />);
+  await waitFor(() => expect(onDirtyChange).toHaveBeenLastCalledWith(false));
 });
 
 test('opens a compact AI setup before sending and accepts suggestions one field at a time', async () => {

@@ -75,6 +75,8 @@ pub fn run() {
             commands::materials::search_course_material,
             commands::problems::get_problem_document,
             commands::problems::save_problem_field,
+            commands::problems::complete_problem_organization,
+            commands::problems::update_problem_course,
             commands::problems::complete_review,
             commands::problems::get_due_review_problems,
             commands::problems::export_problem_book,
@@ -84,6 +86,7 @@ pub fn run() {
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_os::init())
         .plugin(tauri_plugin_store::Builder::default().build())
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .run(tauri::generate_context!())
         .expect("failed to run 错题智库");
 }

@@ -1,7 +1,7 @@
 {
   "name": "cuoti-zhiku",
   "private": true,
-  "version": "0.5.0",
+  "version": "0.5.2",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -12,7 +12,8 @@
     "typecheck": "tsc --noEmit",
     "build": "tsc -b && vite build",
     "tauri": "tauri",
-    "tauri:build": "tauri build"
+    "tauri:build": "tauri build",
+    "verify:release-version": "node scripts/verify-release-version.mjs"
   },
   "dependencies": {
     "@gsap/react": "^2.1.2",
@@ -23,6 +24,7 @@
     "@tauri-apps/plugin-fs": "^2.4.0",
     "@tauri-apps/plugin-os": "^2.2.1",
     "@tauri-apps/plugin-store": "^2.3.0",
+    "@tauri-apps/plugin-updater": "2.12.0",
     "clsx": "^2.1.1",
     "gsap": "^3.15.0",
     "liquid-glass-react": "^1.1.1",
