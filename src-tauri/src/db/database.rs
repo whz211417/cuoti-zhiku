@@ -231,7 +231,7 @@ impl Database {
             due_review_count: query_scalar(
                 &connection,
                 "SELECT COUNT(*) FROM problems
-                 WHERE status IN ('inbox', 'active')
+                 WHERE status = 'active'
                    AND next_review_at IS NOT NULL
                    AND next_review_at <= ?1",
                 [today],
@@ -1103,6 +1103,113 @@ impl Database {
         })
     }
 
+    pub fn complete_problem_organization(
+        &self,
+        problem_id: &str,
+        expected_version: &str,
+        today: &str,
+    ) -> DatabaseResult<ProblemDocument> {
+        NaiveDate::parse_from_str(today, "%Y-%m-%d")
+            .map_err(|_| DatabaseError::Conflict("today must use YYYY-MM-DD".into()))?;
+        self.with_transaction(|transaction| {
+            let (status, current_version, stem, standard_answer): (
+                String,
+                String,
+                String,
+                String,
+            ) = transaction
+                .query_row(
+                    "SELECT p.status, p.version,
+                            COALESCE(stem.value, ''), COALESCE(answer.value, '')
+                     FROM problems p
+                     LEFT JOIN problem_fields stem
+                       ON stem.problem_id = p.id AND stem.kind = 'stem'
+                     LEFT JOIN problem_fields answer
+                       ON answer.problem_id = p.id AND answer.kind = 'standard_answer'
+                     WHERE p.id = ?1",
+                    [problem_id],
+                    |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
+                )
+                .optional()?
+                .ok_or_else(|| DatabaseError::Conflict("题目不存在，无法完成整理。".to_owned()))?;
+            if current_version != expected_version {
+                return Err(DatabaseError::Conflict(
+                    "题目已在另一处更新，请刷新后再完成整理。".to_owned(),
+                ));
+            }
+            if status == "active" {
+                return Ok(());
+            }
+            if status != "inbox" {
+                return Err(DatabaseError::Conflict(
+                    "当前题目状态不能加入复习计划。".to_owned(),
+                ));
+            }
+            if stem.trim().is_empty() {
+                return Err(DatabaseError::Conflict(
+                    "请先补充题干，再加入复习计划。".to_owned(),
+                ));
+            }
+            if standard_answer.trim().is_empty() {
+                return Err(DatabaseError::Conflict(
+                    "请先补充标准答案，再加入复习计划。".to_owned(),
+                ));
+            }
+            let updated_at = timestamp();
+            transaction.execute(
+                "UPDATE problems
+                 SET status = 'active', next_review_at = ?2, updated_at = ?3, version = ?4
+                 WHERE id = ?1",
+                params![problem_id, today, updated_at, record_id("version")],
+            )?;
+            transaction.execute(
+                "DELETE FROM inbox_items WHERE problem_id = ?1",
+                [problem_id],
+            )?;
+            Ok(())
+        })?;
+        self.get_problem_document(problem_id)
+    }
+
+    pub fn update_problem_course(
+        &self,
+        problem_id: &str,
+        course_id: &str,
+        expected_version: &str,
+    ) -> DatabaseResult<ProblemDocument> {
+        self.with_transaction(|transaction| {
+            let course_exists = transaction.query_row(
+                "SELECT EXISTS(SELECT 1 FROM courses WHERE id = ?1 AND archived_at IS NULL)",
+                [course_id],
+                |row| row.get::<_, bool>(0),
+            )?;
+            if !course_exists {
+                return Err(DatabaseError::Conflict(
+                    "所选课程不存在或已归档。".to_owned(),
+                ));
+            }
+            let current_version = transaction
+                .query_row(
+                    "SELECT version FROM problems WHERE id = ?1",
+                    [problem_id],
+                    |row| row.get::<_, String>(0),
+                )
+                .optional()?
+                .ok_or_else(|| DatabaseError::Conflict("题目不存在，无法修改课程。".to_owned()))?;
+            if current_version != expected_version {
+                return Err(DatabaseError::Conflict(
+                    "题目已在另一处更新，请刷新后再修改课程。".to_owned(),
+                ));
+            }
+            transaction.execute(
+                "UPDATE problems SET course_id = ?2, updated_at = ?3, version = ?4 WHERE id = ?1",
+                params![problem_id, course_id, timestamp(), record_id("version")],
+            )?;
+            Ok(())
+        })?;
+        self.get_problem_document(problem_id)
+    }
+
     pub fn get_problem_document(&self, problem_id: &str) -> DatabaseResult<ProblemDocument> {
         let connection = self.connection()?;
         let (id, course_id, has_image_attachment, title, status, updated_at, version) = connection
@@ -1184,9 +1291,9 @@ impl Database {
              FROM problems p
              JOIN problem_fields stem ON stem.problem_id = p.id AND stem.kind = 'stem' AND trim(stem.value) <> ''
              LEFT JOIN problem_fields own ON own.problem_id = p.id AND own.kind = 'own_answer'
-             LEFT JOIN problem_fields answer ON answer.problem_id = p.id AND answer.kind = 'standard_answer'
+             JOIN problem_fields answer ON answer.problem_id = p.id AND answer.kind = 'standard_answer' AND trim(answer.value) <> ''
              LEFT JOIN problem_fields explanation ON explanation.problem_id = p.id AND explanation.kind = 'explanation'
-             WHERE p.status IN ('inbox', 'active') AND (p.next_review_at IS NULL OR p.next_review_at <= ?1)
+             WHERE p.status = 'active' AND p.next_review_at IS NOT NULL AND p.next_review_at <= ?1
              ORDER BY COALESCE(p.next_review_at, '') ASC, p.created_at ASC",
         )?;
         let reviews = statement
@@ -1695,7 +1802,7 @@ fn query_course_summaries(
                 (SELECT COUNT(*) FROM problems p WHERE p.course_id = c.id AND p.status = 'inbox'),
                 (SELECT COUNT(*) FROM problems p
                  WHERE p.course_id = c.id
-                   AND p.status IN ('inbox', 'active')
+                   AND p.status = 'active'
                    AND p.next_review_at IS NOT NULL
                    AND p.next_review_at <= ?1),
                 (SELECT COUNT(*) FROM course_materials m

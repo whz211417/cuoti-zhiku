@@ -103,7 +103,7 @@ fn persists_the_next_review_date_after_a_grade() {
 }
 
 #[test]
-fn lists_only_due_problems_with_a_question_stem() {
+fn lists_only_completed_due_problems_with_a_question_and_answer() {
     let temp = tempfile::tempdir().expect("temporary library");
     let source = temp.path().join("due-review.png");
     fs::write(&source, b"due review").expect("fixture source");
@@ -116,7 +116,7 @@ fn lists_only_due_problems_with_a_question_stem() {
         .problem_version(&inbox.problem_id)
         .expect("initial version");
 
-    database
+    let stem = database
         .save_problem_field(
             &inbox.problem_id,
             ProblemFieldKind::Stem,
@@ -124,6 +124,23 @@ fn lists_only_due_problems_with_a_question_stem() {
             &version,
         )
         .expect("question stem saved");
+    let answer = database
+        .save_problem_field(
+            &inbox.problem_id,
+            ProblemFieldKind::StandardAnswer,
+            "财政扩张提高总需求，使 IS 曲线右移。",
+            &stem.version,
+        )
+        .expect("standard answer saved");
+
+    assert!(database
+        .list_due_review_problems("2026-07-22")
+        .expect("inbox excluded")
+        .is_empty());
+
+    database
+        .complete_problem_organization(&inbox.problem_id, &answer.version, "2026-07-22")
+        .expect("organization completed");
 
     let due = database
         .list_due_review_problems("2026-07-22")

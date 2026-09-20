@@ -85,7 +85,7 @@ Run focused tests, `npm.cmd run typecheck`, and `npm.cmd run lint`. Stage only T
 - Produces Rust `Database::update_problem_course(problem_id, course_id, expected_version) -> ProblemDocument`.
 - Produces Tauri wrappers `completeProblemOrganization(problemId, expectedVersion, today)` and `updateProblemCourse(problemId, courseId, expectedVersion)`, both returning `Promise<ProblemDocument>`.
 
-- [ ] **Step 1: Write failing Rust database tests**
+- [x] **Step 1: Write failing Rust database tests**
 
 Add tests that insert an inbox problem and assert:
 
@@ -98,11 +98,11 @@ assert_eq!(database.list_due_review_problems("2026-09-20").unwrap().len(), 1);
 
 Also assert missing `stem`, missing `standard_answer`, and stale version each return `DatabaseError::Conflict` without changing status or inbox rows. Add an inbox problem with a stem and answer directly to the database and assert it is excluded from `list_due_review_problems` until completion.
 
-- [ ] **Step 2: Run red Rust tests**
+- [x] **Step 2: Run red Rust tests**
 
 Run the repository Rust test command filtered to the new test names; expect compilation failure because the method does not exist and review currently includes inbox rows.
 
-- [ ] **Step 3: Implement the transaction and queries**
+- [x] **Step 3: Implement the transaction and queries**
 
 Within `with_transaction`, load status/version/course plus trimmed stem and standard answer. Validate expected version and required fields, then execute:
 
@@ -115,7 +115,7 @@ DELETE FROM inbox_items WHERE problem_id = ?1;
 
 Return `get_problem_document` after the transaction. Change dashboard and due-review queries from `status IN ('inbox', 'active')` to `status = 'active'`, and require an inner join to non-empty `standard_answer` in `list_due_review_problems`.
 
-- [ ] **Step 4: Add the narrow command and wrapper tests**
+- [x] **Step 4: Add the narrow command and wrapper tests**
 
 Register `commands::problems::complete_problem_organization` and `commands::problems::update_problem_course`. The course transaction must verify that the target course exists and is not archived, then update `course_id`, `updated_at`, and `version`. Expose the completion TypeScript wrapper using:
 
@@ -129,7 +129,7 @@ invoke<ProblemDocument>('complete_problem_organization', {
 
 First add a failing `src/lib/tauri.test.ts` assertion for the exact command name and payload, then implement it.
 
-- [ ] **Step 5: Verify and commit**
+- [x] **Step 5: Verify and commit**
 
 Run focused Rust tests, `npm.cmd test -- --run src/lib/tauri.test.ts`, and `npm.cmd run typecheck`. Stage only Task 2 files and commit `feat: complete organization before review`.
 

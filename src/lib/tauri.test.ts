@@ -3,6 +3,7 @@ import { beforeEach, expect, test, vi } from 'vitest';
 import {
   activateAiProvider,
   clearAiProviderKey,
+  completeProblemOrganization,
   getAiCredentialMigrationStatus,
   getDashboardOverview,
   getKnowledgeGraph,
@@ -15,6 +16,7 @@ import {
   saveAiProviderKey,
   searchLibrary,
   testAiProvider,
+  updateProblemCourse,
   exportObsidianVault,
   openObsidianCanvas,
 } from './tauri';
@@ -64,6 +66,24 @@ test('requests the local dashboard and bounded search', async () => {
 
   await searchLibrary('IS-LM', 12);
   expect(invoke).toHaveBeenCalledWith('search_library', { query: 'IS-LM', limit: 12 });
+});
+
+test('uses narrow version-checked commands for organization and course changes', async () => {
+  vi.mocked(invoke).mockResolvedValue({ id: 'problem-1', version: 'version-2' });
+
+  await completeProblemOrganization('problem-1', 'version-1', '2026-09-20');
+  expect(invoke).toHaveBeenCalledWith('complete_problem_organization', {
+    problemId: 'problem-1',
+    expectedVersion: 'version-1',
+    today: '2026-09-20',
+  });
+
+  await updateProblemCourse('problem-1', 'macro', 'version-2');
+  expect(invoke).toHaveBeenCalledWith('update_problem_course', {
+    problemId: 'problem-1',
+    courseId: 'macro',
+    expectedVersion: 'version-2',
+  });
 });
 
 test('requests the course-scoped local knowledge graph', async () => {

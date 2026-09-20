@@ -29,6 +29,32 @@ pub fn save_problem_field(
 }
 
 #[tauri::command]
+pub fn complete_problem_organization(
+    state: State<'_, AppState>,
+    problem_id: String,
+    expected_version: String,
+    today: String,
+) -> Result<crate::domain::problems::ProblemDocument, String> {
+    state
+        .database
+        .complete_problem_organization(&problem_id, &expected_version, &today)
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+pub fn update_problem_course(
+    state: State<'_, AppState>,
+    problem_id: String,
+    course_id: String,
+    expected_version: String,
+) -> Result<crate::domain::problems::ProblemDocument, String> {
+    state
+        .database
+        .update_problem_course(&problem_id, &course_id, &expected_version)
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
 pub fn complete_review(
     state: State<'_, AppState>,
     problem_id: String,

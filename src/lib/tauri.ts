@@ -201,6 +201,12 @@ export const saveProblemField = (problemId: string, kind: string, value: string,
     problemId, kind, value, expectedVersion,
   });
 
+export const completeProblemOrganization = (problemId: string, expectedVersion: string, today: string) =>
+  invoke<ProblemDocument>('complete_problem_organization', { problemId, expectedVersion, today });
+
+export const updateProblemCourse = (problemId: string, courseId: string, expectedVersion: string) =>
+  invoke<ProblemDocument>('update_problem_course', { problemId, courseId, expectedVersion });
+
 export type AiFieldSuggestion = { kind: string; value: string };
 export type AiConnectionResult = {
   authenticated: boolean;

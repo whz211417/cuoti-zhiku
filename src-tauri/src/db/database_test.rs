@@ -51,6 +51,127 @@ fn insert_dashboard_field(connection: &Connection, problem_id: &str, kind: &str,
         .expect("insert dashboard field");
 }
 
+fn insert_organization_fixture(
+    root: &tempfile::TempDir,
+    problem_id: &str,
+    stem: Option<&str>,
+    answer: Option<&str>,
+) -> String {
+    let connection = dashboard_connection(root);
+    let course_id = format!("course-{problem_id}");
+    let attachment_id = format!("attachment-{problem_id}");
+    let inbox_id = format!("inbox-{problem_id}");
+    let version = format!("version-{problem_id}");
+    insert_dashboard_course(&connection, &course_id, "测试课程", "2026-09-20");
+    connection
+        .execute(
+            "INSERT INTO problems(id, course_id, status, title, created_at, updated_at, version)
+             VALUES (?1, ?2, 'inbox', '测试题目', '2026-09-20', '2026-09-20', ?3)",
+            params![problem_id, course_id, version],
+        )
+        .expect("insert organization problem");
+    connection
+        .execute(
+            "INSERT INTO attachments(id, sha256, relative_path, mime_type, byte_size, created_at)
+             VALUES (?1, ?2, ?3, 'image/png', 1, '2026-09-20')",
+            params![attachment_id, format!("sha-{problem_id}"), format!("{problem_id}.png")],
+        )
+        .expect("insert organization attachment");
+    connection
+        .execute(
+            "INSERT INTO inbox_items(id, problem_id, attachment_id, filename, created_at)
+             VALUES (?1, ?2, ?3, 'question.png', '2026-09-20')",
+            params![inbox_id, problem_id, attachment_id],
+        )
+        .expect("insert organization inbox item");
+    if let Some(stem) = stem {
+        insert_dashboard_field(&connection, problem_id, "stem", stem);
+    }
+    if let Some(answer) = answer {
+        insert_dashboard_field(&connection, problem_id, "standard_answer", answer);
+    }
+    version
+}
+
+#[test]
+fn completing_organization_activates_the_problem_and_removes_it_from_inbox() {
+    let (root, database) = dashboard_database();
+    let version = insert_organization_fixture(&root, "problem-ready", Some("题干"), Some("答案"));
+
+    let completed = database
+        .complete_problem_organization("problem-ready", &version, "2026-09-20")
+        .expect("complete organization");
+
+    assert_eq!(completed.status, "active");
+    assert!(database.list_inbox_items().expect("inbox").is_empty());
+    assert_eq!(
+        database
+            .list_due_review_problems("2026-09-20")
+            .expect("due reviews")
+            .len(),
+        1
+    );
+}
+
+#[test]
+fn organization_requires_complete_fields_and_preserves_the_inbox_on_failure() {
+    let (root, database) = dashboard_database();
+    let version = insert_organization_fixture(&root, "problem-incomplete", Some("题干"), None);
+
+    let result = database.complete_problem_organization(
+        "problem-incomplete",
+        &version,
+        "2026-09-20",
+    );
+
+    assert!(matches!(
+        result,
+        Err(DatabaseError::Conflict(message)) if message.contains("标准答案")
+    ));
+    assert_eq!(
+        database
+            .get_problem_document("problem-incomplete")
+            .expect("problem after rejection")
+            .status,
+        "inbox"
+    );
+    assert_eq!(database.list_inbox_items().expect("inbox").len(), 1);
+}
+
+#[test]
+fn inbox_problems_never_enter_the_review_queue_even_when_fields_are_complete() {
+    let (root, database) = dashboard_database();
+    insert_organization_fixture(&root, "problem-still-inbox", Some("题干"), Some("答案"));
+
+    assert!(database
+        .list_due_review_problems("2026-09-20")
+        .expect("due reviews")
+        .is_empty());
+}
+
+#[test]
+fn updating_problem_course_is_version_checked_and_rejects_unknown_courses() {
+    let (root, database) = dashboard_database();
+    let version = insert_organization_fixture(&root, "problem-course", Some("题干"), Some("答案"));
+    let connection = dashboard_connection(&root);
+    insert_dashboard_course(&connection, "target-course", "目标课程", "2026-09-20");
+    drop(connection);
+
+    let moved = database
+        .update_problem_course("problem-course", "target-course", &version)
+        .expect("move problem course");
+    assert_eq!(moved.course_id, "target-course");
+
+    assert!(matches!(
+        database.update_problem_course("problem-course", "missing-course", &moved.version),
+        Err(DatabaseError::Conflict(message)) if message.contains("课程")
+    ));
+    assert!(matches!(
+        database.update_problem_course("problem-course", "target-course", "stale-version"),
+        Err(DatabaseError::Conflict(message)) if message.contains("更新")
+    ));
+}
+
 fn insert_library_course(connection: &Connection, id: &str, name: &str, updated_at: &str) {
     connection
         .execute(
