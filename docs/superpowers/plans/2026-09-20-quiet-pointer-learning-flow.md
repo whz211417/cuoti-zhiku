@@ -25,6 +25,7 @@
 - Modify: `src/app/App.tsx`
 - Modify: `src/components/material/DynamicControlSurface.tsx`
 - Modify: `src/components/material/DynamicControlSurface.test.tsx`
+- Modify: `src/styles/dynamicGlassStyle.test.ts`
 - Modify: `src/styles/global.css`
 - Delete: `src/components/cursor/ImmersiveCursor.tsx`
 - Delete: `src/components/cursor/ImmersiveCursor.test.tsx`
@@ -35,7 +36,7 @@
 - Consumes: existing `DynamicControlSurface` wrapper and toolbar/sidebar class names.
 - Produces: static navigation material; hover/active/focus-visible feedback remains CSS-only.
 
-- [ ] **Step 1: Write the failing material test**
+- [x] **Step 1: Write the failing material test**
 
 Replace the pointer-coordinate contract with a test that renders a surface and verifies it does not install pointer-move handlers or inline `--glass-local-x`, `--glass-local-y`, and `--glass-active` values:
 
@@ -47,11 +48,11 @@ fireEvent.pointerMove(surface, { clientX: 80, clientY: 40 });
 expect(requestAnimationFrame).not.toHaveBeenCalled();
 ```
 
-- [ ] **Step 2: Run red test**
+- [x] **Step 2: Run red test**
 
 Run `npm.cmd test -- --run src/components/material/DynamicControlSurface.test.tsx`; expect failure because the current component tracks pointer coordinates and requests animation frames.
 
-- [ ] **Step 3: Implement the minimal static surface**
+- [x] **Step 3: Implement the minimal static surface**
 
 Reduce `DynamicControlSurface` to `createElement(as, { ...rest, className, data-material: 'navigation' }, children)`. Remove `ImmersiveCursor` import and render from `App`. Delete global `cursor: none`, `.immersive-cursor`, `.dynamic-glass-light`, and pointer-driven radial-gradient rules. Keep local controls on:
 
@@ -65,7 +66,7 @@ Reduce `DynamicControlSurface` to `createElement(as, { ...rest, className, data-
 .primary-action:active { transform: scale(.98); }
 ```
 
-- [ ] **Step 4: Verify and commit**
+- [x] **Step 4: Verify and commit**
 
 Run focused tests, `npm.cmd run typecheck`, and `npm.cmd run lint`. Stage only Task 1 files and commit `fix: replace global glow with quiet pointer feedback`.
 

@@ -26,12 +26,6 @@
   --motion-fast: 150ms;
   --motion-enter: 260ms;
   --motion-spring: cubic-bezier(.2, .8, .2, 1);
-  --glass-highlight-primary: rgb(255 255 255 / .72);
-  --glass-highlight-secondary: rgb(105 173 255 / .3);
-  --cursor-core: rgb(26 34 48 / .92);
-  --cursor-core-ring: rgb(255 255 255 / .88);
-  --cursor-halo: rgb(47 131 255 / .34);
-  --cursor-halo-soft: rgb(93 179 255 / .14);
 }
 
 /* A brief, critically-damped web approximation of a SwiftUI spring. */
@@ -45,9 +39,6 @@ body { background: radial-gradient(circle at 83% 4%, rgb(232 242 255 / .82), tra
 button, input, textarea { font: inherit; }
 button { cursor: pointer; }
 :focus-visible { outline: 3px solid rgb(0 122 255 / .48); outline-offset: 3px; }
-html.has-immersive-cursor, html.has-immersive-cursor body, html.has-immersive-cursor body * { cursor: none !important; }
-html.has-immersive-cursor input:not([type]), html.has-immersive-cursor input[type="text"], html.has-immersive-cursor input[type="email"], html.has-immersive-cursor input[type="number"], html.has-immersive-cursor input[type="password"], html.has-immersive-cursor input[type="search"], html.has-immersive-cursor input[type="tel"], html.has-immersive-cursor input[type="url"], html.has-immersive-cursor input[type="date"], html.has-immersive-cursor input[type="time"], html.has-immersive-cursor textarea, html.has-immersive-cursor [contenteditable="true"], html.has-immersive-cursor [role="textbox"] { cursor: text !important; }
-html.has-immersive-cursor select { cursor: default !important; }
 
 .app-shell { display: grid; grid-template-columns: 250px minmax(0, 1fr); min-height: 100vh; background: var(--canvas); }
 .sidebar { position: relative; z-index: 1; display: flex; flex-direction: column; min-height: 100vh; padding: 27px 12px 18px; background: rgb(241 241 244 / .72); border-right: 1px solid rgb(255 255 255 / .55); box-shadow: 1px 0 0 rgb(60 60 67 / .08), 18px 0 48px rgb(56 66 88 / .035); backdrop-filter: blur(24px) saturate(140%); }
@@ -185,43 +176,6 @@ h1 { font-size: clamp(34px, 4vw, 46px); line-height: 1.07; }.toolbar-actions { d
 .workbench { position: relative; isolation: isolate; }
 .workbench::before { position: fixed; z-index: -1; inset: 0 0 auto 250px; height: 420px; content: ""; pointer-events: none; background: radial-gradient(ellipse 62% 52% at 48% 0%, rgb(216 230 250 / .45), transparent 72%); }
 .dynamic-control-surface { position: relative; isolation: isolate; }
-.dynamic-glass-light {
-  position: absolute;
-  z-index: 0;
-  inset: 0;
-  border-radius: inherit;
-  pointer-events: none;
-  opacity: calc(var(--glass-active) * .18);
-  background:
-    radial-gradient(circle 54px at calc(var(--glass-local-x) - 16px) calc(var(--glass-local-y) - 12px), var(--glass-highlight-primary), rgb(255 255 255 / .16) 42%, transparent 82%),
-    radial-gradient(circle 96px at calc(var(--glass-local-x) + 22px) calc(var(--glass-local-y) + 14px), var(--glass-highlight-secondary), rgb(153 202 255 / .09) 48%, transparent 84%);
-  filter: blur(14px) saturate(118%);
-  transition: opacity 240ms var(--motion-spring);
-  will-change: opacity;
-}
-.dynamic-control-surface > :not(.dynamic-glass-light) { position: relative; z-index: 1; }
-.immersive-cursor {
-  position: fixed;
-  z-index: 300;
-  top: 0;
-  left: 0;
-  width: 0;
-  height: 0;
-  pointer-events: none;
-  opacity: 0;
-  transform: translate3d(var(--cursor-x, -24px), var(--cursor-y, -24px), 0);
-  transition: opacity 120ms ease-out;
-  will-change: transform, opacity;
-}
-.immersive-cursor[data-cursor-visible="true"] { opacity: 1; }
-.immersive-cursor::before, .immersive-cursor::after { position: absolute; content: ""; pointer-events: none; }
-.immersive-cursor::before { width: 9px; height: 9px; border: 1px solid var(--cursor-core-ring); border-radius: 50%; background: var(--cursor-core); box-shadow: 0 2px 8px rgb(0 0 0 / .2); transform: translate3d(-4.5px, -4.5px, 0); transition: width 160ms var(--motion-spring), height 160ms var(--motion-spring), border-radius 160ms var(--motion-spring), transform 160ms var(--motion-spring), background-color 160ms ease-out; }
-.immersive-cursor::after { width: 68px; height: 68px; border-radius: 50%; background: radial-gradient(circle, var(--cursor-halo) 0 6%, var(--cursor-halo-soft) 30%, transparent 70%); filter: blur(4px); opacity: .85; transform: translate3d(-34px, -34px, 0) scale(.92); transition: opacity 180ms ease-out, transform 220ms var(--motion-spring); }
-.immersive-cursor[data-cursor-mode="control"]::before { width: 16px; height: 16px; border-radius: 6px; background: rgb(33 117 238 / .92); transform: translate3d(-8px, -8px, 0); }
-.immersive-cursor[data-cursor-mode="control"]::after { opacity: 1; transform: translate3d(-34px, -34px, 0) scale(1.08); }
-.immersive-cursor[data-cursor-mode="native"] { opacity: 0; }
-.immersive-cursor[data-cursor-pressed="true"]::before { transform: translate3d(-4px, -4px, 0) scale(.84); }
-.immersive-cursor[data-cursor-pressed="true"]::after { opacity: .48; transform: translate3d(-34px, -34px, 0) scale(.76); }
 .brand-lockup span { background: linear-gradient(145deg, #292a2f, #111216); box-shadow: inset 0 1px 0 rgb(255 255 255 / .18), 0 5px 12px rgb(18 22 31 / .18); }
 .sidebar::after { position: absolute; inset: 0 0 auto; height: 168px; content: ""; pointer-events: none; background: linear-gradient(180deg, rgb(255 255 255 / .22), transparent); }
 .brand-lockup, .library-nav, .sidebar-section, .local-note { position: relative; z-index: 1; }
@@ -654,8 +608,6 @@ input:not([type="radio"]):not([type="checkbox"]) { min-height: 44px; }
 
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: 1ms !important; scroll-behavior: auto !important; transition-duration: 1ms !important; }
-  .dynamic-glass-light { opacity: 0 !important; }
-  .immersive-cursor { display: none !important; }
   .nav-selection-lens, .dashboard-course, .dashboard-problem, .command-palette { transform: none !important; transition: none !important; }
   .is-spinning { animation: none !important; }
   .ai-review-state { animation: none; }
@@ -667,7 +619,7 @@ input:not([type="radio"]):not([type="checkbox"]) { min-height: 44px; }
   .sidebar, .toolbar, .toolbar-button, .nav-selection-lens, .materials-workspace, .review-reader, .review-answer, .inspector-surface, .command-palette, .problem-archive, .ai-provider-settings, .ai-provider-settings-toolbar { background: var(--paper) !important; box-shadow: none; backdrop-filter: none; -webkit-backdrop-filter: none; }
   .inspector-backdrop, .command-palette-backdrop { background: rgb(28 28 30 / .48); backdrop-filter: none; -webkit-backdrop-filter: none; }
   .materials-rail { background: #f4f5f7; }
-  .workbench::before, .sidebar::after, .dynamic-glass-light, .toolbar-button::before, .immersive-cursor { display: none; }
+  .workbench::before, .sidebar::after, .toolbar-button::before { display: none; }
   .nav-selection-lens { border-color: var(--separator); }
 }
 
@@ -897,10 +849,6 @@ input:not([type="radio"]):not([type="checkbox"]) { min-height: 44px; }
 .toolbar-actions { align-items: center; }
 .toolbar-button { min-width: 44px; min-height: 44px; border-radius: 13px; }
 .toolbar-ingest-action { padding: 0 15px; }
-.dynamic-control-surface[data-material="navigation"] .dynamic-glass-light {
-  opacity: calc(var(--glass-active) * .2);
-  transition: opacity 240ms var(--motion-spring);
-}
 
 .dashboard-content { gap: 26px 28px; }
 .dashboard-focus {
@@ -1024,12 +972,6 @@ input:not([type="radio"]):not([type="checkbox"]) { min-height: 44px; }
     --shadow-navigation: 0 20px 58px rgb(0 0 0 / .34), inset 0 1px rgb(255 255 255 / .12);
     --shadow-paper: 0 24px 64px rgb(0 0 0 / .26), inset 0 1px rgb(255 255 255 / .08);
     --shadow-transient: 0 30px 84px rgb(0 0 0 / .48), inset 0 1px rgb(255 255 255 / .14);
-    --glass-highlight-primary: rgb(230 241 255 / .62);
-    --glass-highlight-secondary: rgb(77 154 255 / .5);
-    --cursor-core: rgb(241 247 255 / .94);
-    --cursor-core-ring: rgb(20 25 34 / .82);
-    --cursor-halo: rgb(86 170 255 / .52);
-    --cursor-halo-soft: rgb(98 183 255 / .22);
   }
   body { background: radial-gradient(circle at 82% 3%, rgb(29 55 84 / .5), transparent 27rem), var(--canvas); }
   .app-shell { background: var(--canvas); }
@@ -1071,7 +1013,6 @@ input:not([type="radio"]):not([type="checkbox"]) { min-height: 44px; }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .dynamic-control-surface[data-material="navigation"] .dynamic-glass-light { opacity: 0 !important; }
   .dashboard-focus::after { transform: none; }
   .clipboard-capture-toast, .clipboard-capture-toast .is-spinning { animation: none; }
 }

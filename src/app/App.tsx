@@ -4,7 +4,6 @@ import { AlertCircle, Archive, BookOpenCheck, ChevronLeft, Inbox, LayoutDashboar
 import { type CSSProperties, useCallback, useEffect, useRef, useState } from 'react';
 import { DynamicControlSurface } from '../components/material/DynamicControlSurface';
 import { InspectorSurface } from '../components/material/InspectorSurface';
-import { ImmersiveCursor } from '../components/cursor/ImmersiveCursor';
 import { createBackup } from '../features/backup/createBackup';
 import { restoreBackup } from '../features/backup/restoreBackup';
 import { ArchiveLibrary } from '../features/archive/ArchiveLibrary';
@@ -387,7 +386,6 @@ export function App() {
 
   return (
     <main aria-label="错题智库" className="app-shell" role="application">
-      <ImmersiveCursor />
       <GlobalFileDrop
         courseId={selectedCourseId}
         onImported={refreshOverview}
