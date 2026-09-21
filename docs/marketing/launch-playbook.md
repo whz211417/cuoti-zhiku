@@ -16,6 +16,7 @@
 
 ## 发布前准备
 
+- GitHub Social Preview 使用仓库内的 `docs/assets/social/github-social-preview.png`；源文件可在同目录重新渲染。
 - 使用一套完全虚构、无版权风险的演示课程与题目录屏。
 - 演示一次完整路径：拖入 → 已保存 → 整理 → 审核 AI 建议 → 今日复习。
 - 所有帖子统一指向 [Latest Release](https://github.com/whz211417/cuoti-zhiku/releases/latest)。

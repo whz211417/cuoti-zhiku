@@ -30,6 +30,10 @@ describe('public repository presentation', () => {
   it('presents the product and a truthful promotion path before developer detail', () => {
     const readme = readFileSync(resolve(repositoryRoot, 'README.md'), 'utf8')
     const launchPlaybookPath = resolve(repositoryRoot, 'docs/marketing/launch-playbook.md')
+    const socialPreviewPath = resolve(
+      repositoryRoot,
+      'docs/assets/social/github-social-preview.png',
+    )
 
     expect(readme).toContain('docs/assets/readme/local-materials.png')
     expect(readme).toContain('拖进来，先保存')
@@ -44,5 +48,10 @@ describe('public repository presentation', () => {
     expect(launchPlaybook).toContain('V2EX')
     expect(launchPlaybook).toContain('校园种子用户')
     expect(launchPlaybook).toContain('Release 下载量')
+    expect(existsSync(socialPreviewPath)).toBe(true)
+
+    const socialPreview = readFileSync(socialPreviewPath)
+    expect(socialPreview.readUInt32BE(16)).toBe(1280)
+    expect(socialPreview.readUInt32BE(20)).toBe(640)
   })
 })
