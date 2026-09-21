@@ -17,11 +17,14 @@
 ## 发布前准备
 
 - GitHub Social Preview 使用仓库内的 `docs/assets/social/github-social-preview.png`；源文件可在同目录重新渲染。
+- 运行 `pnpm capture:readme`，确认 README 的 8 张产品截图全部来自当前代码，尺寸均为 1440×900。
+- 按学习总览、待整理、题目档案、AI 审核、今日复习、知识网络、课程资料、AI 设置的顺序逐张检查，不混用旧版本截图。
 - 使用一套完全虚构、无版权风险的演示课程与题目录屏。
 - 演示一次完整路径：拖入 → 已保存 → 整理 → 审核 AI 建议 → 今日复习。
 - 所有帖子统一指向 [Latest Release](https://github.com/whz211417/cuoti-zhiku/releases/latest)。
 - 在说明中主动写明：仅 Windows x64、暂不内置 OCR、首次安装可能出现 SmartScreen 提示。
 - 不展示 API Key、Windows 用户名、真实教材、私人题目或本地文件路径。
+- 截图同样只使用脚本内的虚构数据，不展示真实教材、API Key 或个人内容。
 
 ## 四周启动节奏
 

@@ -16,7 +16,7 @@
   </p>
 </div>
 
-![错题智库把教材变成可核查的本地笔记索引](docs/assets/readme/local-materials.png)
+![错题智库学习总览：复习、待整理、课程和资料一屏可见](docs/assets/readme/overview.png)
 
 ## 不是把答案分开放，而是把一次学习完整留下
 
@@ -54,16 +54,34 @@
 
 ## 真实界面
 
+从收题、整理、审核到复习，下面的截图来自当前版本的真实组件；示例课程与题目均为虚构数据。
+
+### 先收下，再慢慢整理
+
 <p align="center">
-  <img src="docs/assets/readme/ai-review.png" alt="题目档案中的 AI 逐字段审核" width="49%" />
-  <img src="docs/assets/readme/ai-settings.png" alt="多 AI 平台和模型设置" width="49%" />
-</p>
-<p align="center">
-  <img src="docs/assets/readme/overview.png" alt="错题智库档案总览" width="49%" />
-  <img src="docs/assets/readme/local-materials.png" alt="本地课程资料依据" width="49%" />
+  <img src="docs/assets/readme/inbox.png" alt="拖入题图和 PDF 后先安全保存的待整理入口" width="49%" />
+  <img src="docs/assets/readme/problem-detail.png" alt="题干、个人作答、标准答案和解析保存在同一份题目档案" width="49%" />
 </p>
 
-截图不含个人题目、课程资料或 API Key，只展示真实产品界面与已经交付的能力。
+### AI 逐字段建议，复习默认隐藏答案
+
+<p align="center">
+  <img src="docs/assets/readme/ai-review.png" alt="题目档案中的 AI 逐字段审核" width="49%" />
+  <img src="docs/assets/readme/review.png" alt="默认隐藏答案、先独立回忆的今日复习" width="49%" />
+</p>
+
+### 从薄弱知识点回到本地教材
+
+<p align="center">
+  <img src="docs/assets/readme/knowledge.png" alt="按课程、知识点和题目组织的知识网络" width="49%" />
+  <img src="docs/assets/readme/materials.png" alt="课程资料保存和本地检索工作区" width="49%" />
+</p>
+
+### 自带 Key，自由选择平台与模型
+
+![阿里云百炼、DeepSeek、智谱、月之暗面和 OpenAI 兼容平台设置](docs/assets/readme/ai-settings.png)
+
+截图不含个人题目、真实课程资料或 API Key，只展示当前产品界面与已经交付的能力。运行 `pnpm capture:readme` 可用固定虚构数据重新生成整套截图。
 
 ## 三步开始使用
 
