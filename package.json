@@ -11,6 +11,7 @@
     "lint": "eslint . --max-warnings=0",
     "typecheck": "tsc --noEmit",
     "build": "tsc -b && vite build",
+    "capture:readme": "node scripts/capture-readme-screenshots.mjs",
     "tauri": "tauri",
     "tauri:build": "tauri build",
     "verify:release-version": "node scripts/verify-release-version.mjs"

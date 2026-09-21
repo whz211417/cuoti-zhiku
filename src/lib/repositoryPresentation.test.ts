@@ -2,8 +2,10 @@ import { existsSync, readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 
 import { describe, expect, it } from 'vitest'
+import { readmeScreenshotScenes } from '../../scripts/readme-screenshot-scenes.mjs'
 
 const repositoryRoot = process.cwd()
+const readmeScreenshotFiles = readmeScreenshotScenes.map(({ filename }) => filename)
 
 describe('public repository presentation', () => {
   it('keeps the README pointed at the current, verifiable release', () => {
@@ -35,7 +37,18 @@ describe('public repository presentation', () => {
       'docs/assets/social/github-social-preview.png',
     )
 
-    expect(readme).toContain('docs/assets/readme/local-materials.png')
+    for (const filename of readmeScreenshotFiles) {
+      expect(readme).toContain(`docs/assets/readme/${filename}`)
+      const screenshotPath = resolve(repositoryRoot, 'docs/assets/readme', filename)
+      expect(existsSync(screenshotPath)).toBe(true)
+      const screenshot = readFileSync(screenshotPath)
+      expect(screenshot.readUInt32BE(16)).toBe(1440)
+      expect(screenshot.readUInt32BE(20)).toBe(900)
+    }
+    expect(existsSync(resolve(repositoryRoot, 'docs/assets/readme/local-materials.png'))).toBe(false)
+    expect(readme.match(/docs\/assets\/readme\/[^)"']+\.png/g)).toHaveLength(
+      readmeScreenshotFiles.length,
+    )
     expect(readme).toContain('拖进来，先保存')
     expect(readme).toContain('AI 只做建议')
     expect(readme).toContain('releases/latest')
