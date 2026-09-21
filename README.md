@@ -1,19 +1,19 @@
 <div align="center">
-
-# 错题智库
-
-**把散落的题图、教材依据和复习记录，收进一份真正属于你的本地学习档案。**
-
-Local-first mistake notebook and spaced-repetition workspace for Windows.
-
-[**下载 Windows 最新版**](https://github.com/whz211417/cuoti-zhiku/releases/latest) · [安装与校验](docs/release/windows-installation.md) · [提交建议](https://github.com/whz211417/cuoti-zhiku/issues/new?template=feature_request.yml)
-
-[![Latest release](https://img.shields.io/github/v/release/whz211417/cuoti-zhiku?display_name=tag&style=flat-square&color=4f78c4)](https://github.com/whz211417/cuoti-zhiku/releases/latest)
-![Windows](https://img.shields.io/badge/Windows-x64-1f6feb?style=flat-square)
-![Local first](https://img.shields.io/badge/data-local--first-7895a5?style=flat-square)
-[![CI](https://github.com/whz211417/cuoti-zhiku/actions/workflows/verify.yml/badge.svg)](https://github.com/whz211417/cuoti-zhiku/actions/workflows/verify.yml)
-[![License](https://img.shields.io/badge/license-MIT-2ea44f?style=flat-square)](LICENSE)
-
+  <h1>错题智库</h1>
+  <p><strong>把散落的题图、教材依据和复习记录，收进一份真正属于你的本地学习档案。</strong></p>
+  <p>Local-first mistake notebook and spaced-repetition workspace for Windows.</p>
+  <p>
+    <a href="https://github.com/whz211417/cuoti-zhiku/releases/latest"><strong>下载 Windows 最新版</strong></a>
+    · <a href="docs/release/windows-installation.md">安装与校验</a>
+    · <a href="https://github.com/whz211417/cuoti-zhiku/issues/new?template=feature_request.yml">提交建议</a>
+  </p>
+  <p>
+    <a href="https://github.com/whz211417/cuoti-zhiku/releases/latest"><img src="https://img.shields.io/github/v/release/whz211417/cuoti-zhiku?display_name=tag&amp;style=flat-square&amp;color=4f78c4" alt="Latest release" /></a>
+    <img src="https://img.shields.io/badge/Windows-x64-1f6feb?style=flat-square" alt="Windows x64" />
+    <img src="https://img.shields.io/badge/data-local--first-7895a5?style=flat-square" alt="Local first" />
+    <a href="https://github.com/whz211417/cuoti-zhiku/actions/workflows/verify.yml"><img src="https://github.com/whz211417/cuoti-zhiku/actions/workflows/verify.yml/badge.svg" alt="CI" /></a>
+    <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-2ea44f?style=flat-square" alt="MIT License" /></a>
+  </p>
 </div>
 
 ![错题智库把教材变成可核查的本地笔记索引](docs/assets/readme/local-materials.png)
