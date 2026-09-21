@@ -1,91 +1,105 @@
-# 错题智库
+<div align="center">
+  <h1>错题智库</h1>
+  <p><strong>把散落的题图、教材依据和复习记录，收进一份真正属于你的本地学习档案。</strong></p>
+  <p>Local-first mistake notebook and spaced-repetition workspace for Windows.</p>
+  <p>
+    <a href="https://github.com/whz211417/cuoti-zhiku/releases/latest"><strong>下载 Windows 最新版</strong></a>
+    · <a href="docs/release/windows-installation.md">安装与校验</a>
+    · <a href="https://github.com/whz211417/cuoti-zhiku/issues/new?template=feature_request.yml">提交建议</a>
+  </p>
+  <p>
+    <a href="https://github.com/whz211417/cuoti-zhiku/releases/latest"><img src="https://img.shields.io/github/v/release/whz211417/cuoti-zhiku?display_name=tag&amp;style=flat-square&amp;color=4f78c4" alt="Latest release" /></a>
+    <img src="https://img.shields.io/badge/Windows-x64-1f6feb?style=flat-square" alt="Windows x64" />
+    <img src="https://img.shields.io/badge/data-local--first-7895a5?style=flat-square" alt="Local first" />
+    <a href="https://github.com/whz211417/cuoti-zhiku/actions/workflows/verify.yml"><img src="https://github.com/whz211417/cuoti-zhiku/actions/workflows/verify.yml/badge.svg" alt="CI" /></a>
+    <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-2ea44f?style=flat-square" alt="MIT License" /></a>
+  </p>
+</div>
 
-> 把错题、教材依据、复习计划和知识网络，收进一份只属于你的本地学习档案。
+![错题智库把教材变成可核查的本地笔记索引](docs/assets/readme/local-materials.png)
 
-<p>
-  <a href="https://github.com/whz211417/cuoti-zhiku/releases/latest"><strong>下载 Windows 版</strong></a>
-  ·
-  <a href="https://github.com/whz211417/cuoti-zhiku/releases">全部版本</a>
-  ·
-  <a href="docs/release/windows-installation.md">安装与校验</a>
-  ·
-  <a href="docs/development.md">开发文档</a>
-</p>
+## 不是把答案分开放，而是把一次学习完整留下
 
-![Windows](https://img.shields.io/badge/Windows-x64-1f6feb?style=flat-square)
-![Tauri](https://img.shields.io/badge/Tauri-2-24c8db?style=flat-square&logo=tauri&logoColor=white)
-![React](https://img.shields.io/badge/React-TypeScript-61dafb?style=flat-square&logo=react&logoColor=111827)
-![Rust](https://img.shields.io/badge/Rust-backend-000000?style=flat-square&logo=rust)
-![CI](https://github.com/whz211417/cuoti-zhiku/actions/workflows/verify.yml/badge.svg)
-![License](https://img.shields.io/badge/license-MIT-2ea44f?style=flat-square)
+过去用两个文档分别存题目和答案，整理成本高，复习时也很容易脱节。错题智库把题目原件、个人作答、标准答案、解析、错因、知识点和教材出处留在同一份记录里。
 
-## 从一张题图，到下一次真正复习
+| 拖进来，先保存 | AI 只做建议 | 错题会回到复习计划 |
+| --- | --- | --- |
+| 题图、PDF、Markdown、TXT 会先按内容安全落盘，再进入待整理；不用先把表单填完。 | AI 是可选增强。每个字段都可以单独采纳、编辑或拒绝，不会静默改写你的答案。 | 复习时默认先看题目，再自然展开答案；根据掌握程度安排下一次出现。 |
 
-把文件拖进窗口：题图、PDF、Markdown、TXT 都会先安全保存在本机。之后你可以慢慢补题干、写作答、整理答案；需要时再让 AI 生成可逐项审阅的建议。题目、答案、错因、知识点和教材出处始终留在同一份记录里。
+## 一分钟理解完整流程
 
 ```text
-投进题目 / 题图 / PDF
-  → 原件先落盘，进入待整理
-  → 补充题干与个人作答
-  → 可选 AI 提出可审核建议
-  → 采纳、编辑或拒绝每个字段
-  → 进入今日复习、知识网络与导出
+拖入题图 / PDF / 讲义
+  → 原件立刻保存到本机
+  → 补题干与个人作答
+  → 可选 AI 生成逐字段建议
+  → 用户审核答案、解析、错因与知识点
+  → 进入今日复习与知识网络
+  → 导出题目册、答案解析册或 Obsidian 知识库
 ```
 
-## 看看实际界面
+不配置 AI、没有网络或 API 请求失败时，收题、整理、检索、复习、备份和导出仍然可用。
+
+## 你每天真正会用到的部分
+
+| 场景 | 体验 |
+| --- | --- |
+| 快速收题 | 从资源管理器直接拖入 PNG、JPG、WebP、PDF、Markdown、TXT，也支持粘贴截图。 |
+| 阅读式整理 | 题干、作答、答案、解析、错因与知识点组成一份题目档案，而不是连续的后台表单。 |
+| 今日复习 | 默认隐藏答案；用“忘记、吃力、熟悉、掌握”记录状态并安排下次复习。 |
+| 教材依据 | 讲义和教材在课程内本地检索；AI 只在本次明确允许时读取少量相关片段。 |
+| 多模型 AI | 支持阿里云百炼、DeepSeek、智谱、月之暗面和 OpenAI 兼容 HTTPS 平台，自带 Key 即可。 |
+| 知识网络 | 按“课程—知识点—题目”回看薄弱点，并可导出 Markdown、附件和 JSON Canvas 到 Obsidian。 |
+| 数据安全 | 数据可备份、恢复和导出；删除应用管理资料时会明确确认，不触碰最初导入的原文件。 |
+
+## 真实界面
 
 <p align="center">
-  <img src="docs/assets/readme/overview.png" alt="错题智库档案总览" width="49%" />
-  <img src="docs/assets/readme/ai-review.png" alt="题目档案与 AI 字段审核" width="49%" />
+  <img src="docs/assets/readme/ai-review.png" alt="题目档案中的 AI 逐字段审核" width="49%" />
+  <img src="docs/assets/readme/ai-settings.png" alt="多 AI 平台和模型设置" width="49%" />
 </p>
 <p align="center">
-  <img src="docs/assets/readme/ai-settings.png" alt="可选 AI 引擎设置" width="49%" />
+  <img src="docs/assets/readme/overview.png" alt="错题智库档案总览" width="49%" />
   <img src="docs/assets/readme/local-materials.png" alt="本地课程资料依据" width="49%" />
 </p>
 
-截图不含个人题目、课程资料或 API Key，仅展示真实的产品界面与交互。
+截图不含个人题目、课程资料或 API Key，只展示真实产品界面与已经交付的能力。
 
-## 三步开始
+## 三步开始使用
 
-1. 从 [最新 Release](https://github.com/whz211417/cuoti-zhiku/releases/latest) 下载 Windows x64 安装包；首次安装完成后，日常直接从桌面或开始菜单打开。
-2. 新建课程，拖入一张题图或一份 PDF；原件会先保存，再等待你整理。
-3. 到“今日复习”揭示答案并记录掌握程度；不配置 AI 也能完整使用本地学习流程。
+1. 打开 [Latest Release](https://github.com/whz211417/cuoti-zhiku/releases/latest)，下载 Windows x64 安装包。首次安装完成后，日常直接从桌面或开始菜单打开。
+2. 新建一门课程，把一张题图或一份 PDF 直接拖进窗口；看到“已保存”后再慢慢整理。
+3. 到“今日复习”先独立作答，再展开答案并记录掌握程度。
 
-安装包大小、SHA-256 与 SmartScreen 说明见 [Windows 安装与首启](docs/release/windows-installation.md)。
+安装包 SHA-256、SmartScreen 提示与更新方式见 [Windows 安装与首启](docs/release/windows-installation.md)。
 
-## 能做什么
+## 为什么坚持本地优先
 
-| 场景 | 你得到的体验 |
-| --- | --- |
-| 收题 | 可从资源管理器拖入 PNG、JPG、WebP、PDF、Markdown、TXT，也支持粘贴截图。原件先按 SHA-256 内容地址安全落盘。 |
-| 整理 | 题干、个人作答、标准答案、解析、错因与知识点笔记共同构成一份阅读式题目档案。 |
-| 复习 | 默认先隐藏答案；用“忘记、吃力、熟悉、掌握”安排下次复习。 |
-| 教材依据 | 课程资料可本地检索；AI 仅在你允许时读取少量相关片段，引用不凭空生成。 |
-| AI 辅助 | 可配置百炼、DeepSeek、智谱、月之暗面、OpenAI 兼容 HTTPS 平台；建议必须逐字段审阅。 |
-| 知识网络 | 按“课程—知识点—题目”回看薄弱点，并可导出 Markdown、附件和 JSON Canvas 到 Obsidian。 |
-| 资料安全 | 资料可恢复、可备份、可导出；删除应用管理的本地资料时会明确确认，不会删除你的原始文件。 |
-
-## 本地优先，不把学习资料交给产品
-
-- 题目原件、SQLite 资料库、课程材料和复习记录默认只保存在这台 Windows 电脑上。
-- 没有网络、没有 API Key 或 AI 请求失败时，收题、整理、检索、复习、备份和导出仍可使用。
-- API Key 按平台与目标地址隔离保存到 Windows 凭据管理器，不进入 SQLite、备份或导出文件。
-- 完整备份包含数据库与应用保存的原件；恢复前会创建救援副本。
+- 题目原件、SQLite 资料库、课程材料和复习记录默认只保存在这台电脑上。
+- API Key 按平台与目标地址隔离保存到 Windows 凭据管理器，不写入 SQLite、备份或导出文件。
+- AI 请求前展示本次发送范围，不会默认上传整门课程或整本教材。
+- 完整备份包含数据库和应用保存的原件；恢复前会先创建救援副本。
+- 应用内更新使用独立签名验证，并在有未保存题目内容时阻止安装。
 
 ## 当前边界
 
-- 当前提供 Windows x64 安装包和应用内签名更新；安装包尚未购买商业代码签名，首次安装时 SmartScreen 仍可能要求你确认来源。
-- 当前不内置 OCR。扫描版 PDF 需要先 OCR 或手动补充题干；题目 PDF 本身仍可安全保存。
-- AI 不会默认发送 PDF 全文或教材全文，只有本次明确授权的题目内容、题图和少量教材片段会进入请求范围。
-- `.czkbackup` 不包含 Windows 凭据管理器中的 API Key；迁移后需要重新配置。
+- 目前提供 Windows x64 版本；没有 macOS、移动端或云同步版本。
+- 当前不内置 OCR。扫描版 PDF 需要先 OCR 或手动补充题干，但原文件仍会安全保存。
+- 安装包尚未购买商业 Authenticode 证书，首次安装时 Windows SmartScreen 可能要求确认来源。
+- `.czkbackup` 不包含 Windows 凭据管理器里的 API Key，迁移设备后需要重新配置。
 
-## 参与建设
+## 给开发者
 
-- 遇到问题或有想法：提交 [Bug 报告](https://github.com/whz211417/cuoti-zhiku/issues/new?template=bug_report.yml) 或 [功能建议](https://github.com/whz211417/cuoti-zhiku/issues/new?template=feature_request.yml)。请勿上传真实题目原件、教材或 API Key。
-- 想参与开发：先看 [贡献指南](CONTRIBUTING.md)，再提交小而清晰的改动。
-- 发现安全问题：请按 [安全策略](SECURITY.md) 私下反馈，不要公开贴出密钥、学习资料或可复现攻击细节。
-- 版本变化与安装包：见 [Releases](https://github.com/whz211417/cuoti-zhiku/releases)。
+应用使用 Tauri 2、React、TypeScript、Rust 与 SQLite。开发环境、命令和验证要求见 [开发文档](docs/development.md)；产品决策强调本地工作流独立于 AI、引用可追溯、删除边界明确、备份可恢复。
 
-## 许可证
+- 参与开发：[贡献指南](CONTRIBUTING.md)
+- 报告问题：[Bug 模板](https://github.com/whz211417/cuoti-zhiku/issues/new?template=bug_report.yml)
+- 提出功能：[功能建议模板](https://github.com/whz211417/cuoti-zhiku/issues/new?template=feature_request.yml)
+- 报告安全问题：[安全策略](SECURITY.md)
+- 推广这个项目：[个人开发者推广手册](docs/marketing/launch-playbook.md)
 
-本项目使用 [MIT License](LICENSE)。
+请勿在 Issue、截图或提交中上传真实题目原件、教材、数据库、备份文件或 API Key。
+
+## License
+
+[MIT](LICENSE) © 2026 whz211417

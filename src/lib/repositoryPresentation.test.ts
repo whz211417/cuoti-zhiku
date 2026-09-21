@@ -26,4 +26,23 @@ describe('public repository presentation', () => {
     expect(existsSync(resolve(repositoryRoot, '.github/ISSUE_TEMPLATE/feature_request.yml'))).toBe(true)
     expect(existsSync(resolve(repositoryRoot, '.github/workflows/verify.yml'))).toBe(true)
   })
+
+  it('presents the product and a truthful promotion path before developer detail', () => {
+    const readme = readFileSync(resolve(repositoryRoot, 'README.md'), 'utf8')
+    const launchPlaybookPath = resolve(repositoryRoot, 'docs/marketing/launch-playbook.md')
+
+    expect(readme).toContain('docs/assets/readme/local-materials.png')
+    expect(readme).toContain('拖进来，先保存')
+    expect(readme).toContain('AI 只做建议')
+    expect(readme).toContain('releases/latest')
+    expect(readme).toContain('docs/marketing/launch-playbook.md')
+    expect(existsSync(launchPlaybookPath)).toBe(true)
+
+    const launchPlaybook = readFileSync(launchPlaybookPath, 'utf8')
+    expect(launchPlaybook).toContain('小红书')
+    expect(launchPlaybook).toContain('B 站')
+    expect(launchPlaybook).toContain('V2EX')
+    expect(launchPlaybook).toContain('校园种子用户')
+    expect(launchPlaybook).toContain('Release 下载量')
+  })
 })
