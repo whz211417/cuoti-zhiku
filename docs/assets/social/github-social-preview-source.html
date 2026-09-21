@@ -1,0 +1,126 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>错题智库 GitHub Social Preview</title>
+  <style>
+    * { box-sizing: border-box; }
+    html, body { margin: 0; width: 1280px; height: 640px; overflow: hidden; }
+    body {
+      color: #f4f6fa;
+      font-family: "Segoe UI", "Microsoft YaHei UI", "PingFang SC", sans-serif;
+      background:
+        radial-gradient(circle at 82% 18%, rgba(111, 145, 192, .17), transparent 34%),
+        radial-gradient(circle at 18% 90%, rgba(174, 132, 72, .08), transparent 30%),
+        #0b0e14;
+    }
+    .frame {
+      position: relative;
+      width: 100%;
+      height: 100%;
+      padding: 76px 84px;
+      border: 1px solid rgba(255,255,255,.08);
+    }
+    .eyebrow {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      color: #9aabc2;
+      font-size: 18px;
+      letter-spacing: .16em;
+    }
+    .mark {
+      width: 38px;
+      height: 38px;
+      display: grid;
+      place-items: center;
+      border-radius: 11px;
+      background: rgba(255,255,255,.06);
+      border: 1px solid rgba(255,255,255,.11);
+    }
+    h1 { margin: 54px 0 20px; font-size: 80px; line-height: 1; letter-spacing: -.06em; }
+    .subtitle { margin: 0; color: #bcc5d1; font-size: 27px; letter-spacing: .02em; }
+    .tags { display: flex; gap: 12px; margin-top: 54px; }
+    .tag {
+      padding: 10px 16px;
+      border: 1px solid rgba(255,255,255,.10);
+      border-radius: 999px;
+      color: #b8c6d8;
+      background: rgba(255,255,255,.045);
+      font-size: 16px;
+    }
+    .visual { position: absolute; right: 76px; top: 84px; width: 430px; height: 470px; }
+    .sheet {
+      position: absolute;
+      width: 315px;
+      height: 390px;
+      border-radius: 34px;
+      border: 1px solid rgba(255,255,255,.14);
+      background: linear-gradient(145deg, rgba(44,50,63,.94), rgba(19,23,31,.96));
+      box-shadow: 0 34px 80px rgba(0,0,0,.42), inset 0 1px rgba(255,255,255,.12);
+    }
+    .sheet.back { right: 0; top: 0; transform: rotate(6deg); opacity: .56; }
+    .sheet.front { left: 10px; bottom: 0; padding: 36px 32px; }
+    .line { height: 9px; border-radius: 9px; background: rgba(214,222,234,.16); margin-bottom: 18px; }
+    .line.short { width: 54%; }
+    .answer {
+      margin-top: 42px;
+      padding: 22px;
+      border-radius: 20px;
+      border: 1px solid rgba(139,166,204,.24);
+      background: rgba(104,137,183,.10);
+    }
+    .network { position: absolute; inset: 0; pointer-events: none; }
+    .node { fill: #7896bd; }
+    .edge { fill: none; stroke: rgba(130,157,192,.28); stroke-width: 2; }
+    .amber { fill: #c99a52; }
+    .footer { position: absolute; left: 84px; bottom: 55px; color: #6f7d90; font-size: 15px; letter-spacing: .08em; }
+  </style>
+</head>
+<body>
+  <main class="frame">
+    <div class="eyebrow">
+      <span class="mark" aria-hidden="true">
+        <svg width="23" height="23" viewBox="0 0 24 24" fill="none" stroke="#cad5e4" stroke-width="1.7">
+          <path d="M4 5.5A2.5 2.5 0 0 1 6.5 3H11v15H6.5A2.5 2.5 0 0 0 4 20.5v-15Z" />
+          <path d="M20 5.5A2.5 2.5 0 0 0 17.5 3H13v15h4.5a2.5 2.5 0 0 1 2.5 2.5v-15Z" />
+          <path d="m8 8 1.2 1.2L11 7.4" />
+        </svg>
+      </span>
+      LOCAL-FIRST STUDY ARCHIVE
+    </div>
+    <h1>错题智库</h1>
+    <p class="subtitle">本地优先的错题学习档案</p>
+    <div class="tags">
+      <span class="tag">原件先保存</span>
+      <span class="tag">AI 逐字段审核</span>
+      <span class="tag">复习与知识网络</span>
+    </div>
+    <div class="visual" aria-hidden="true">
+      <div class="sheet back"></div>
+      <div class="sheet front">
+        <div class="line short"></div>
+        <div class="line"></div>
+        <div class="line"></div>
+        <div class="answer">
+          <div class="line short"></div>
+          <div class="line"></div>
+          <div class="line" style="width:72%"></div>
+        </div>
+      </div>
+      <svg class="network" viewBox="0 0 430 470">
+        <path class="edge" d="M330 74 388 122 350 187 401 244" />
+        <path class="edge" d="M350 187 298 236 341 305" />
+        <circle class="node" cx="330" cy="74" r="6" />
+        <circle class="node" cx="388" cy="122" r="8" />
+        <circle class="amber" cx="350" cy="187" r="7" />
+        <circle class="node" cx="401" cy="244" r="5" />
+        <circle class="node" cx="298" cy="236" r="5" />
+        <circle class="node" cx="341" cy="305" r="7" />
+      </svg>
+    </div>
+    <div class="footer">WINDOWS · TAURI · REACT · RUST · SQLITE</div>
+  </main>
+</body>
+</html>
