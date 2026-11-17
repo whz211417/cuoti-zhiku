@@ -19,7 +19,6 @@
   "dependencies": {
     "@gsap/react": "^2.1.2",
     "@tanstack/react-query": "^5.66.0",
-    "@tanstack/react-router": "^1.120.0",
     "@tauri-apps/api": "^2.8.0",
     "@tauri-apps/plugin-dialog": "^2.4.0",
     "@tauri-apps/plugin-fs": "^2.4.0",
