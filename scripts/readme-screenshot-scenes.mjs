@@ -7,4 +7,6 @@ export const readmeScreenshotScenes = [
   { id: 'knowledge', filename: 'knowledge.png', label: '课程与薄弱知识点网络' },
   { id: 'materials', filename: 'materials.png', label: '课程资料保存与本地检索' },
   { id: 'ai-settings', filename: 'ai-settings.png', label: '多平台与模型设置' },
+  { id: 'context-menu', filename: 'context-menu.png', label: '待整理题目的右键操作' },
+  { id: 'recently-deleted', filename: 'recently-deleted.png', label: '从题目档案恢复误删内容' },
 ]

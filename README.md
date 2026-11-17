@@ -5,6 +5,7 @@
   <p>
     <a href="https://github.com/whz211417/cuoti-zhiku/releases/latest"><strong>下载 Windows 最新版</strong></a>
     · <a href="docs/release/windows-installation.md">安装与校验</a>
+    · <a href="docs/release/0.6.0.md">更新记录</a>
     · <a href="https://github.com/whz211417/cuoti-zhiku/issues/new?template=feature_request.yml">提交建议</a>
   </p>
   <p>
@@ -50,6 +51,7 @@
 | 教材依据 | 讲义和教材在课程内本地检索；AI 只在本次明确允许时读取少量相关片段。 |
 | 多模型 AI | 支持阿里云百炼、DeepSeek、智谱、月之暗面和 OpenAI 兼容 HTTPS 平台，自带 Key 即可。 |
 | 知识网络 | 按“课程—知识点—题目”回看薄弱点，并可导出 Markdown、附件和 JSON Canvas 到 Obsidian。 |
+| 右键整理 | 从 v0.6.0 起，可从待整理、题目档案或课程资料的右键菜单移除条目，随后在「最近删除」找回。 |
 | 数据安全 | 数据可备份、恢复和导出；删除应用管理资料时会明确确认，不触碰最初导入的原文件。 |
 
 ## 真实界面
@@ -81,6 +83,13 @@
 
 ![阿里云百炼、DeepSeek、智谱、月之暗面和 OpenAI 兼容平台设置](docs/assets/readme/ai-settings.png)
 
+### 右键清理，误删也能找回
+
+<p align="center">
+  <img src="docs/assets/readme/context-menu.png" alt="在待整理列表右键打开操作菜单，选择移入最近删除" width="49%" />
+  <img src="docs/assets/readme/recently-deleted.png" alt="全部档案的最近删除列表，可以恢复题目与复习进度" width="49%" />
+</p>
+
 截图不含个人题目、真实课程资料或 API Key，只展示当前产品界面与已经交付的能力。运行 `pnpm capture:readme` 可用固定虚构数据重新生成整套截图。
 
 ## 三步开始使用
@@ -88,6 +97,8 @@
 1. 打开 [Latest Release](https://github.com/whz211417/cuoti-zhiku/releases/latest)，下载 Windows x64 安装包。首次安装完成后，日常直接从桌面或开始菜单打开。
 2. 新建一门课程，把一张题图或一份 PDF 直接拖进窗口；看到“已保存”后再慢慢整理。
 3. 到“今日复习”先独立作答，再展开答案并记录掌握程度。
+
+从 v0.6.0 起，需要清理时可以右键或点条目末尾的「⋯」。「全部档案 → 最近删除」可以恢复题目；课程资料在资料库内恢复，保留期限为 30 天。
 
 安装包 SHA-256、SmartScreen 提示与更新方式见 [Windows 安装与首启](docs/release/windows-installation.md)。
 

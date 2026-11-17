@@ -55,8 +55,8 @@ pnpm run build
 pnpm run test:rust
 ```
 
-当前 `v0.3.3` 发布验证结果：前端 207 项测试、Rust 101 项测试、Lint、TypeScript 类型检查、Vite 构建和 Windows x64 NSIS 打包全部通过。
+`pnpm test:rust` 使用当前 Rust 工具链。先在带 MSVC 构建工具和 WebView2 的 Windows 开发环境运行 `pnpm build`，再执行 Rust 检查。PR 的 [Verify 工作流](https://github.com/whz211417/cuoti-zhiku/actions/workflows/verify.yml) 也在 Windows 上执行这一流程。
 
 ## 发布
 
-Windows 安装包使用 Tauri NSIS 目标生成，正式文件只上传到 [GitHub Release v0.3.3](https://github.com/whz211417/cuoti-zhiku/releases/tag/v0.3.3)，不进入普通 Git 历史。完整安装校验和边界见 [发布校验记录](verification/2026-08-12-0.3.3-release.md)。
+Windows 安装包由 Tauri NSIS 生成，只附在 [GitHub Releases](https://github.com/whz211417/cuoti-zhiku/releases) 中。版本标签触发签名打包并准备 Release 草稿，公开前核对安装、启动、数据保留和更新包。用户侧步骤见 [安装与校验](release/windows-installation.md)。
