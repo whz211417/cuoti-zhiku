@@ -22,14 +22,14 @@ use crate::{
         knowledge::{
             KnowledgeCourse, KnowledgeEdge, KnowledgeGraph, KnowledgeProblem, KnowledgeTopic,
         },
-        problems::{ProblemDocument, ProblemField, ProblemFieldKind, SavedProblemField},
+        problems::{ProblemDocument, ProblemField, ProblemFieldKind, SavedProblemField, TrashedProblem},
         review::{schedule_next, ReviewGrade, ReviewSchedule},
     },
     services::ingest::ImportedOriginal,
 };
 
 static NEXT_RECORD_ID: AtomicU64 = AtomicU64::new(1);
-const CURRENT_SCHEMA_VERSION: i64 = 7;
+const CURRENT_SCHEMA_VERSION: i64 = 8;
 
 #[derive(Debug, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
@@ -823,18 +823,10 @@ impl Database {
                     "资料不在最近删除中，无法永久清除。".to_owned(),
                 ));
             }
-            let unreferenced = match original_relative_path {
-                Some(relative_path) => {
-                    let references = transaction.query_row(
-                        "SELECT COUNT(*) FROM course_materials WHERE original_relative_path = ?1",
-                        [&relative_path],
-                        |row| row.get::<_, i64>(0),
-                    )?;
-                    (references == 0).then_some(relative_path)
-                }
-                None => None,
+            let Some(relative_path) = original_relative_path else {
+                return Ok(None);
             };
-            Ok(unreferenced)
+            Ok((!original_has_references(transaction, &relative_path)?).then_some(relative_path))
         })
     }
 
@@ -859,12 +851,7 @@ impl Database {
                     |row| row.get::<_, Option<String>>(0),
                 )? {
                     transaction.execute("DELETE FROM course_materials WHERE id = ?1", [id])?;
-                    let references = transaction.query_row(
-                        "SELECT COUNT(*) FROM course_materials WHERE original_relative_path = ?1",
-                        [&relative_path],
-                        |row| row.get::<_, i64>(0),
-                    )?;
-                    if references == 0 {
+                    if !original_has_references(transaction, &relative_path)? {
                         originals.push(relative_path);
                     }
                 } else {
@@ -928,7 +915,7 @@ impl Database {
         let connection = self.connection()?;
         let problem_course_id = connection
             .query_row(
-                "SELECT course_id FROM problems WHERE id = ?1",
+                "SELECT course_id FROM problems WHERE id = ?1 AND status <> 'trash'",
                 [problem_id],
                 |row| row.get::<_, String>(0),
             )
@@ -1014,9 +1001,11 @@ impl Database {
     pub fn list_inbox_items(&self) -> DatabaseResult<Vec<InboxItem>> {
         let connection = self.connection()?;
         let mut statement = connection.prepare(
-            "SELECT id, problem_id, attachment_id, filename, created_at
-             FROM inbox_items
-             ORDER BY created_at DESC, id DESC",
+            "SELECT i.id, i.problem_id, i.attachment_id, i.filename, i.created_at
+             FROM inbox_items i
+             JOIN problems p ON p.id = i.problem_id
+             WHERE p.status = 'inbox'
+             ORDER BY i.created_at DESC, i.id DESC",
         )?;
         let rows = statement.query_map([], |row| {
             Ok(InboxItem {
@@ -1039,7 +1028,8 @@ impl Database {
             "SELECT attachment.relative_path, attachment.mime_type
              FROM inbox_items inbox
              JOIN attachments attachment ON attachment.id = inbox.attachment_id
-             WHERE inbox.problem_id = ?1",
+             JOIN problems p ON p.id = inbox.problem_id
+             WHERE inbox.problem_id = ?1 AND p.status <> 'trash'",
         )?;
         let mut rows = statement.query([problem_id])?;
         match rows.next()? {
@@ -1073,7 +1063,7 @@ impl Database {
         let version = record_id("version");
         self.with_transaction(|transaction| {
             let current: String = transaction.query_row(
-                "SELECT version FROM problems WHERE id = ?1",
+                "SELECT version FROM problems WHERE id = ?1 AND status <> 'trash'",
                 [problem_id],
                 |row| row.get(0),
             )?;
@@ -1162,10 +1152,6 @@ impl Database {
                  WHERE id = ?1",
                 params![problem_id, today, updated_at, record_id("version")],
             )?;
-            transaction.execute(
-                "DELETE FROM inbox_items WHERE problem_id = ?1",
-                [problem_id],
-            )?;
             Ok(())
         })?;
         self.get_problem_document(problem_id)
@@ -1190,7 +1176,7 @@ impl Database {
             }
             let current_version = transaction
                 .query_row(
-                    "SELECT version FROM problems WHERE id = ?1",
+                    "SELECT version FROM problems WHERE id = ?1 AND status <> 'trash'",
                     [problem_id],
                     |row| row.get::<_, String>(0),
                 )
@@ -1221,7 +1207,7 @@ impl Database {
                         WHERE item.problem_id = p.id AND attachment.mime_type LIKE 'image/%'
                     ),
                     p.title, p.status, p.updated_at, p.version
-             FROM problems p WHERE p.id = ?1",
+             FROM problems p WHERE p.id = ?1 AND p.status <> 'trash'",
                 [problem_id],
                 |row| {
                     Ok((
@@ -1269,7 +1255,11 @@ impl Database {
         reviewed_on: &str,
     ) -> DatabaseResult<ReviewSchedule> {
         self.with_transaction(|transaction| {
-            let interval: u32 = transaction.query_row("SELECT review_interval_days FROM problems WHERE id = ?1", [problem_id], |row| row.get(0))?;
+            let interval: u32 = transaction.query_row(
+                "SELECT review_interval_days FROM problems WHERE id = ?1 AND status <> 'trash'",
+                [problem_id],
+                |row| row.get(0),
+            )?;
             let schedule = schedule_next(interval, grade, reviewed_on).map_err(DatabaseError::Conflict)?;
             transaction.execute(
                 "UPDATE problems SET review_interval_days = ?2, last_reviewed_at = ?3, next_review_at = ?4, status = 'active', updated_at = ?5, version = ?6 WHERE id = ?1",
@@ -1282,6 +1272,55 @@ impl Database {
     pub fn list_all_problems(&self) -> DatabaseResult<Vec<RecentProblem>> {
         let connection = self.connection()?;
         query_problems(&connection, None)
+    }
+
+    pub fn trash_problem(&self, problem_id: &str) -> DatabaseResult<()> {
+        let changed = self.connection()?.execute(
+            "UPDATE problems
+             SET status_before_trash = status, status = 'trash', deleted_at = ?2, version = ?3
+             WHERE id = ?1 AND status IN ('inbox', 'active')",
+            params![problem_id, timestamp(), record_id("version")],
+        )?;
+        if changed == 0 {
+            return Err(DatabaseError::Conflict("题目已移入最近删除或不存在。".to_owned()));
+        }
+        Ok(())
+    }
+
+    pub fn restore_problem(&self, problem_id: &str) -> DatabaseResult<()> {
+        let changed = self.connection()?.execute(
+            "UPDATE problems
+             SET status = status_before_trash, status_before_trash = NULL, deleted_at = NULL, version = ?2
+             WHERE id = ?1 AND status = 'trash' AND status_before_trash IS NOT NULL",
+            params![problem_id, record_id("version")],
+        )?;
+        if changed == 0 {
+            return Err(DatabaseError::Conflict("题目已恢复或不在最近删除中。".to_owned()));
+        }
+        Ok(())
+    }
+
+    pub fn list_trashed_problems(&self) -> DatabaseResult<Vec<TrashedProblem>> {
+        let connection = self.connection()?;
+        let mut statement = connection.prepare(
+            "SELECT p.id, p.title, COALESCE(i.filename, ''), c.name, p.deleted_at
+             FROM problems p
+             JOIN courses c ON c.id = p.course_id
+             LEFT JOIN inbox_items i ON i.problem_id = p.id
+             WHERE p.status = 'trash' AND p.deleted_at IS NOT NULL
+             ORDER BY p.deleted_at DESC, p.id DESC",
+        )?;
+        let rows = statement.query_map([], |row| {
+            let title: String = row.get(1)?;
+            let filename: String = row.get(2)?;
+            Ok(TrashedProblem {
+                id: row.get(0)?,
+                title: problem_display_title(&title, &filename),
+                course_name: row.get(3)?,
+                deleted_at: row.get(4)?,
+            })
+        })?;
+        rows.collect::<Result<Vec<_>, _>>().map_err(Into::into)
     }
 
     pub fn list_due_review_problems(&self, today: &str) -> DatabaseResult<Vec<ReviewProblem>> {
@@ -1618,10 +1657,18 @@ fn migrate_to_current_schema(connection: &mut Connection) -> DatabaseResult<()> 
         )?;
         schema_version = 6;
     }
-    if schema_version < CURRENT_SCHEMA_VERSION {
+    if schema_version < 7 {
         apply_migration(
             connection,
             include_str!("../../migrations/0007_course_material_custody.sql"),
+            7,
+        )?;
+        schema_version = 7;
+    }
+    if schema_version < CURRENT_SCHEMA_VERSION {
+        apply_migration(
+            connection,
+            include_str!("../../migrations/0008_problem_trash.sql"),
             CURRENT_SCHEMA_VERSION,
         )?;
     }
@@ -1742,6 +1789,15 @@ fn split_material_chunks(content: &str, maximum_characters: usize) -> Vec<String
         .chunks(maximum_characters)
         .map(|chunk| chunk.iter().collect::<String>())
         .collect()
+}
+
+fn original_has_references(connection: &Connection, relative_path: &str) -> DatabaseResult<bool> {
+    Ok(connection.query_row(
+        "SELECT EXISTS (SELECT 1 FROM course_materials WHERE original_relative_path = ?1)
+             OR EXISTS (SELECT 1 FROM attachments WHERE relative_path = ?1)",
+        [relative_path],
+        |row| row.get(0),
+    )?)
 }
 
 fn escape_like_pattern(query: &str) -> String {
@@ -1887,8 +1943,11 @@ fn query_counted_fields(
     kind: &str,
     split_topics: bool,
 ) -> DatabaseResult<Vec<CountedSignal>> {
-    let mut statement =
-        connection.prepare("SELECT problem_id, value FROM problem_fields WHERE kind = ?1")?;
+    let mut statement = connection.prepare(
+        "SELECT f.problem_id, f.value FROM problem_fields f
+         JOIN problems p ON p.id = f.problem_id
+         WHERE f.kind = ?1 AND p.status <> 'trash'",
+    )?;
     let mut rows = statement.query([kind])?;
     let mut counts = HashMap::<String, u32>::new();
     let mut values_by_problem = HashMap::<String, HashSet<String>>::new();
@@ -1957,13 +2016,13 @@ fn query_activity_days(connection: &Connection, today: &str) -> DatabaseResult<V
             connection,
             "SELECT COUNT(*) FROM (
                  SELECT id FROM problems
-                 WHERE CASE
+                 WHERE status <> 'trash' AND CASE
                      WHEN updated_at NOT LIKE '%-%' AND CAST(updated_at AS INTEGER) > 100000000000
                          THEN date(CAST(updated_at AS INTEGER) / 1000, 'unixepoch', '+8 hours')
                      ELSE date(updated_at, '+8 hours')
                  END = ?1
                  UNION
-                 SELECT id FROM problems WHERE last_reviewed_at = ?1
+                 SELECT id FROM problems WHERE status <> 'trash' AND last_reviewed_at = ?1
              )",
             [&date],
         )?;

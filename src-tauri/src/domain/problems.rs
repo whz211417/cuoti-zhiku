@@ -60,6 +60,15 @@ pub struct ProblemDocument {
 
 #[derive(Debug, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
+pub struct TrashedProblem {
+    pub id: String,
+    pub title: String,
+    pub course_name: String,
+    pub deleted_at: String,
+}
+
+#[derive(Debug, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
 pub struct SavedProblemField {
     pub problem_id: String,
     pub kind: String,

@@ -1266,6 +1266,123 @@ fn dashboard_and_archive_exclude_trashed_problems() {
     assert_eq!(archive[0].id, "kept-problem");
 }
 
+#[test]
+fn trashing_an_inbox_problem_is_persistent_and_restores_its_original_link() {
+    let (root, database) = dashboard_database();
+    let id = "problem-inbox-delete";
+    let version = insert_organization_fixture(&root, id, Some("乘数练习原题"), None);
+
+    database.trash_problem(id).unwrap();
+    assert!(database.trash_problem(id).is_err());
+    assert!(database.list_inbox_items().unwrap().is_empty());
+    assert!(database.list_all_problems().unwrap().is_empty());
+    assert!(database.search_library("乘数练习原题", 12).unwrap().is_empty());
+    assert!(database.get_problem_document(id).is_err());
+    assert!(database.problem_attachment(id).unwrap().is_none());
+
+    drop(database);
+    let reopened = Database::open(root.path()).unwrap();
+    let trash = reopened.list_trashed_problems().unwrap();
+    assert_eq!(trash.len(), 1);
+    assert_eq!(trash[0].id, id);
+    let deleted_version = reopened.problem_version(id).unwrap();
+    assert_ne!(deleted_version, version);
+    assert!(reopened
+        .save_problem_field(
+            id,
+            crate::domain::problems::ProblemFieldKind::Stem,
+            "不应写入回收站",
+            &deleted_version,
+        )
+        .is_err());
+    reopened.restore_problem(id).unwrap();
+    assert!(reopened.restore_problem(id).is_err());
+
+    let restored = reopened.get_problem_document(id).unwrap();
+    assert_eq!(restored.status, "inbox");
+    assert_eq!(restored.fields[0].value, "乘数练习原题");
+    assert_ne!(restored.version, deleted_version);
+    assert_eq!(reopened.list_inbox_items().unwrap()[0].problem_id, id);
+    assert!(reopened.problem_attachment(id).unwrap().is_some());
+    assert!(reopened.list_trashed_problems().unwrap().is_empty());
+}
+
+#[test]
+fn clearing_course_material_keeps_an_original_referenced_by_a_trashed_problem() {
+    let (_root, database) = dashboard_database();
+    let course = database.create_course("宏观", "", "#7895A5", "school").unwrap();
+    let original = ImportedOriginal {
+        sha256: "a".repeat(64),
+        relative_path: std::path::PathBuf::from("aa/duplicate.pdf"),
+        mime_type: "application/pdf".to_owned(),
+        byte_size: 128,
+        duplicate: false,
+    };
+    let question = database.record_inbox_item("duplicate.pdf", &original, Some(&course.id)).unwrap();
+    let material = database.record_course_material_with_original(
+        &course.id, "duplicate.pdf", "课后练习", Some(&original),
+    ).unwrap();
+    database.trash_problem(&question.problem_id).unwrap();
+    database.trash_course_material(&course.id, &material.id).unwrap();
+    assert_eq!(database.purge_course_material(&course.id, &material.id).unwrap(), None);
+
+    let expired = database.record_course_material_with_original(
+        &course.id, "duplicate-expired.pdf", "课后练习", Some(&original),
+    ).unwrap();
+    database.trash_course_material(&course.id, &expired.id).unwrap();
+    assert!(database.purge_expired_course_materials("9999-01-01").unwrap().is_empty());
+    database.restore_problem(&question.problem_id).unwrap();
+    assert_eq!(
+        database.problem_attachment(&question.problem_id).unwrap().unwrap().relative_path,
+        original.relative_path,
+    );
+}
+
+#[test]
+fn restoring_an_archived_problem_keeps_its_review_schedule_and_attachment() {
+    use crate::domain::review::ReviewGrade;
+
+    let (root, database) = dashboard_database();
+    let id = "problem-review-delete";
+    let version = insert_organization_fixture(&root, id, Some("政策判断"), Some("判断依据"));
+    let connection = dashboard_connection(&root);
+    insert_dashboard_field(&connection, id, "mistake_reason", "遗漏约束");
+    insert_dashboard_field(&connection, id, "notes", "知识点：财政政策");
+    drop(connection);
+    database.complete_problem_organization(id, &version, "2026-11-17").unwrap();
+    let schedule = database.complete_review(id, ReviewGrade::Familiar, "2026-11-17").unwrap();
+    let before = database.get_problem_document(id).unwrap();
+    assert!(before.has_image_attachment);
+    assert!(database.list_inbox_items().unwrap().is_empty());
+
+    database.trash_problem(id).unwrap();
+    assert!(database.list_due_review_problems(&schedule.next_review_on).unwrap().is_empty());
+    assert!(database.complete_review(id, ReviewGrade::Mastered, "2026-11-18").is_err());
+    assert!(!database.export_problem_book(true).unwrap().markdown.contains("政策判断"));
+    assert!(database.knowledge_graph(None, "2026-11-17").unwrap().problems.is_empty());
+    let overview = database.dashboard_overview("2026-11-17").unwrap();
+    assert!(overview.top_mistake_reasons.is_empty());
+    assert!(overview.top_knowledge_topics.is_empty());
+    assert!(overview.activity_last_seven_days.iter().all(|day| day.count == 0));
+
+    database.restore_problem(id).unwrap();
+    let restored = database.get_problem_document(id).unwrap();
+    assert_eq!(restored.status, "active");
+    assert_eq!(restored.fields, before.fields);
+    assert_eq!(restored.updated_at, before.updated_at);
+    assert!(restored.has_image_attachment);
+    assert!(database.list_inbox_items().unwrap().is_empty());
+    assert_eq!(database.list_due_review_problems(&schedule.next_review_on).unwrap()[0].id, id);
+    let review_state: (u32, Option<String>, String) = dashboard_connection(&root)
+        .query_row(
+            "SELECT review_interval_days, last_reviewed_at, next_review_at FROM problems WHERE id = ?1",
+            [id],
+            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+        )
+        .unwrap();
+    assert_eq!(review_state, (schedule.interval_days, Some("2026-11-17".into()), schedule.next_review_on));
+}
+
 fn seed_schema_version(root: &std::path::Path, version: i64) {
     let connection = Connection::open(root.join("library.sqlite3")).expect("seed database");
     connection
@@ -1311,6 +1428,14 @@ fn seed_schema_version(root: &std::path::Path, version: i64) {
             .execute("UPDATE schema_meta SET version = 6", [])
             .expect("schema version 6");
     }
+    if version >= 7 {
+        connection
+            .execute_batch(include_str!("../../migrations/0007_course_material_custody.sql"))
+            .expect("schema version 7 columns");
+        connection
+            .execute("UPDATE schema_meta SET version = 7", [])
+            .expect("schema version 7");
+    }
 }
 
 fn seed_version_two_problem(root: &std::path::Path) {
@@ -1333,7 +1458,7 @@ fn seed_version_two_problem(root: &std::path::Path) {
 }
 
 fn assert_recovered_review_schema(root: &std::path::Path, database: &Database) {
-    assert_eq!(database.schema_version().expect("current schema"), 7);
+    assert_eq!(database.schema_version().expect("current schema"), 8);
     let connection = Connection::open(root.join("library.sqlite3")).expect("recovered database");
     let recovered: (String, i64, Option<String>) = connection
         .query_row(
@@ -1348,7 +1473,7 @@ fn assert_recovered_review_schema(root: &std::path::Path, database: &Database) {
 
 #[test]
 fn migrates_supported_legacy_versions_to_the_current_schema() {
-    for starting_version in [1, 2, 3, 4, 5, 6] {
+    for starting_version in [1, 2, 3, 4, 5, 6, 7] {
         let root = tempfile::tempdir().expect("legacy library root");
         seed_schema_version(root.path(), starting_version);
         let connection =
@@ -1364,7 +1489,7 @@ fn migrates_supported_legacy_versions_to_the_current_schema() {
 
         let database = Database::open(root.path()).expect("migrate legacy library");
 
-        assert_eq!(database.schema_version().expect("current schema"), 7);
+        assert_eq!(database.schema_version().expect("current schema"), 8);
         assert_eq!(
             database.list_courses().expect("course list")[0].kind,
             "school"
@@ -1400,7 +1525,7 @@ fn open_recovers_version_one_with_only_schema_metadata_and_preserves_unrelated_d
         )
         .expect("problems table lookup");
 
-    assert_eq!(database.schema_version().expect("current schema"), 7);
+    assert_eq!(database.schema_version().expect("current schema"), 8);
     assert_eq!(marker, "keep me");
     assert!(problems_exists);
 }
@@ -1425,7 +1550,7 @@ fn open_recovers_an_empty_schema_metadata_table_and_preserves_unrelated_data() {
         .query_row("SELECT value FROM legacy_marker", [], |row| row.get(0))
         .expect("unrelated legacy row");
 
-    assert_eq!(database.schema_version().expect("current schema"), 7);
+    assert_eq!(database.schema_version().expect("current schema"), 8);
     assert_eq!(marker, "keep empty-meta data");
 }
 
@@ -1493,7 +1618,7 @@ fn resumes_a_partially_applied_legacy_migration() {
         )
         .expect("field revisions table");
 
-    assert_eq!(database.schema_version().expect("current schema"), 7);
+    assert_eq!(database.schema_version().expect("current schema"), 8);
     assert_eq!(field_revisions_exists, 1);
 }
 
@@ -1531,7 +1656,7 @@ fn opens_a_wal_database_with_foreign_keys_enabled() {
 
     assert!(database.foreign_keys_enabled().expect("foreign key status"));
     assert_eq!(database.journal_mode().expect("journal mode"), "wal");
-    assert_eq!(database.schema_version().expect("schema version"), 7);
+    assert_eq!(database.schema_version().expect("schema version"), 8);
 }
 
 #[test]
@@ -1542,7 +1667,7 @@ fn migrates_existing_courses_to_school_kind() {
         .create_course("微积分", "", "#7895A5", "school")
         .unwrap();
     assert_eq!(course.kind, "school");
-    assert_eq!(database.schema_version().unwrap(), 7);
+    assert_eq!(database.schema_version().unwrap(), 8);
 }
 
 #[test]
@@ -1552,7 +1677,7 @@ fn reports_database_health_without_exposing_its_connection() {
 
     let health = database.health().expect("library health");
 
-    assert_eq!(health.schema_version, 7);
+    assert_eq!(health.schema_version, 8);
     assert!(health.foreign_keys_enabled);
     assert_eq!(health.journal_mode, "wal");
 }
@@ -1630,7 +1755,7 @@ fn restores_a_version_five_snapshot_after_migrating_it_to_the_current_schema() {
         .expect("migrated snapshot restore");
     let courses = current.list_courses().expect("restored courses");
 
-    assert_eq!(current.schema_version().expect("current schema"), 7);
+    assert_eq!(current.schema_version().expect("current schema"), 8);
     assert_eq!(courses.len(), 1);
     assert_eq!(courses[0].name, "Legacy course");
     assert_eq!(courses[0].kind, "school");

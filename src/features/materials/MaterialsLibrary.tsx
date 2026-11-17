@@ -1,6 +1,8 @@
 import { open } from '@tauri-apps/plugin-dialog';
 import { BookMarked, FileUp, LockKeyhole, RotateCcw, Save, Search, Trash2 } from 'lucide-react';
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { RemovalDialog } from '../../components/actions/RemovalDialog';
+import { RowActionMenu } from '../../components/actions/RowActionMenu';
 import {
   importCourseMaterialFile,
   listCourseMaterials,
@@ -37,6 +39,7 @@ export function MaterialsLibrary({
   const [pendingRemoval, setPendingRemoval] = useState<CourseMaterial | null>(null);
   const [pendingPurge, setPendingPurge] = useState<CourseMaterial | null>(null);
   const [isRemoving, setIsRemoving] = useState(false);
+  const [savedNotice, setSavedNotice] = useState<{ text: string; failed?: boolean } | null>(null);
   const processedInitialQueryRef = useRef<string | null>(null);
   const activeCourseRef = useRef(courseId);
   const requestGenerationRef = useRef(0);
@@ -50,10 +53,13 @@ export function MaterialsLibrary({
     }
     try {
       const nextMaterials = await listCourseMaterials(nextCourseId, deletedOnly);
+      if (activeCourseRef.current !== nextCourseId) return;
       if (deletedOnly) setTrashedMaterials(nextMaterials);
       else setMaterials(nextMaterials);
     }
-    catch { setStatus('资料列表没有加载完成，请稍后重试。'); }
+    catch {
+      if (activeCourseRef.current === nextCourseId) setSavedNotice({ text: '资料列表没有加载完成，请稍后重试。', failed: true });
+    }
   }, [courseId]);
 
   const refreshMaterialLists = useCallback(async (nextCourseId = courseId) => {
@@ -125,6 +131,7 @@ export function MaterialsLibrary({
     setShowTrash(false);
     setPendingRemoval(null);
     setPendingPurge(null);
+    setSavedNotice(null);
   }, [courseId]);
 
   useEffect(() => { void refreshMaterialLists(courseId); }, [courseId, refreshMaterialLists]);
@@ -174,17 +181,18 @@ export function MaterialsLibrary({
     }
   };
 
-  const confirmRemoval = async () => {
-    if (!courseId || !pendingRemoval) return;
-    setIsRemoving(true);
-    try {
-      await trashCourseMaterial(courseId, pendingRemoval.id);
-      await refreshMaterialLists();
-      setPendingRemoval(null);
-      setStatus('已移入最近删除，可在 30 天内恢复。');
-      onSaved?.();
-    } catch { setStatus('资料没有移入最近删除，请稍后重试。'); }
-    finally { setIsRemoving(false); }
+  const confirmRemoval = async (material: CourseMaterial) => {
+    await trashCourseMaterial(material.courseId, material.id);
+    if (activeCourseRef.current === material.courseId) {
+      requestGenerationRef.current += 1;
+      successfulSearchRef.current = null;
+      setIsSearching(false);
+      setSnippets((current) => current.filter(({ materialId }) => materialId !== material.id));
+      setMaterials((current) => current.filter(({ id }) => id !== material.id));
+      setSavedNotice({ text: '已移入最近删除，可在 30 天内恢复。' });
+      await refreshMaterialLists(material.courseId);
+    }
+    onSaved?.();
   };
 
   const restore = async (material: CourseMaterial) => {
@@ -193,23 +201,20 @@ export function MaterialsLibrary({
     try {
       await restoreCourseMaterial(courseId, material.id);
       await refreshMaterialLists();
-      setStatus(`已恢复“${material.filename}”。`);
+      setSavedNotice({ text: `已恢复「${material.filename}」。` });
       onSaved?.();
-    } catch { setStatus('资料没有恢复，请稍后重试。'); }
+    } catch { setSavedNotice({ text: '资料没有恢复，请稍后重试。', failed: true }); }
     finally { setIsRemoving(false); }
   };
 
-  const confirmPurge = async () => {
-    if (!courseId || !pendingPurge) return;
-    setIsRemoving(true);
-    try {
-      await purgeCourseMaterial(courseId, pendingPurge.id);
-      await refreshMaterialLists();
-      setPendingPurge(null);
-      setStatus('已永久清除该资料及其本地索引。');
-      onSaved?.();
-    } catch { setStatus('资料没有永久清除，请稍后重试。'); }
-    finally { setIsRemoving(false); }
+  const confirmPurge = async (material: CourseMaterial) => {
+    await purgeCourseMaterial(material.courseId, material.id);
+    if (activeCourseRef.current === material.courseId) {
+      setTrashedMaterials((current) => current.filter(({ id }) => id !== material.id));
+      setSavedNotice({ text: '已永久清除该资料及其本地索引。' });
+      await refreshMaterialLists(material.courseId);
+    }
+    onSaved?.();
   };
 
   if (!courseId) return (
@@ -281,14 +286,40 @@ export function MaterialsLibrary({
           </section>
           <section className="materials-saved" aria-label="已保存资料">
             <div className="materials-section-heading"><div><p className="eyebrow">本课程资料</p><h3>已保存的本地依据</h3></div><span>{String(materials.length).padStart(2, '0')}</span></div>
-            {materials.length === 0 ? <p className="materials-saved-empty">还没有已保存资料。导入或粘贴后会在这里出现。</p> : <ul className="materials-saved-list">{materials.map((material) => <li key={material.id}><BookMarked aria-hidden="true" size={16} /><span>{material.filename}</span><button aria-label={`移入最近删除 ${material.filename}`} onClick={() => setPendingRemoval(material)} type="button"><Trash2 aria-hidden="true" size={15} /></button></li>)}</ul>}
+            {materials.length === 0 ? <p className="materials-saved-empty">还没有已保存资料。导入或粘贴后会在这里出现。</p> : (
+              <ul className="materials-saved-list">
+                {materials.map((material) => <RowActionMenu
+                  actions={[{ label: '移入最近删除…', icon: Trash2, destructive: true, run: () => setPendingRemoval(material) }]}
+                  key={material.id}
+                  label={material.filename}
+                >
+                  <BookMarked aria-hidden="true" size={16} />
+                  <span title={material.filename}>{material.filename}</span>
+                </RowActionMenu>)}
+              </ul>
+            )}
+            {savedNotice ? <p className="material-status" role={savedNotice.failed ? 'alert' : 'status'}>{savedNotice.text}</p> : null}
             <button className="material-trash-toggle" onClick={() => setShowTrash((current) => !current)} type="button">{showTrash ? '收起最近删除' : `最近删除${trashedMaterials.length ? ` · ${trashedMaterials.length}` : ''}`}</button>
             {showTrash ? <div className="materials-trash" aria-label="最近删除">{trashedMaterials.length === 0 ? <p className="materials-saved-empty">最近删除为空。</p> : <ul className="materials-saved-list">{trashedMaterials.map((material) => <li key={material.id}><Trash2 aria-hidden="true" size={16} /><span>{material.filename}</span><button aria-label={`恢复 ${material.filename}`} disabled={isRemoving} onClick={() => void restore(material)} type="button"><RotateCcw aria-hidden="true" size={15} /></button><button aria-label={`永久删除 ${material.filename}`} disabled={isRemoving} onClick={() => setPendingPurge(material)} type="button"><Trash2 aria-hidden="true" size={15} /></button></li>)}</ul>}</div> : null}
           </section>
         </div>
       </div>
-      {pendingRemoval ? <div className="material-remove-dialog" role="dialog" aria-modal="true" aria-label="移入最近删除"><div className="material-remove-dialog__surface"><p className="eyebrow">本地资料回收站</p><h3>移入最近删除“{pendingRemoval.filename}”吗？</h3><p>它会立即停止被检索或用于 AI 参考；30 天内可恢复，之后才会自动清理。</p><div><button disabled={isRemoving} onClick={() => setPendingRemoval(null)} type="button">取消</button><button className="material-remove-confirm" disabled={isRemoving} onClick={() => void confirmRemoval()} type="button">{isRemoving ? '正在移入…' : '移入最近删除'}</button></div></div></div> : null}
-      {pendingPurge ? <div className="material-remove-dialog" role="dialog" aria-modal="true" aria-label="永久清除资料"><div className="material-remove-dialog__surface"><p className="eyebrow">不可恢复</p><h3>永久清除“{pendingPurge.filename}”吗？</h3><p>这会永久删除本地检索记录；如果没有其他资料引用同一原件，也会清除应用托管的原件副本。</p><div><button disabled={isRemoving} onClick={() => setPendingPurge(null)} type="button">取消</button><button className="material-remove-confirm" disabled={isRemoving} onClick={() => void confirmPurge()} type="button">{isRemoving ? '正在清除…' : '永久清除'}</button></div></div></div> : null}
+      {pendingRemoval ? <RemovalDialog
+        confirmLabel="移入最近删除"
+        description="资料会从检索和 AI 参考中移出。可在课程资料的「最近删除」中恢复，保留 30 天。"
+        failureMessage="资料没有移入最近删除，请重试。"
+        heading={`将「${pendingRemoval.filename}」移入最近删除？`}
+        onClose={() => setPendingRemoval(null)}
+        onConfirm={() => confirmRemoval(pendingRemoval)}
+      /> : null}
+      {pendingPurge ? <RemovalDialog
+        confirmLabel="永久清除"
+        description="这会清除资料和本地索引，且无法恢复。仍被其他记录使用的附件会保留。"
+        failureMessage="资料没有永久清除，请重试。"
+        heading={`永久清除「${pendingPurge.filename}」？`}
+        onClose={() => setPendingPurge(null)}
+        onConfirm={() => confirmPurge(pendingPurge)}
+      /> : null}
     </section>
   );
 }

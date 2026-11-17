@@ -35,3 +35,29 @@ jobs:
         run: pnpm run typecheck
       - name: Build web bundle
         run: pnpm run build
+
+  windows:
+    name: Windows desktop quality gate
+    runs-on: windows-latest
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.17.1
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Build Tauri web bundle
+        run: pnpm run build
+      - name: Test Rust core and database migrations
+        run: pnpm test:rust
+      - name: Check native Tauri commands
+        run: cargo check --locked --manifest-path src-tauri/Cargo.toml

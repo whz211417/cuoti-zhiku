@@ -1,4 +1,4 @@
-import { act, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { StrictMode } from 'react';
 import { beforeEach, expect, test, vi } from 'vitest';
@@ -35,8 +35,8 @@ test('moves a material to trash only after an explicit confirmation, then restor
   restoreCourseMaterial.mockResolvedValue(undefined);
   render(<MaterialsLibrary courseId="macro" />);
 
-  expect(await screen.findByText('IS-LM 讲义.md')).toBeVisible();
-  await user.click(screen.getByRole('button', { name: '移入最近删除 IS-LM 讲义.md' }));
+  fireEvent.contextMenu(await screen.findByText('IS-LM 讲义.md'), { clientX: 200, clientY: 240 });
+  await user.click(screen.getByRole('menuitem', { name: '移入最近删除…' }));
   expect(screen.getByRole('dialog', { name: '移入最近删除' })).toBeVisible();
   expect(trashCourseMaterial).not.toHaveBeenCalled();
 
