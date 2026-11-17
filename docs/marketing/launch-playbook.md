@@ -17,7 +17,7 @@
 ## 发布前准备
 
 - GitHub Social Preview 使用仓库内的 `docs/assets/social/github-social-preview.png`；源文件可在同目录重新渲染。
-- 运行 `pnpm capture:readme`，确认 README 的 8 张产品截图全部来自当前代码，尺寸均为 1440×900。
+- 运行 `pnpm capture:readme`，确认 README 的 10 张产品截图全部来自当前代码，尺寸均为 1440×900。
 - 按学习总览、待整理、题目档案、AI 审核、今日复习、知识网络、课程资料、AI 设置的顺序逐张检查，不混用旧版本截图。
 - 使用一套完全虚构、无版权风险的演示课程与题目录屏。
 - 演示一次完整路径：拖入 → 已保存 → 整理 → 审核 AI 建议 → 今日复习。

@@ -169,6 +169,10 @@ export const getDashboardOverview = (today: string) =>
 export const searchLibrary = (query: string, limit = 12) =>
   invoke<LibrarySearchResult[]>('search_library', { query, limit });
 export const getAllProblems = () => invoke<RecentProblem[]>('get_all_problems');
+export type TrashedProblem = { id: string; title: string; courseName: string; deletedAt: string };
+export const listTrashedProblems = () => invoke<TrashedProblem[]>('list_trashed_problems');
+export const trashProblem = (problemId: string) => invoke<void>('trash_problem', { problemId });
+export const restoreProblem = (problemId: string) => invoke<void>('restore_problem', { problemId });
 export const getKnowledgeGraph = (courseId: string | null, today: string) =>
   invoke<KnowledgeGraph>('get_knowledge_graph', { courseId, today });
 export const exportObsidianVault = (destination: string, courseId: string | null, today: string) =>

@@ -1,16 +1,17 @@
-import { render, screen } from '@testing-library/react';
+import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, expect, test, vi } from 'vitest';
 import { IngestDropzone } from './IngestDropzone';
 
-const { open, importFiles, getInboxItems } = vi.hoisted(() => ({
+const { open, importFiles, getInboxItems, trashProblem } = vi.hoisted(() => ({
   open: vi.fn(),
   importFiles: vi.fn(),
   getInboxItems: vi.fn(),
+  trashProblem: vi.fn(),
 }));
 
 vi.mock('@tauri-apps/plugin-dialog', () => ({ open }));
-vi.mock('../../lib/tauri', () => ({ getInboxItems, importFiles }));
+vi.mock('../../lib/tauri', () => ({ getInboxItems, importFiles, trashProblem }));
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -63,4 +64,32 @@ test('opens the first successful import in source order and skips failures', asy
   expect(onImported).toHaveBeenCalledWith(['problem-first', 'problem-second']);
   expect(onOpenProblem).toHaveBeenCalledOnce();
   expect(onOpenProblem).toHaveBeenCalledWith('problem-first');
+});
+
+test('opens the item menu with Shift+F10 and removes only the confirmed inbox item', async () => {
+  const user = userEvent.setup();
+  const onProblemTrashed = vi.fn();
+  getInboxItems.mockResolvedValue([
+    { id: 'i1', problemId: 'p1', attachmentId: 'a1', filename: '重复题目.pdf', createdAt: '1' },
+    { id: 'i2', problemId: 'p2', attachmentId: 'a2', filename: '继续整理.png', createdAt: '2' },
+  ]);
+  trashProblem.mockResolvedValue(undefined);
+  render(<IngestDropzone courseId={null} onProblemTrashed={onProblemTrashed} />);
+
+  const row = await screen.findByRole('button', { name: /^重复题目\.pdf/ });
+  row.focus();
+  await user.keyboard('{Shift>}{F10}{/Shift}');
+  await user.keyboard('{ArrowDown}{Enter}');
+  const dialog = screen.getByRole('dialog', { name: '移入最近删除' });
+  expect(within(dialog).getByRole('button', { name: '取消' })).toHaveFocus();
+  await user.click(within(dialog).getByRole('button', { name: '取消' }));
+  expect(trashProblem).not.toHaveBeenCalled();
+
+  await user.click(screen.getByRole('button', { name: '更多操作：重复题目.pdf' }));
+  await user.click(screen.getByRole('menuitem', { name: '移入最近删除…' }));
+  await user.click(within(screen.getByRole('dialog')).getByRole('button', { name: '移入最近删除' }));
+  expect(trashProblem).toHaveBeenCalledExactlyOnceWith('p1');
+  expect(onProblemTrashed).toHaveBeenCalledExactlyOnceWith('p1');
+  expect(screen.queryByText('重复题目.pdf')).not.toBeInTheDocument();
+  expect(screen.getByText('继续整理.png')).toBeVisible();
 });

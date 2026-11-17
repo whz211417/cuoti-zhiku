@@ -22,6 +22,12 @@ const recentProblems = [
   { id: 'problem-wacc', courseId: 'course-finance', courseName: '公司金融', title: 'WACC 与资本结构判断', fallbackFilename: '公司金融习题.png', status: 'inbox', updatedAt: '2026-09-19T16:08:00Z' },
 ];
 
+const pendingProblems = [
+  { id: 'problem-fiscal-diagram', courseId: 'course-macro', courseName: '宏观经济学', title: '课堂练习：财政政策', fallbackFilename: '课堂练习：财政政策.png', status: 'inbox', updatedAt: '2026-09-21T08:30:00Z' },
+  { id: 'problem-chapter-six', courseId: 'course-macro', courseName: '宏观经济学', title: '第六章课后题', fallbackFilename: '第六章课后题.pdf', status: 'inbox', updatedAt: '2026-09-20T12:10:00Z' },
+  recentProblems[2],
+];
+
 const problemDocument = {
   id: 'problem-is-lm',
   courseId: 'course-macro',
@@ -86,11 +92,13 @@ const fixtures = {
       { date: '2026-09-21', count: 4 },
     ],
   },
-  inbox: [
-    { id: 'inbox-1', problemId: 'problem-is-lm', attachmentId: 'attachment-1', filename: '课堂练习：财政政策.png', createdAt: '2026-09-21T08:30:00Z' },
-    { id: 'inbox-2', problemId: 'problem-multiplier', attachmentId: 'attachment-2', filename: '第六章课后题.pdf', createdAt: '2026-09-20T12:10:00Z' },
-    { id: 'inbox-3', problemId: 'problem-wacc', attachmentId: 'attachment-3', filename: '公司金融习题.png', createdAt: '2026-09-19T15:52:00Z' },
-  ],
+  inbox: pendingProblems.map((problem) => ({
+    id: `inbox-${problem.id}`,
+    problemId: problem.id,
+    attachmentId: `attachment-${problem.id}`,
+    filename: problem.fallbackFilename,
+    createdAt: problem.updatedAt,
+  })),
   materials: [
     { id: 'material-1', courseId: 'course-macro', filename: '宏观经济学第六章讲义.pdf', originalRelativePath: 'originals/material-1.pdf', sha256: 'demo', byteSize: 4821000, deletedAt: null },
     { id: 'material-2', courseId: 'course-macro', filename: 'IS-LM 模型课堂笔记.md', originalRelativePath: null, sha256: null, byteSize: 8650, deletedAt: null },
@@ -135,9 +143,8 @@ const fixtures = {
     { kind: 'standard_answer', value: '政府购买增加使 IS 曲线向右移动。在货币供给不变时，均衡利率与均衡产出同时上升。' },
     { kind: 'explanation', value: '商品市场需求上升先推动产出；更高的收入增加货币需求，从而推高利率。利率上升会挤出一部分私人投资。' },
     { kind: 'mistake_reason', value: '遗漏了货币市场约束，没有说明利率上升与投资挤出。' },
-    { kind: 'notes', value: 'IS-LM 模型 · 扩张性财政政策 · 挤出效应' },
   ],
-  recentProblems,
+  problems: [...recentProblems.filter(({ status }) => status !== 'inbox'), ...pendingProblems],
 };
 
 function installTauriMock(payload) {
@@ -145,6 +152,7 @@ function installTauriMock(payload) {
   let nextResourceId = 100;
   const callbacks = new Map();
   const resources = new Map();
+  const trash = new Set();
 
   const storeValue = (resourceId, key) => {
     const storePath = resources.get(resourceId);
@@ -152,6 +160,7 @@ function installTauriMock(payload) {
     return [undefined, false];
   };
 
+  window.__TAURI_EVENT_PLUGIN_INTERNALS__ = { unregisterListener() {} };
   window.__TAURI_INTERNALS__ = {
     callbacks,
     metadata: { currentWindow: { label: 'main' }, currentWebview: { label: 'main' } },
@@ -166,14 +175,19 @@ function installTauriMock(payload) {
     convertFileSrc(filePath) { return `asset://localhost/${encodeURIComponent(filePath)}`; },
     async invoke(command, args = {}) {
       switch (command) {
-        case 'get_library_health': return { schemaVersion: 6, foreignKeysEnabled: true, journalMode: 'wal' };
+        case 'get_library_health': return { schemaVersion: 8, foreignKeysEnabled: true, journalMode: 'wal' };
         case 'get_courses': return payload.courses;
         case 'get_dashboard_overview': return payload.dashboard;
-        case 'get_inbox_items': return payload.inbox;
+        case 'get_inbox_items': return payload.inbox.filter(({ problemId }) => !trash.has(problemId));
         case 'get_problem_document': return payload.problemDocument;
         case 'get_due_review_problems': return payload.review;
         case 'get_knowledge_graph': return payload.knowledge;
-        case 'get_all_problems': return payload.recentProblems;
+        case 'get_all_problems': return payload.problems.filter(({ id }) => !trash.has(id));
+        case 'trash_problem': trash.add(args.problemId); return null;
+        case 'restore_problem': trash.delete(args.problemId); return null;
+        case 'list_trashed_problems': return payload.problems
+          .filter(({ id }) => trash.has(id))
+          .map(({ id, title, courseName }) => ({ id, title, courseName, deletedAt: '2026-09-21T09:00:00Z' }));
         case 'list_course_materials': return args.deletedOnly ? [] : payload.materials;
         case 'search_course_material': return payload.materialSnippets;
         case 'has_ai_provider_key': return true;
@@ -202,13 +216,14 @@ function installTauriMock(payload) {
   };
 }
 
-async function preparePage(browser, url) {
+async function preparePage(browser, url, sceneId) {
   const page = await browser.newPage({
     viewport: { width: 1440, height: 900 },
     deviceScaleFactor: 1,
-    colorScheme: 'dark',
-    reducedMotion: 'reduce',
+    colorScheme: ['overview', 'context-menu'].includes(sceneId) ? 'dark' : 'light',
+    reducedMotion: 'no-preference',
   });
+  await page.route('**/favicon.ico', (route) => route.fulfill({ status: 204 }));
   await page.addInitScript(installTauriMock, fixtures);
   await page.goto(url, { waitUntil: 'networkidle' });
   await page.getByRole('application', { name: '错题智库' }).waitFor();
@@ -220,7 +235,7 @@ const sceneActions = {
     await page.getByLabel('学习总览').waitFor();
   },
   inbox: async (page) => {
-    await page.getByRole('button', { name: '待整理' }).click();
+    await page.getByRole('button', { name: /^待整理/ }).click();
     await page.getByLabel('待整理投题').waitFor();
     await page.evaluate(() => window.scrollTo({ top: 0 }));
   },
@@ -233,7 +248,7 @@ const sceneActions = {
     await page.getByRole('button', { name: '打开 IS 曲线与扩张性财政政策' }).click();
     await page.getByRole('button', { name: 'AI 辅助整理' }).click();
     await page.getByRole('button', { name: '开始整理' }).click();
-    await page.getByText('已生成 4 项建议').waitFor();
+    await page.getByText('已生成 3 项建议').waitFor();
     await page.evaluate(() => window.scrollTo({ top: 0 }));
   },
   review: async (page) => {
@@ -261,6 +276,20 @@ const sceneActions = {
     await settings.waitFor();
     await settings.scrollIntoViewIfNeeded();
   },
+  'context-menu': async (page) => {
+    await page.getByRole('button', { name: /^待整理/ }).click();
+    await page.getByRole('button', { name: /^课堂练习：财政政策\.png/ }).click({ button: 'right' });
+    await page.getByRole('menuitem', { name: '移入最近删除…' }).waitFor();
+  },
+  'recently-deleted': async (page) => {
+    await page.getByRole('button', { name: '全部档案', exact: true }).click();
+    await page.getByRole('button', { name: '打开 WACC 与资本结构判断', exact: true }).click({ button: 'right' });
+    await page.getByRole('menuitem', { name: '移入最近删除…' }).click();
+    await page.getByRole('dialog', { name: '移入最近删除' })
+      .getByRole('button', { name: '移入最近删除', exact: true }).click();
+    await page.getByRole('button', { name: '最近删除', exact: true }).click();
+    await page.getByRole('button', { name: '恢复 WACC 与资本结构判断', exact: true }).waitFor();
+  },
 };
 
 await mkdir(outputDirectory, { recursive: true });
@@ -275,15 +304,19 @@ try {
   await server.listen();
   const url = server.resolvedUrls?.local?.[0];
   if (!url) throw new Error('Vite did not expose a local preview URL.');
-  browser = await chromium.launch({ channel: 'msedge', headless: true });
+  browser = await chromium.launch({ channel: process.env.CUOTI_CAPTURE_BROWSER || 'msedge', headless: true });
 
   for (const scene of readmeScreenshotScenes) {
-    const page = await preparePage(browser, url);
+    const page = await preparePage(browser, url, scene.id);
     try {
       await sceneActions[scene.id](page);
       await page.waitForTimeout(500);
       if (scene.id === 'problem-detail') await page.evaluate(() => window.scrollTo({ top: 0 }));
-      await page.mouse.move(1180, 118);
+      if (scene.id === 'context-menu') {
+        await page.getByRole('menuitem', { name: '移入最近删除…' }).hover();
+      } else {
+        await page.mouse.move(1402, 868);
+      }
       await page.screenshot({
         path: resolve(outputDirectory, scene.filename),
         animations: 'disabled',

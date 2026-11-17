@@ -110,6 +110,10 @@ export function App() {
             : 4;
 
   const refreshOverview = useCallback(() => setRefreshToken((token) => token + 1), []);
+  const handleProblemTrashed = (problemId: string) => {
+    setRecentProblems((problems) => problems.filter(({ id }) => id !== problemId));
+    refreshOverview();
+  };
   const selectedCourseName = selectedCourseId
     ? courses.find((course) => course.id === selectedCourseId)?.name ?? '当前课程'
     : '未分类';
@@ -221,6 +225,7 @@ export function App() {
     const openSearch = (event: KeyboardEvent) => {
       if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'k') {
         event.preventDefault();
+        if (document.querySelector('dialog[open]')) return;
         setIsSearchOpen(true);
       }
     };
@@ -502,7 +507,7 @@ export function App() {
             </div>
           ) : workspace === 'inbox' ? (
             <div className="inbox-stage">
-              <IngestDropzone courseId={selectedCourseId} onImported={refreshOverview} onOpenProblem={openProblem} />
+              <IngestDropzone courseId={selectedCourseId} onImported={refreshOverview} onOpenProblem={openProblem} onProblemTrashed={handleProblemTrashed} />
               <section className="reading-note" aria-label="整理提示">
                 <p className="eyebrow">一个安心的流程</p>
                 <h2>先收题，后整理。</h2>
@@ -566,6 +571,7 @@ export function App() {
               initialQuery={materialInitialQuery}
               onExport={() => void exportBook('questions')}
               onOpenProblem={openProblem}
+              onProblemTrashed={handleProblemTrashed}
               onSaved={refreshOverview}
             />
           )}

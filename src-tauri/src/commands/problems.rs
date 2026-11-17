@@ -3,6 +3,23 @@ use tauri::State;
 use crate::{domain::problems::ProblemFieldKind, AppState};
 
 #[tauri::command]
+pub fn trash_problem(state: State<'_, AppState>, problem_id: String) -> Result<(), String> {
+    state.database.trash_problem(&problem_id).map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+pub fn restore_problem(state: State<'_, AppState>, problem_id: String) -> Result<(), String> {
+    state.database.restore_problem(&problem_id).map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+pub fn list_trashed_problems(
+    state: State<'_, AppState>,
+) -> Result<Vec<crate::domain::problems::TrashedProblem>, String> {
+    state.database.list_trashed_problems().map_err(|error| error.to_string())
+}
+
+#[tauri::command]
 pub fn get_problem_document(
     state: State<'_, AppState>,
     problem_id: String,

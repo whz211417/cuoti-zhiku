@@ -14,16 +14,21 @@
 下载后，在安装包所在文件夹运行：
 
 ```powershell
-Get-Item -LiteralPath '.\错题智库_*_x64-setup.exe' |
-  Select-Object Name, Length, LastWriteTime
-Get-FileHash -LiteralPath '.\错题智库_*_x64-setup.exe' -Algorithm SHA256
+$installers = @(Get-ChildItem -File -Filter 'cuoti-zhiku_*_x64-setup.exe')
+if ($installers.Count -ne 1) { throw '请将本次下载的安装包和校验文件放在同一个空文件夹。' }
+$installer = $installers[0]
+$checksumLine = Get-Content -LiteralPath "$($installer.FullName).sha256" -TotalCount 1
+$expected = ($checksumLine -split '\s+')[0]
+$actual = (Get-FileHash -LiteralPath $installer.FullName -Algorithm SHA256).Hash
+if ($actual -ne $expected) { throw 'SHA-256 不匹配，请重新从项目 Release 下载。' }
+"SHA-256 匹配：$($installer.Name)"
 ```
 
-输出的 `Length` 与 `Hash` 必须分别与上表一致。当前安装包没有商业代码签名；若 Windows SmartScreen 提示，请先核对下载来源和 SHA-256，再自行决定是否继续。
+确认输出“SHA-256 匹配”再安装。当前安装包没有商业代码签名；若 Windows SmartScreen 提示，请先核对下载来源和 SHA-256，再自行决定是否继续。
 
 ## 安装
 
-1. 运行下载的 `错题智库_*_x64-setup.exe`。
+1. 运行下载的 `cuoti-zhiku_*_x64-setup.exe`。
 2. 按安装向导完成当前用户安装。
 3. 从桌面或开始菜单启动“错题智库”。以后日常使用不需要再打开安装包，启动后也不应出现额外的黑色控制台窗口。
 
@@ -34,6 +39,8 @@ Get-FileHash -LiteralPath '.\错题智库_*_x64-setup.exe' -Algorithm SHA256
 3. 打开待整理题目，补充题干、作答、答案、解析和错因。
 4. 使用搜索按钮或 `Ctrl+K` 搜索本机题目、课程和已导入资料。去除首尾空白后至少输入两个字符才会查询，单次最多显示 12 条结果；查询词不会发送到网络。
 5. 不配置 API Key 也能完成所有本地核心流程。如需 AI，在设置中选择平台或兼容接口；Key 由 Windows 凭据管理器保存，且每次 AI 请求仍需确认数据范围。
+
+从 v0.6.0 起，待整理、题目档案和保存的课程资料都支持右键菜单或行末的「⋯」。确认移入「最近删除」后，题目可从「全部档案 → 最近删除」恢复，课程资料可从资料库的「最近删除」恢复。
 
 ## 数据与迁移
 

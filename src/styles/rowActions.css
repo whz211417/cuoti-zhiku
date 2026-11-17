@@ -1,0 +1,165 @@
+:root {
+  --row-action-danger: #a32727;
+  --row-action-danger-tint: rgb(195 48 48 / .09);
+}
+
+.row-action-trigger,
+.materials-saved-list .row-action-trigger {
+  display: grid;
+  width: 36px;
+  height: 36px;
+  flex: 0 0 auto;
+  place-items: center;
+  border: 0;
+  border-radius: 8px;
+  padding: 0;
+  color: var(--secondary);
+  background: transparent;
+}
+
+.row-action-trigger:is(:hover, [aria-expanded="true"]),
+.materials-saved-list .row-action-trigger:is(:hover, [aria-expanded="true"]) {
+  color: var(--ink);
+  background: var(--separator);
+}
+
+.inbox-result-button { min-width: 0; flex: 1; }
+.inbox-result-button > span:last-child { min-width: 0; }
+
+.row-action-menu {
+  position: fixed;
+  z-index: 50;
+  display: grid;
+  width: min(194px, calc(100vw - 16px));
+  max-height: calc(100dvh - 16px);
+  gap: 2px;
+  overflow: auto;
+  border: 1px solid var(--separator);
+  border-radius: 12px;
+  padding: 5px;
+  background: var(--paper);
+  box-shadow: 0 12px 32px rgb(0 0 0 / .19);
+  transform-origin: top right;
+  animation: row-action-in 150ms var(--motion-spring) both;
+}
+
+.row-action-menu button {
+  display: flex;
+  min-height: 37px;
+  align-items: center;
+  gap: 8px;
+  border: 0;
+  border-radius: 7px;
+  padding: 5px 9px;
+  color: var(--ink);
+  background: transparent;
+  font-size: 13px;
+  text-align: left;
+}
+
+.row-action-menu button:focus-visible { outline-offset: -2px; }
+.row-action-menu button:is(:hover, :focus-visible) { background: var(--paper-muted); }
+.row-action-menu .is-destructive { color: var(--row-action-danger); }
+.row-action-menu .is-destructive:is(:hover, :focus-visible) { background: var(--row-action-danger-tint); }
+
+.removal-dialog {
+  width: min(412px, calc(100vw - 32px));
+  max-height: calc(100dvh - 32px);
+  overflow: auto;
+  margin: auto;
+  border: 1px solid var(--separator);
+  border-radius: 18px;
+  padding: 22px;
+  color: var(--ink);
+  background: var(--paper);
+  box-shadow: var(--shadow-transient);
+}
+
+.removal-dialog[open] { animation: row-action-in 180ms var(--motion-spring) both; }
+.removal-dialog::backdrop { background: rgb(18 20 26 / .43); }
+.removal-dialog-mark {
+  display: grid;
+  width: 40px;
+  height: 40px;
+  place-items: center;
+  margin-bottom: 11px;
+  border-radius: 11px;
+  color: var(--row-action-danger);
+  background: var(--row-action-danger-tint);
+}
+.removal-dialog h2 { font-size: 20px; line-height: 1.42; overflow-wrap: anywhere; }
+.removal-dialog p { margin: 8px 0 0; color: var(--secondary); font-size: 13px; line-height: 1.65; }
+.removal-dialog .removal-dialog-error { color: var(--row-action-danger); }
+.removal-dialog-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; margin-top: 20px; }
+.removal-dialog-actions button, .problem-trash-list button {
+  min-height: 38px;
+  border: 1px solid var(--separator);
+  border-radius: 8px;
+  padding: 0 12px;
+  color: var(--ink);
+  background: var(--paper-muted);
+  font-size: 13px;
+  font-weight: 600;
+}
+.removal-dialog-actions button:hover, .problem-trash-list button:hover { background: var(--separator); }
+.removal-dialog-actions .removal-confirm { border-color: transparent; color: white; background: #b22d2c; }
+.removal-dialog-actions .removal-confirm:hover { background: #9d2827; }
+.removal-dialog-actions button:disabled, .problem-trash-list button:disabled { cursor: wait; opacity: .62; }
+
+.archive-heading-actions { flex-wrap: wrap; justify-content: flex-end; gap: 6px; }
+.archive-heading-actions button { white-space: nowrap; }
+.archive-heading-actions .archive-trash-action { border-color: var(--separator); color: var(--ink); background: var(--paper-muted); }
+.archive-heading-actions .archive-trash-action:hover { background: var(--separator); transform: none; }
+.problem-archive > .archive-state[role="status"] { margin-bottom: 12px; }
+.recently-deleted-problems [role="alert"] { color: var(--row-action-danger); }
+
+.problem-trash-list { margin: 12px 0 0; padding: 0; list-style: none; }
+.problem-trash-list li {
+  display: grid;
+  min-height: 56px;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  border-top: 1px solid var(--separator);
+  padding: 8px 0;
+  color: var(--secondary);
+}
+.problem-trash-list strong, .problem-trash-list small { display: block; overflow-wrap: anywhere; }
+.problem-trash-list strong { color: var(--ink); font-size: 13px; }
+.problem-trash-list small { margin-top: 3px; font-size: 11px; }
+.problem-trash-list button { display: inline-flex; align-items: center; gap: 5px; white-space: nowrap; }
+
+@keyframes row-action-in {
+  from { opacity: 0; transform: translateY(-3px) scale(.99); }
+  to { opacity: 1; transform: none; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .row-action-menu, .removal-dialog[open] { animation: none; }
+}
+
+@media (prefers-reduced-transparency: no-preference) {
+  @supports (backdrop-filter: blur(6px)) {
+    .removal-dialog::backdrop { backdrop-filter: blur(6px); }
+    .row-action-menu {
+      background: color-mix(in srgb, var(--paper) 94%, transparent);
+      backdrop-filter: blur(16px) saturate(115%);
+    }
+  }
+}
+
+@media (prefers-color-scheme: dark) {
+  :root { --row-action-danger: #ffaca6; --row-action-danger-tint: rgb(255 110 100 / .12); }
+  .problem-archive-list em, .materials-saved-list li, .materials-trash .materials-saved-list li {
+    border-color: var(--separator);
+    color: var(--secondary);
+    background: var(--paper-muted);
+  }
+  .materials-trash .materials-saved-list button:first-of-type { color: #adcbec; }
+  .materials-trash .materials-saved-list button:last-of-type { color: var(--row-action-danger); }
+}
+
+@media (max-width: 480px) {
+  .archive-heading { flex-wrap: wrap; }
+  .archive-heading-actions { justify-content: flex-start; }
+}
