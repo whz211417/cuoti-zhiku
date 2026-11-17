@@ -74,4 +74,13 @@ describe('Windows release packaging', () => {
     expect(workflow).toContain('TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}')
     expect(workflow).toContain('TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}')
   })
+
+  it('checks installation and data preservation before uploading the stable release assets', () => {
+    const workflow = readFileSync(releaseWorkflowPath, 'utf8')
+    const bundleCheck = workflow.indexOf('./scripts/verify-windows-upgrade.ps1 -InstallerPath $assetPath')
+    const upload = workflow.indexOf('gh release upload')
+
+    expect(bundleCheck).toBeGreaterThan(workflow.indexOf('Build signed app and draft release'))
+    expect(upload).toBeGreaterThan(bundleCheck)
+  })
 })

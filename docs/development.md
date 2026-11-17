@@ -59,4 +59,4 @@ pnpm run test:rust
 
 ## 发布
 
-Windows 安装包由 Tauri NSIS 生成，只附在 [GitHub Releases](https://github.com/whz211417/cuoti-zhiku/releases) 中。版本标签触发签名打包并准备 Release 草稿，公开前核对安装、启动、数据保留和更新包。用户侧步骤见 [安装与校验](release/windows-installation.md)。
+Windows 安装包由 Tauri NSIS 生成，只附在 [GitHub Releases](https://github.com/whz211417/cuoti-zhiku/releases) 中。版本标签触发签名打包并准备 Release 草稿。发布任务在一次性 Windows 虚拟机中从 v0.5.2 升级，核对实际安装、启动和虚构题目的保留情况，通过后再上传稳定文件名的安装包、校验和与更新清单。用户侧步骤见 [安装与校验](release/windows-installation.md)。

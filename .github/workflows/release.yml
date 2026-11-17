@@ -88,7 +88,10 @@ jobs:
           }
           [System.IO.File]::WriteAllText($manifestPath, ($manifest | ConvertTo-Json -Depth 5), $utf8)
 
+          ./scripts/verify-windows-upgrade.ps1 -InstallerPath $assetPath -ExpectedVersion $version
+
           gh release upload $env:GITHUB_REF_NAME $assetPath $signaturePath $checksumPath $manifestPath --clobber
+          if ($LASTEXITCODE -ne 0) { throw 'Could not upload the verified release assets.' }
 
           $legacyPrefix = "_${version}_x64-setup"
           $releaseAssets = gh release view $env:GITHUB_REF_NAME --json assets | ConvertFrom-Json
